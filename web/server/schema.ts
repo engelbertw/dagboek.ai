@@ -1,5 +1,12 @@
 import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
+/** Momentopname van wat er in een gesprek aan bod kon komen. */
+export interface GespreksOnderwerp {
+  id: string;
+  titel: string;
+  openPunten: { id: string; tekst: string }[];
+}
+
 const id = () => uuid('id').primaryKey().defaultRandom();
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 
@@ -46,6 +53,13 @@ export const calls = pgTable('calls', {
   twilioSid: text('twilio_sid'),
   transcript: jsonb('transcript'),
   fout: text('fout'),
+  onderwerpen: jsonb('onderwerpen').$type<GespreksOnderwerp[]>().notNull().default([]),
+  samenvattingStatus: text('samenvatting_status', {
+    enum: ['geen', 'bezig', 'klaar', 'geen_inhoud', 'geweigerd', 'onduidelijk', 'mislukt'],
+  }).notNull().default('geen'),
+  samenvattingFout: text('samenvatting_fout'),
+  samenvattingRuw: jsonb('samenvatting_ruw'),
+  samenvattingGestartOp: timestamp('samenvatting_gestart_op', { withTimezone: true }),
   gestartOp: timestamp('gestart_op', { withTimezone: true }),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
   createdAt: createdAt(),
@@ -74,6 +88,7 @@ export const openItems = pgTable('open_items', {
   id: id(),
   topicId: uuid('topic_id').notNull().references(() => topics.id, { onDelete: 'cascade' }),
   tekst: text('tekst').notNull(),
+  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
   status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
   createdAt: createdAt(),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),

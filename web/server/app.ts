@@ -10,6 +10,9 @@ import { InlogBeperking, controleerWachtwoord, leesSessie, maakSessie } from './
 import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { calls, employees, openItems, projects, schedules, topics, updateHistorie, updates } from './schema.js';
+import type { LlmClient } from './llm.js';
+import { samenvattenGesprek } from './samenvatten.js';
+import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient } from './voice.js';
 
 const COOKIE = 'dagboek_sessie';
@@ -41,9 +44,13 @@ const resultaatBody = z.object({
 
 const gelijk = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export interface AppDeps { db: Db; config: Config; voice: VoiceClient; clientDir?: string }
+export interface AppDeps {
+  db: Db; config: Config; voice: VoiceClient; llm: LlmClient; clientDir?: string;
+  /** Start werk dat na het antwoord doorloopt. Standaard fire-and-forget; tests wachten erop. */
+  achtergrond?: (taak: Promise<unknown>) => void;
+}
 
-export function buildApp({ db, config, voice, clientDir }: AppDeps): FastifyInstance {
+export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) => void t.catch((e) => console.error('Achtergrondtaak mislukt', e)) }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const beperking = new InlogBeperking();
   app.register(cookie);
@@ -249,12 +256,22 @@ export function buildApp({ db, config, voice, clientDir }: AppDeps): FastifyInst
     return db.select({
       id: calls.id, status: calls.status, bron: calls.bron, fout: calls.fout, gestartOp: calls.gestartOp, afgerondOp: calls.afgerondOp,
       createdAt: calls.createdAt, employeeId: calls.employeeId, employeeNaam: employees.naam,
+      samenvattingStatus: calls.samenvattingStatus, samenvattingFout: calls.samenvattingFout,
     }).from(calls).innerJoin(employees, eq(calls.employeeId, employees.id))
       .where(employeeId ? eq(calls.employeeId, employeeId) : undefined).orderBy(desc(calls.createdAt)).limit(100);
   });
   app.get('/api/calls/:id', async (req, reply) => {
     const [rij] = await db.select().from(calls).where(eq(calls.id, uuid.parse((req.params as any).id)));
     return rij ?? reply.code(404).send({ fout: 'Gesprek niet gevonden' });
+  });
+
+  app.post('/api/calls/:id/samenvatten', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const [rij] = await db.select({ status: calls.status, samenvattingStatus: calls.samenvattingStatus }).from(calls).where(eq(calls.id, id));
+    if (!rij) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
+    if (rij.status !== 'gesproken') return reply.code(409).send({ fout: 'Alleen een afgerond gesprek kan worden samengevat' });
+    if (!['geen', 'mislukt', 'onduidelijk'].includes(rij.samenvattingStatus)) return reply.code(409).send({ fout: `De samenvatting staat op '${rij.samenvattingStatus}' en wordt niet opnieuw gemaakt` });
+    return reply.code(202).send(await samenvattenGesprek({ db, llm }, id));
   });
 
   app.post('/api/employees/:id/bel', async (req, reply) => {
@@ -265,15 +282,17 @@ export function buildApp({ db, config, voice, clientDir }: AppDeps): FastifyInst
     const mijnTopics = await db.select({ t: topics, projectNaam: projects.naam }).from(topics)
       .leftJoin(projects, eq(topics.projectId, projects.id)).where(and(eq(topics.eigenaarId, employeeId), eq(topics.status, 'actief'))).orderBy(asc(topics.createdAt));
     const onderwerpen: Onderwerp[] = [];
+    const momentopname: GespreksOnderwerp[] = [];
     for (const { t, projectNaam } of mijnTopics) {
       const [laatste] = await db.select().from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
-      const open = await db.select({ tekst: openItems.tekst }).from(openItems).where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'))).orderBy(asc(openItems.createdAt));
+      const open = await db.select({ id: openItems.id, tekst: openItems.tekst }).from(openItems).where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'))).orderBy(asc(openItems.createdAt));
       onderwerpen.push({
         titel: t.titel, project: projectNaam ?? undefined, aanwijzingen: t.aanwijzingen || undefined,
         laatste_update: laatste?.samenvatting, laatste_update_datum: laatste?.createdAt.toISOString().slice(0, 10), open_punten: open.map((o) => o.tekst),
       });
+      momentopname.push({ id: t.id, titel: t.titel, openPunten: open });
     }
-    const [call] = await db.insert(calls).values({ employeeId, status: 'gepland', bron: 'handmatig' }).returning();
+    const [call] = await db.insert(calls).values({ employeeId, status: 'gepland', bron: 'handmatig', onderwerpen: momentopname }).returning();
     const resultaat = await voice({
       telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id,
     });
@@ -298,6 +317,7 @@ export function buildApp({ db, config, voice, clientDir }: AppDeps): FastifyInst
       status: b.status, twilioSid: b.twilioSid, fout: b.fout, ...(b.transcript !== undefined ? { transcript: b.transcript } : {}),
       ...(eind ? { afgerondOp: new Date() } : {}),
     }).where(eq(calls.id, id));
+    if (b.status === 'gesproken') achtergrond(samenvattenGesprek({ db, llm }, id));
     return { ok: true };
   });
 

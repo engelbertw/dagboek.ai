@@ -8,6 +8,9 @@ export interface Config {
   voiceUrl: string;
   voiceAdminToken: string;
   serviceKey: string;
+  llmBaseUrl: string;
+  llmApiKey: string;
+  llmModel: string;
 }
 
 export function loadConfig(env = process.env): Config {
@@ -21,6 +24,9 @@ export function loadConfig(env = process.env): Config {
     voiceUrl: (env.VOICE_URL ?? '').replace(/\/$/, ''),
     voiceAdminToken: env.VOICE_ADMIN_TOKEN ?? '',
     serviceKey: env.SERVICE_KEY ?? '',
+    llmBaseUrl: (env.TSYSTEMS_BASE_URL ?? '').replace(/\/$/, ''),
+    llmApiKey: env.TSYSTEMS_API_KEY ?? '',
+    llmModel: env.LLM_MODEL ?? 'gemma-4',
   };
 }
 
