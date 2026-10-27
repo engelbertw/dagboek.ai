@@ -35,11 +35,11 @@ def _map() -> Path:
     return pad
 
 
-def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True) -> str:
+def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "") -> str:
     call_id = uuid.uuid4().hex
     spec = {
         "call_id": call_id, "nummer": nummer, "medewerker": medewerker, "onderwerpen": onderwerpen,
-        "toestemming_nodig": toestemming_nodig, "aangemaakt": time.time(),
+        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "aangemaakt": time.time(),
     }
     (_map() / f"{call_id}.json").write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
     return call_id
@@ -110,3 +110,27 @@ def start_gesprek(call_id: str) -> dict:
     update_opdracht(call_id, status="belt", twilio_sid=call.sid, gebeld_om=time.time())
     logger.info(f"Gesprek gestart (opdracht {call_id}, sid {call.sid})")
     return {"gebeld": True, "call_id": call_id}
+
+
+# Uitkomsten die de web-service als definitief beschouwt; alleen daarvoor wordt `afgerond_om` gezet.
+WEB_STATUSSEN = {"belt", "gesprek", "gesproken", "niet_bereikt", "voicemail", "mislukt"}
+
+
+def rapporteer(call_id: str, status: str, **extra) -> bool:
+    """Meldt de uitkomst van een gesprek aan de web-service (dagboek). Mislukt dit, dan blijft het gesprek zelf ongemoeid:
+    de opdracht en het transcript staan ook op het volume. Geeft True terug als de web-service het heeft aangenomen."""
+    import httpx
+
+    spec = lees_opdracht(call_id)
+    url, sleutel = os.getenv("WEB_CALLBACK_URL", "").rstrip("/"), os.getenv("WEB_SERVICE_KEY", "")
+    web_id = (spec or {}).get("web_call_id", "")
+    if not (spec and web_id and url and sleutel) or status not in WEB_STATUSSEN:
+        return False
+    body = {"status": status, **{k: v for k, v in extra.items() if v is not None}}
+    try:
+        r = httpx.post(f"{url}/api/intern/calls/{web_id}/resultaat", json=body, headers={"x-service-key": sleutel}, timeout=10)
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        logger.warning(f"Terugmelden aan web-service mislukt voor opdracht {call_id}: {type(e).__name__}: {e}")
+        return False

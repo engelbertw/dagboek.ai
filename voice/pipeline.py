@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from datetime import datetime
@@ -27,7 +28,7 @@ from processors import AfsluitProcessor, SilenceTimeoutProcessor, SttTimeoutProc
 from prompts import PROMPT_VERSION, build_system_prompt, greeting_text
 
 
-def _write_transcript(call_id: str, stream_sid: str, context: LLMContext, knelpunten: list[str]) -> None:
+def _write_transcript(call_id: str, stream_sid: str, context: LLMContext, knelpunten: list[str]) -> list[dict] | None:
     """Transcript per gesprek op de data-schijf, met BSN en IBAN gemaskeerd. De samenvatting naar het dagboek volgt in fase 2."""
     try:
         berichten = context.get_messages() if hasattr(context, "get_messages") else context.messages
@@ -43,8 +44,11 @@ def _write_transcript(call_id: str, stream_sid: str, context: LLMContext, knelpu
         ), encoding="utf-8")
         calls.update_opdracht(call_id, transcript=pad.name)
         logger.info(f"Transcript weggeschreven: {pad}")
+        # Naar het dagboek gaat alleen het gesprek zelf, niet de systeemprompt.
+        return [{"role": m["role"], "content": m["content"]} for m in schoon if isinstance(m, dict) and m.get("role") in ("assistant", "user") and isinstance(m.get("content"), str)]
     except Exception as e:
         logger.error(f"Transcript wegschrijven mislukt: {type(e).__name__}: {e}")
+        return None
 
 
 def _einde_gesprek_schema(afsluiting: AfsluitProcessor) -> FunctionSchema:
@@ -92,6 +96,7 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
         await websocket.close(code=1008)
         return
     calls.update_opdracht(call_id, status="gesprek", stream_sid=stream_sid)
+    await asyncio.to_thread(calls.rapporteer, call_id, "gesprek")
 
     cfg = config.get_config()
     transport = FastAPIWebsocketTransport(
@@ -151,8 +156,9 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
             ("stilte_na_agent", silence_timeout.fired), ("geen_tijdige_reactie", turn_watchdog.fired),
             ("stt_geen_transcriptie", stt_timeout.fired),
         ) if fired]
-        _write_transcript(call_id, stream_sid, context, knelpunten)
+        transcript = _write_transcript(call_id, stream_sid, context, knelpunten)
         calls.update_opdracht(call_id, status="gesproken", afgerond_om=datetime.now().timestamp(), afgesloten_door_model=afsluiting.gevraagd)
+        await asyncio.to_thread(calls.rapporteer, call_id, "gesproken", transcript=transcript)
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=False, force_gc=True)

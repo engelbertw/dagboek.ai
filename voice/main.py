@@ -82,6 +82,7 @@ async def status_callback(request: Request):
     spec = calls.lees_opdracht(call_id)
     if spec is not None and twilio_status in {"busy", "no-answer", "failed", "canceled"}:
         calls.update_opdracht(call_id, status="niet_bereikt", twilio_status=twilio_status)
+        calls.rapporteer(call_id, "mislukt" if twilio_status == "failed" else "niet_bereikt", fout=f"Twilio: {twilio_status}", twilioSid=form.get("CallSid"))
     logger.info(f"Status opdracht {call_id}: {twilio_status}")
     return Response(status_code=204)
 
@@ -98,6 +99,7 @@ async def amd_callback(request: Request):
     if spec is not None and (answered_by.startswith("machine") or answered_by == "fax"):
         logger.info(f"Opdracht {call_id}: voicemail ({answered_by}), opgehangen")
         calls.update_opdracht(call_id, status="voicemail", answered_by=answered_by)
+        calls.rapporteer(call_id, "voicemail")
         if spec and spec.get("twilio_sid"):
             _hang_op(spec["twilio_sid"])
     return Response(status_code=204)
@@ -108,6 +110,7 @@ class BelVerzoek(BaseModel):
     medewerker: str = Field(min_length=1, max_length=100)
     onderwerpen: list[dict] = Field(default_factory=list, max_length=10)
     toestemming_nodig: bool = True
+    web_call_id: str = Field(default="", max_length=64)
 
 
 @app.post("/bel")
@@ -121,8 +124,11 @@ async def bel(verzoek: BelVerzoek, authorization: str = Header(default="")):
     mag, reden = calls.mag_bellen(nummer)
     if not mag:
         return {"gebeld": False, "reden": reden}
-    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig)
-    return calls.start_gesprek(call_id)
+    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id)
+    resultaat = calls.start_gesprek(call_id)
+    if not resultaat.get("gebeld"):
+        calls.rapporteer(call_id, "mislukt", fout=resultaat.get("reden"))
+    return resultaat
 
 
 @app.websocket("/ws")

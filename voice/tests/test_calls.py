@@ -45,3 +45,45 @@ def test_start_gesprek_zonder_config_belt_niet(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     cid = calls.maak_opdracht("+31612345678", "Daan", [])
     assert calls.start_gesprek(cid)["gebeld"] is False
+
+
+def test_rapporteer_stuurt_status_met_servicesleutel(monkeypatch):
+    import httpx
+
+    verstuurd = {}
+
+    class Antwoord:
+        def raise_for_status(self): pass
+
+    def nep_post(url, json=None, headers=None, timeout=None):
+        verstuurd.update(url=url, json=json, headers=headers)
+        return Antwoord()
+
+    monkeypatch.setattr(httpx, "post", nep_post)
+    monkeypatch.setenv("WEB_CALLBACK_URL", "https://dagboek.test/")
+    monkeypatch.setenv("WEB_SERVICE_KEY", "sleutel")
+    cid = calls.maak_opdracht("+31612345678", "Daan", [], web_call_id="abc-123")
+    assert calls.rapporteer(cid, "gesproken", transcript=[{"role": "user", "content": "hoi"}], fout=None) is True
+    assert verstuurd["url"] == "https://dagboek.test/api/intern/calls/abc-123/resultaat"
+    assert verstuurd["headers"] == {"x-service-key": "sleutel"}
+    assert verstuurd["json"] == {"status": "gesproken", "transcript": [{"role": "user", "content": "hoi"}]}
+
+
+def test_rapporteer_zonder_web_id_of_config_doet_niets(monkeypatch):
+    monkeypatch.setenv("WEB_CALLBACK_URL", "https://dagboek.test")
+    monkeypatch.setenv("WEB_SERVICE_KEY", "sleutel")
+    assert calls.rapporteer(calls.maak_opdracht("+31612345678", "D", []), "gesproken") is False
+    monkeypatch.delenv("WEB_SERVICE_KEY")
+    assert calls.rapporteer(calls.maak_opdracht("+31612345678", "D", [], web_call_id="x"), "gesproken") is False
+
+
+def test_rapporteer_vangt_netwerkfouten_af(monkeypatch):
+    import httpx
+
+    def stuk(*a, **k): raise httpx.ConnectError("nee")
+
+    monkeypatch.setattr(httpx, "post", stuk)
+    monkeypatch.setenv("WEB_CALLBACK_URL", "https://dagboek.test")
+    monkeypatch.setenv("WEB_SERVICE_KEY", "sleutel")
+    cid = calls.maak_opdracht("+31612345678", "D", [], web_call_id="x")
+    assert calls.rapporteer(cid, "voicemail") is False
