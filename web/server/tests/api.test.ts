@@ -46,6 +46,14 @@ describe('dagboek', () => {
     expect(lijst[0]).toMatchObject({ titel: 'Offertes', projectNaam: 'MijnServices', eigenaarNaam: 'Daan van Hooft', openPunten: 0, laatsteUpdate: null });
   });
 
+  it('bewaart een e-mailadres en weigert een ongeldig adres', async () => {
+    const m = (await t.api('POST', '/api/employees', { naam: 'Mail Test', telefoon: '0611111111', email: ' Mail.Test@Voorbeeld.NL ' })).json();
+    expect(m.email).toBe('mail.test@voorbeeld.nl');
+    expect((await t.api('PATCH', `/api/employees/${m.id}`, { email: 'geen-adres' })).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/employees/${m.id}`, { email: '' })).json().email).toBe('');
+    await t.api('DELETE', `/api/employees/${m.id}`);
+  });
+
   it('weigert ongeldige invoer en onbekende id’s', async () => {
     expect((await t.api('POST', '/api/topics', { titel: '' })).statusCode).toBe(400);
     expect((await t.api('POST', '/api/employees', { naam: 'X' })).statusCode).toBe(400);

@@ -42,7 +42,7 @@ function Schemas({ medewerker }: { medewerker: Medewerker }) {
 
 function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void }) {
   const [open, setOpen] = useState(false);
-  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, notitie: m.notitie });
+  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, notitie: m.notitie });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [bezig, setBezig] = useState(false);
 
@@ -64,7 +64,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}</span></div>
+        <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}</span></div>
         <div className="rij">
           <button className="primair" onClick={bel} disabled={bezig || !m.actief}>{bezig ? 'Bezig…' : 'Bel nu'}</button>
           <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Sluiten' : 'Instellingen'}</button>
@@ -80,6 +80,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
             <Veld label="Naam"><input value={bewerk.naam} onChange={(e) => setBewerk({ ...bewerk, naam: e.target.value })} required /></Veld>
             <Veld label="Telefoonnummer"><input value={bewerk.telefoon} onChange={(e) => setBewerk({ ...bewerk, telefoon: e.target.value })} required /></Veld>
           </div>
+          <Veld label="E-mailadres"><input type="email" value={bewerk.email} onChange={(e) => setBewerk({ ...bewerk, email: e.target.value })} /></Veld>
           <Veld label="Notitie"><textarea value={bewerk.notitie} onChange={(e) => setBewerk({ ...bewerk, notitie: e.target.value })} /></Veld>
           <div className="rij">
             <button className="primair" type="submit">Opslaan</button>
@@ -96,7 +97,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
 
 export function Medewerkers() {
   const lijst = useLaden(() => api<Medewerker[]>('GET', '/employees'));
-  const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string } | null>(null);
+  const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
 
   async function maakAan(e: FormEvent) {
@@ -107,13 +108,14 @@ export function Medewerkers() {
     <div className="stapel">
       <div className="rij spreid">
         <div><h1>Medewerkers</h1><p className="zacht">Collega’s die we bellen voor een update.</p></div>
-        <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
+        <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
       </div>
       {nieuw && (
         <form className="paneel stapel" onSubmit={maakAan}>
           <div className="raster">
             <Veld label="Naam"><input value={nieuw.naam} onChange={(e) => setNieuw({ ...nieuw, naam: e.target.value })} required /></Veld>
             <Veld label="Mobiel nummer (bijvoorbeeld 06 12345678)"><input type="tel" value={nieuw.telefoon} onChange={(e) => setNieuw({ ...nieuw, telefoon: e.target.value })} required /></Veld>
+            <Veld label="E-mailadres (niet verplicht)"><input type="email" value={nieuw.email} onChange={(e) => setNieuw({ ...nieuw, email: e.target.value })} /></Veld>
           </div>
           <Melding tekst={fout} />
           <button className="primair" type="submit">Toevoegen</button>

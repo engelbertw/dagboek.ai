@@ -1,4 +1,4 @@
-export interface Medewerker { id: string; naam: string; telefoon: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string }
+export interface Medewerker { id: string; naam: string; telefoon: string; email: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string }
 export interface Project { id: string; naam: string; omschrijving: string; status: 'actief' | 'afgerond' }
 export type TopicStatus = 'actief' | 'wacht' | 'afgerond';
 export type TopicType = 'project' | 'thema' | 'taak';

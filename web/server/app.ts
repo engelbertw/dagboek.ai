@@ -21,7 +21,7 @@ const tijd = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Gebruik HH:MM');
 const nonEmpty = z.string().trim().min(1);
 
 const medewerkerBody = z.object({
-  naam: nonEmpty.max(100), telefoon: nonEmpty.max(30), taal: z.enum(['nl', 'en']).default('nl'),
+  naam: nonEmpty.max(100), telefoon: nonEmpty.max(30), email: z.union([z.literal(''), z.string().trim().toLowerCase().email().max(200)]).default(''), taal: z.enum(['nl', 'en']).default('nl'),
   actief: z.boolean().default(true), notitie: z.string().max(2000).default(''), toestemming: z.boolean().optional(),
 });
 const projectBody = z.object({
@@ -97,7 +97,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   app.post('/api/employees', async (req, reply) => {
     const b = medewerkerBody.parse(req.body);
     const [rij] = await db.insert(employees).values({
-      naam: b.naam, telefoon: b.telefoon, taal: b.taal, actief: b.actief, notitie: b.notitie, toestemmingOp: b.toestemming ? new Date() : null,
+      naam: b.naam, telefoon: b.telefoon, email: b.email, taal: b.taal, actief: b.actief, notitie: b.notitie, toestemmingOp: b.toestemming ? new Date() : null,
     }).returning();
     return reply.code(201).send(rij);
   });
