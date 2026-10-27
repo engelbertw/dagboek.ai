@@ -20,6 +20,12 @@ const uuid = z.string().uuid();
 const tijd = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Gebruik HH:MM');
 const nonEmpty = z.string().trim().min(1);
 
+// Bij een deelwijziging (PATCH) mogen velden die niet worden meegestuurd niet terugvallen op hun standaardwaarde.
+function deelwijziging<T extends z.ZodRawShape>(schema: z.ZodObject<T>) {
+  const velden = Object.fromEntries(Object.entries(schema.shape).map(([naam, veld]) => [naam, veld instanceof z.ZodDefault ? veld.unwrap() : veld]));
+  return z.object(velden).partial() as z.ZodObject<{ [K in keyof T]: z.ZodOptional<T[K] extends z.ZodDefault<infer U> ? U : T[K]> }>;
+}
+
 const medewerkerBody = z.object({
   naam: nonEmpty.max(100), telefoon: nonEmpty.max(30), email: z.union([z.literal(''), z.string().trim().toLowerCase().email().max(200)]).default(''), taal: z.enum(['nl', 'en']).default('nl'),
   locgovGebruikersnaam: z.union([z.literal(''), z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{1,64}$/)]).default(''),
@@ -104,7 +110,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   });
   app.patch('/api/employees/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
-    const b = medewerkerBody.partial().parse(req.body);
+    const b = deelwijziging(medewerkerBody).parse(req.body);
     const { toestemming, ...rest } = b;
     const waarden: Record<string, unknown> = { ...rest };
     if (toestemming !== undefined) waarden.toestemmingOp = toestemming ? new Date() : null;
@@ -123,7 +129,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   app.post('/api/projects', async (req, reply) => reply.code(201).send((await db.insert(projects).values(projectBody.parse(req.body)).returning())[0]));
   app.patch('/api/projects/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
-    const [rij] = await db.update(projects).set(projectBody.partial().parse(req.body)).where(eq(projects.id, id)).returning();
+    const [rij] = await db.update(projects).set(deelwijziging(projectBody).parse(req.body)).where(eq(projects.id, id)).returning();
     return rij ?? reply.code(404).send({ fout: 'Project niet gevonden' });
   });
   app.delete('/api/projects/:id', async (req, reply) => {
@@ -169,7 +175,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   });
   app.patch('/api/topics/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
-    const b = topicBody.partial().parse(req.body);
+    const b = deelwijziging(topicBody).parse(req.body);
     const waarden: Record<string, unknown> = { ...b, updatedAt: new Date() };
     if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
     const [rij] = await db.update(topics).set(waarden).where(eq(topics.id, id)).returning();
@@ -239,7 +245,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     return reply.code(201).send((await db.insert(schedules).values({ ...b, tijden: [...new Set(b.tijden)].sort(), dagen: [...new Set(b.dagen)].sort(), employeeId }).returning())[0]);
   });
   app.patch('/api/schedules/:id', async (req, reply) => {
-    const b = scheduleBody.partial().parse(req.body);
+    const b = deelwijziging(scheduleBody).parse(req.body);
     if (b.tijden) b.tijden = [...new Set(b.tijden)].sort();
     if (b.dagen) b.dagen = [...new Set(b.dagen)].sort();
     if (!Object.keys(b).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });

@@ -62,6 +62,26 @@ describe('dagboek', () => {
     await t.api('DELETE', `/api/employees/${m.id}`);
   });
 
+  it('laat bij een deelwijziging de overige velden ongemoeid', async () => {
+    const m = (await t.api('POST', '/api/employees', {
+      naam: 'Deel Test', telefoon: '0633333333', email: 'deel@test.nl', locgovGebruikersnaam: 'deel00', taal: 'en', actief: false, notitie: 'Niet voor 10 uur bellen',
+    })).json();
+    const na = (await t.api('PATCH', `/api/employees/${m.id}`, { toestemming: true })).json();
+    expect(na).toMatchObject({ email: 'deel@test.nl', locgovGebruikersnaam: 'deel00', taal: 'en', actief: false, notitie: 'Niet voor 10 uur bellen' });
+    expect(na.toestemmingOp).not.toBeNull();
+
+    const p = (await t.api('POST', '/api/projects', { naam: 'Deelproject', omschrijving: 'Uitleg', status: 'afgerond' })).json();
+    expect((await t.api('PATCH', `/api/projects/${p.id}`, { naam: 'Deelproject 2' })).json()).toMatchObject({ omschrijving: 'Uitleg', status: 'afgerond' });
+
+    const o = (await t.api('POST', '/api/topics', { titel: 'Deelonderwerp', type: 'taak', status: 'wacht', projectId: p.id, eigenaarId: m.id, aanwijzingen: 'let op' })).json();
+    expect((await t.api('PATCH', `/api/topics/${o.id}`, { titel: 'Deelonderwerp 2' })).json()).toMatchObject({ type: 'taak', status: 'wacht', projectId: p.id, eigenaarId: m.id, aanwijzingen: 'let op' });
+
+    const sch = (await t.api('POST', `/api/employees/${m.id}/schedules`, { dagen: [1], tijden: ['09:00'], actief: false, maxPogingen: 4 })).json();
+    expect((await t.api('PATCH', `/api/schedules/${sch.id}`, { tijden: ['10:00'] })).json()).toMatchObject({ actief: false, maxPogingen: 4 });
+    await t.api('DELETE', `/api/employees/${m.id}`);
+    await t.api('DELETE', `/api/projects/${p.id}`);
+  });
+
   it('weigert ongeldige invoer en onbekende id’s', async () => {
     expect((await t.api('POST', '/api/topics', { titel: '' })).statusCode).toBe(400);
     expect((await t.api('POST', '/api/employees', { naam: 'X' })).statusCode).toBe(400);
