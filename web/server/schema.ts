@@ -15,6 +15,7 @@ export const employees = pgTable('employees', {
   naam: text('naam').notNull(),
   telefoon: text('telefoon').notNull(),
   email: text('email').notNull().default(''),
+  locgovGebruikersnaam: text('locgov_gebruikersnaam').notNull().default(''),
   taal: text('taal').notNull().default('nl'),
   actief: boolean('actief').notNull().default(true),
   toestemmingOp: timestamp('toestemming_op', { withTimezone: true }),

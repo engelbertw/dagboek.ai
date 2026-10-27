@@ -42,7 +42,7 @@ function Schemas({ medewerker }: { medewerker: Medewerker }) {
 
 function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void }) {
   const [open, setOpen] = useState(false);
-  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, notitie: m.notitie });
+  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [bezig, setBezig] = useState(false);
 
@@ -64,7 +64,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}</span></div>
+        <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
         <div className="rij">
           <button className="primair" onClick={bel} disabled={bezig || !m.actief}>{bezig ? 'Bezig…' : 'Bel nu'}</button>
           <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Sluiten' : 'Instellingen'}</button>
@@ -81,6 +81,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
             <Veld label="Telefoonnummer"><input value={bewerk.telefoon} onChange={(e) => setBewerk({ ...bewerk, telefoon: e.target.value })} required /></Veld>
           </div>
           <Veld label="E-mailadres"><input type="email" value={bewerk.email} onChange={(e) => setBewerk({ ...bewerk, email: e.target.value })} /></Veld>
+          <Veld label="LOCGOV-gebruikersnaam (account wordt gebruikersnaam@LOCGOV.NL)"><input value={bewerk.locgovGebruikersnaam} onChange={(e) => setBewerk({ ...bewerk, locgovGebruikersnaam: e.target.value })} pattern="[A-Za-z0-9._\-]{1,64}" /></Veld>
           <Veld label="Notitie"><textarea value={bewerk.notitie} onChange={(e) => setBewerk({ ...bewerk, notitie: e.target.value })} /></Veld>
           <div className="rij">
             <button className="primair" type="submit">Opslaan</button>

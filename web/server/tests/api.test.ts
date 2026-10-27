@@ -54,6 +54,14 @@ describe('dagboek', () => {
     await t.api('DELETE', `/api/employees/${m.id}`);
   });
 
+  it('bewaart een LOCGOV-gebruikersnaam en weigert een e-mailadres of spaties daarin', async () => {
+    const m = (await t.api('POST', '/api/employees', { naam: 'Locgov Test', telefoon: '0622222222', locgovGebruikersnaam: ' WIJNHO00 ' })).json();
+    expect(m.locgovGebruikersnaam).toBe('wijnho00');
+    expect((await t.api('PATCH', `/api/employees/${m.id}`, { locgovGebruikersnaam: 'wijnho00@locgov.nl' })).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/employees/${m.id}`, { locgovGebruikersnaam: 'twee woorden' })).statusCode).toBe(400);
+    await t.api('DELETE', `/api/employees/${m.id}`);
+  });
+
   it('weigert ongeldige invoer en onbekende id’s', async () => {
     expect((await t.api('POST', '/api/topics', { titel: '' })).statusCode).toBe(400);
     expect((await t.api('POST', '/api/employees', { naam: 'X' })).statusCode).toBe(400);
