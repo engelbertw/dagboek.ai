@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { calls, employees, openItems, updates } from '../schema.js';
-import { herstelVastgelopen, leesAntwoord } from '../samenvatten.js';
+import { herstelVastgelopen, leesAntwoord, lijktOpBestaand } from '../samenvatten.js';
 import { SERVICE_KEY, maakTestApp } from './helpers.js';
 
 type T = Awaited<ReturnType<typeof maakTestApp>>;
@@ -206,6 +206,16 @@ describe('samenvatting na een gesprek', () => {
     await s2.meld(); await s2.meld();
     expect(s2.vragen).toHaveLength(1);
     expect(await s2.alleUpdates()).toHaveLength(1);
+  });
+
+  it('herkent een punt dat al bestaat, ook met andere woorden, maar laat echt nieuwe punten door', () => {
+    const bestaand = ['Afstemming met interne architect', 'Akkoord gemeente X op offerte'];
+    expect(lijktOpBestaand('Afstemming met interne architect inplannen deze week', bestaand)).toBe(true);
+    expect(lijktOpBestaand('akkoord van gemeente X op de offerte', bestaand)).toBe(true);
+    expect(lijktOpBestaand('Demo geven aan gemeente Y op volgende dinsdag', bestaand)).toBe(false);
+    expect(lijktOpBestaand('Planning voor november maken', bestaand)).toBe(false);
+    expect(lijktOpBestaand('   ', bestaand)).toBe(true);
+    expect(lijktOpBestaand('Iets nieuws', [])).toBe(false);
   });
 
   it('leest een antwoord in een code-blok met toelichting', () => {

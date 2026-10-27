@@ -36,7 +36,7 @@ Regels:
 - Geef voor elk genummerd onderwerp precies één object. Is er in het gesprek niets over gezegd, zet dan "besproken" op false en laat samenvatting en besluiten leeg.
 - "samenvatting": één tot vier korte zinnen over de stand van zaken: wat is gedaan, wat loopt, wat staat in de weg. Neutraal geschreven, niet in de ik-vorm.
 - "besluiten": alleen echte besluiten die zijn genomen, anders een lege tekst.
-- "nieuwe_open_punten": concrete acties of vragen die nog open staan, kort en zonder dubbelingen met de bestaande open punten.
+- "nieuwe_open_punten": concrete acties of vragen die nog open staan, kort. Wordt een actie al gedekt door een bestaand open punt, ook als dat met andere woorden is omschreven, voeg dan niets toe. Een bestaand punt dat de collega nog niet heeft afgerond blijft gewoon open staan.
 - "afgeronde_open_punten": alleen de nummers van bestaande open punten die de collega duidelijk als afgerond of opgelost benoemt.
 - ${toestemmingNodig
     ? '"toestemming": beoordeel of de collega akkoord ging met het maken van een samenvatting van het gesprek. "gegeven" alleen bij een duidelijk akkoord, "geweigerd" bij een duidelijke weigering of bezwaar, "onduidelijk" als er geen duidelijk antwoord is gegeven.'
@@ -61,7 +61,22 @@ export function leesAntwoord(tekst: string): Samenvatting {
   return resultaatSchema.parse(JSON.parse(tekst.slice(begin, eind + 1)));
 }
 
-const sleutel = (t: string) => t.trim().toLowerCase().replace(/\s+/g, ' ');
+const STOPWOORDEN = new Set(['de', 'het', 'een', 'met', 'en', 'van', 'voor', 'op', 'in', 'te', 'naar', 'is', 'zijn', 'dat', 'die', 'aan', 'om', 'bij', 'nog', 'deze', 'dit']);
+const woorden = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w && !STOPWOORDEN.has(w));
+
+/** Is dit punt al gedekt door een bestaand punt, ook met andere woorden? Liever een dubbel punt missen dan het dagboek vervuilen. */
+export function lijktOpBestaand(nieuw: string, bestaand: string[]): boolean {
+  const a = woorden(nieuw);
+  if (!a.length) return true;
+  return bestaand.some((b) => {
+    const w = woorden(b);
+    if (!w.length) return false;
+    const [kort, lang] = a.length <= w.length ? [a, w] : [w, a];
+    if (kort.every((x) => lang.includes(x))) return true; // het ene punt zit helemaal in het andere
+    const gemeenschappelijk = a.filter((x) => w.includes(x)).length;
+    return gemeenschappelijk / new Set([...a, ...w]).size >= 0.6;
+  });
+}
 
 export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }, callId: string): Promise<Uitkomst> {
   // Alleen één run tegelijk, en alleen vanuit een stand waarin opnieuw proberen zinvol is.
@@ -134,11 +149,11 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
           tellers.afgerondePunten += klaar.length;
         }
 
-        const bestaand = new Set((await tx.select({ tekst: openItems.tekst }).from(openItems)
-          .where(and(eq(openItems.topicId, onderwerp.id), eq(openItems.status, 'open')))).map((p) => sleutel(p.tekst)));
+        const bestaand = (await tx.select({ tekst: openItems.tekst }).from(openItems)
+          .where(and(eq(openItems.topicId, onderwerp.id), eq(openItems.status, 'open')))).map((p) => p.tekst);
         for (const tekst of o.nieuwe_open_punten) {
-          if (!tekst.trim() || bestaand.has(sleutel(tekst))) continue;
-          bestaand.add(sleutel(tekst));
+          if (!tekst.trim() || lijktOpBestaand(tekst, bestaand)) continue;
+          bestaand.push(tekst);
           await tx.insert(openItems).values({ topicId: onderwerp.id, callId, tekst: tekst.trim() });
           tellers.nieuweOpenPunten++;
         }
