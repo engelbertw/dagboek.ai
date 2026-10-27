@@ -2,6 +2,7 @@
 import os
 
 DATA_DIR = os.getenv("DATA_DIR", "./data")
+TRANSCRIPT_BEWAAR_DAGEN = int(os.getenv("TRANSCRIPT_BEWAAR_DAGEN", "30"))
 VOICE_ID_ENGELBERT = "enmqCP0KND7ESmQRStwc"
 
 

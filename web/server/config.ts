@@ -11,6 +11,7 @@ export interface Config {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  transcriptBewaarDagen: number;
 }
 
 export function loadConfig(env = process.env): Config {
@@ -27,6 +28,7 @@ export function loadConfig(env = process.env): Config {
     llmBaseUrl: (env.TSYSTEMS_BASE_URL ?? '').replace(/\/$/, ''),
     llmApiKey: env.TSYSTEMS_API_KEY ?? '',
     llmModel: env.LLM_MODEL ?? 'gemma-4',
+    transcriptBewaarDagen: Number(env.TRANSCRIPT_BEWAAR_DAGEN ?? 30),
   };
 }
 

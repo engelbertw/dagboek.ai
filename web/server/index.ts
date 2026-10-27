@@ -4,6 +4,7 @@ import { buildApp } from './app.js';
 import { loadConfig, ontbrekendeInstellingen } from './config.js';
 import { connectMemory, connectPostgres, migrate } from './db.js';
 import { maakLlmClient } from './llm.js';
+import { ruimTranscriptenOp } from './opschoning.js';
 import { herstelVastgelopen } from './samenvatten.js';
 import { maakVoiceClient } from './voice.js';
 
@@ -24,6 +25,13 @@ const app = buildApp({ db: handle.db, config, voice: maakVoiceClient(config), ll
 await herstelVastgelopen(handle.db);
 const sweeper = setInterval(() => void herstelVastgelopen(handle.db).catch(() => {}), 5 * 60_000);
 sweeper.unref();
+const opschoning = async () => {
+  const n = await ruimTranscriptenOp(handle.db, config.transcriptBewaarDagen);
+  if (n) console.log(`Transcripten gewist na ${config.transcriptBewaarDagen} dagen: ${n} gesprek(ken)`);
+};
+await opschoning().catch((e) => console.error('Opschoning mislukt', e));
+const opschoner = setInterval(() => void opschoning().catch((e) => console.error('Opschoning mislukt', e)), 6 * 3_600_000);
+opschoner.unref();
 await app.listen({ port: config.port, host: '0.0.0.0' });
 console.log(`dagboek-web luistert op :${config.port}`);
 

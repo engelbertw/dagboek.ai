@@ -1,5 +1,7 @@
+import asyncio
 import hmac
 import os
+from contextlib import asynccontextmanager
 
 import uvicorn
 from dotenv import load_dotenv
@@ -13,8 +15,25 @@ from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 load_dotenv()
 
 import calls
+import opschoning
 
-app = FastAPI()
+async def _opschoon_lus() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(opschoning.ruim_op)
+        except Exception as e:
+            logger.error(f"Opschoning mislukt: {type(e).__name__}: {e}")
+        await asyncio.sleep(6 * 3600)
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    taak = asyncio.create_task(_opschoon_lus())
+    yield
+    taak.cancel()
+
+
+app = FastAPI(lifespan=_lifespan)
 
 PUBLIC_HOST = os.getenv("PUBLIC_HOST", "")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
