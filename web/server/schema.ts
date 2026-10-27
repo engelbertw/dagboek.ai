@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 /** Momentopname van wat er in een gesprek aan bod kon komen. */
 export interface GespreksOnderwerp {
@@ -91,9 +91,18 @@ export const openItems = pgTable('open_items', {
   topicId: uuid('topic_id').notNull().references(() => topics.id, { onDelete: 'cascade' }),
   tekst: text('tekst').notNull(),
   callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  eigenaarId: uuid('eigenaar_id').references(() => employees.id, { onDelete: 'set null' }),
+  eigenaarExtern: text('eigenaar_extern').notNull().default(''),
+  deadline: date('deadline'),
   status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
   createdAt: createdAt(),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
+});
+
+export const instellingen = pgTable('instellingen', {
+  sleutel: text('sleutel').primaryKey(),
+  waarde: text('waarde').notNull(),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const schedules = pgTable('schedules', {

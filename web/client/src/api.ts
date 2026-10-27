@@ -8,7 +8,13 @@ export interface TopicRegel {
   laatsteUpdate: { samenvatting: string; createdAt: string } | null;
 }
 export interface Update { id: string; topicId: string; bron: 'voice' | 'handmatig'; samenvatting: string; besluiten: string; createdAt: string; bewerktOp: string | null }
-export interface OpenPunt { id: string; tekst: string; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null }
+export interface OpenPunt { id: string; tekst: string; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; eigenaarId: string | null; eigenaarExtern: string; deadline: string | null }
+export interface Actie { id: string; tekst: string; topicId: string; topicTitel: string; eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null }
+export interface Stand { open: number; teLaat: number; binnenkort: number; zonderDeadline: number; opTijd: number; laatAfgerond: number; nakoming: number | null }
+export interface DashboardData { vandaag: string; totaal: Stand; perEigenaar: (Stand & { id: string | null; naam: string })[]; teLaat: Actie[]; binnenkort: Actie[] }
+export interface Houding { waarde: string; standaard: boolean }
+export const vandaagIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
+export const deadlineTekst = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'geen deadline');
 export interface TopicDetail {
   id: string; titel: string; type: TopicType; status: TopicStatus; aanwijzingen: string; projectId: string | null; eigenaarId: string | null;
   updates: Update[]; openItems: OpenPunt[];

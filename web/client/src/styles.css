@@ -52,3 +52,11 @@ textarea { min-height: 84px; resize: vertical; }
   .kop { gap: .25rem 1rem; } .kop nav { order: 3; flex-basis: 100%; gap: 0; } .kop nav a { padding: .3rem .6rem; }
   .kop button.tekstknop { margin-left: auto; }
 }
+
+.tegels { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+.tegel { background: var(--paneel); border: 1px solid var(--rand); border-radius: var(--radius); padding: .8rem 1rem; box-shadow: var(--schaduw); display: flex; flex-direction: column; }
+.tegel strong { font-size: 1.9rem; line-height: 1.1; } .tegel span { color: var(--zacht); font-size: .875rem; }
+.tegel.fout strong { color: var(--fout); } .tegel.ok strong { color: var(--ok); }
+.tabelrand { overflow-x: auto; } table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--rand); white-space: nowrap; }
+thead th { color: var(--zacht); font-weight: 600; font-size: .85rem; } .fouttekst { color: var(--fout); font-weight: 700; }
+.punt { flex-wrap: wrap; }

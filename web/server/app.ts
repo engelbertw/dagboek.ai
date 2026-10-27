@@ -11,7 +11,10 @@ import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { calls, employees, openItems, projects, schedules, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
-import { samenvattenGesprek } from './samenvatten.js';
+import { bewaarHouding, leesHouding } from './instellingen.js';
+import { puntenVoorGesprek } from './voor-gesprek.js';
+import { berekenDashboard, type ActieRij } from './dashboard.js';
+import { samenvattenGesprek, vandaagNL } from './samenvatten.js';
 import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient } from './voice.js';
 
@@ -44,6 +47,10 @@ const scheduleBody = z.object({
   dagen: z.array(z.number().int().min(1).max(7)).min(1).max(7), tijden: z.array(tijd).max(6),
   actief: z.boolean().default(true), maxPogingen: z.number().int().min(1).max(5).default(2),
 });
+const actieVelden = {
+  eigenaarId: uuid.nullable().optional(), eigenaarExtern: z.string().trim().max(100).optional(),
+  deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d, 'Ongeldige datum').nullable().optional(),
+};
 const resultaatBody = z.object({
   status: z.enum(['belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt']),
   transcript: z.unknown().optional(), twilioSid: z.string().max(100).optional(), fout: z.string().max(500).optional(),
@@ -215,20 +222,36 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   // ── Open punten ─────────────────────────────────────────────────────────
   app.post('/api/topics/:id/open-items', async (req, reply) => {
     const topicId = uuid.parse((req.params as any).id);
-    const { tekst } = z.object({ tekst: nonEmpty.max(500) }).parse(req.body);
-    const [topic] = await db.select({ id: topics.id }).from(topics).where(eq(topics.id, topicId));
+    const b = z.object({ tekst: nonEmpty.max(500), ...actieVelden }).parse(req.body);
+    const [topic] = await db.select({ id: topics.id, eigenaarId: topics.eigenaarId }).from(topics).where(eq(topics.id, topicId));
     if (!topic) return reply.code(404).send({ fout: 'Onderwerp niet gevonden' });
-    return reply.code(201).send((await db.insert(openItems).values({ topicId, tekst }).returning())[0]);
+    const eigenaarId = b.eigenaarId === undefined ? topic.eigenaarId : b.eigenaarId;
+    return reply.code(201).send((await db.insert(openItems).values({ topicId, tekst: b.tekst, eigenaarId, eigenaarExtern: b.eigenaarExtern ?? '', deadline: b.deadline ?? null }).returning())[0]);
   });
   app.patch('/api/open-items/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
-    const b = z.object({ tekst: nonEmpty.max(500), status: z.enum(['open', 'afgerond']) }).partial().parse(req.body);
+    const b = z.object({ tekst: nonEmpty.max(500), status: z.enum(['open', 'afgerond']), ...actieVelden }).partial().parse(req.body);
     const waarden: Record<string, unknown> = { ...b };
     if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
     if (!Object.keys(waarden).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
     const [rij] = await db.update(openItems).set(waarden).where(eq(openItems.id, id)).returning();
     return rij ?? reply.code(404).send({ fout: 'Punt niet gevonden' });
   });
+  const actieRijen = async (): Promise<ActieRij[]> => (await db.select({
+    id: openItems.id, tekst: openItems.tekst, topicId: openItems.topicId, topicTitel: topics.titel,
+    eigenaarId: openItems.eigenaarId, eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
+    deadline: openItems.deadline, status: openItems.status, createdAt: openItems.createdAt, afgerondOp: openItems.afgerondOp,
+  }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
+    .orderBy(asc(openItems.status), sql`${openItems.deadline} asc nulls last`, asc(openItems.createdAt)));
+  app.get('/api/instellingen/houding', async () => leesHouding(db));
+  app.put('/api/instellingen/houding', async (req) => {
+    const { waarde } = z.object({ waarde: z.string().max(4000) }).parse(req.body);
+    await bewaarHouding(db, waarde);
+    return leesHouding(db);
+  });
+  app.get('/api/acties', async () => actieRijen());
+  app.get('/api/dashboard', async () => berekenDashboard(await actieRijen(), vandaagNL()));
+
   app.delete('/api/open-items/:id', async (req, reply) => {
     const gewist = await db.delete(openItems).where(eq(openItems.id, uuid.parse((req.params as any).id))).returning({ id: openItems.id });
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Punt niet gevonden' });
@@ -292,16 +315,22 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     const momentopname: GespreksOnderwerp[] = [];
     for (const { t, projectNaam } of mijnTopics) {
       const [laatste] = await db.select().from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
-      const open = await db.select({ id: openItems.id, tekst: openItems.tekst }).from(openItems).where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'))).orderBy(asc(openItems.createdAt));
+      const open = await db.select({
+        id: openItems.id, tekst: openItems.tekst, deadline: openItems.deadline, eigenaarId: openItems.eigenaarId,
+        eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
+      }).from(openItems).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
+        .where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'))).orderBy(asc(openItems.createdAt));
+      const punten = puntenVoorGesprek(open, vandaagNL(), employeeId);
       onderwerpen.push({
         titel: t.titel, project: projectNaam ?? undefined, aanwijzingen: t.aanwijzingen || undefined,
-        laatste_update: laatste?.samenvatting, laatste_update_datum: laatste?.createdAt.toISOString().slice(0, 10), open_punten: open.map((o) => o.tekst),
+        laatste_update: laatste?.samenvatting, laatste_update_datum: laatste?.createdAt.toISOString().slice(0, 10),
+        open_punten: punten.open, te_laat_punten: punten.teLaat,
       });
-      momentopname.push({ id: t.id, titel: t.titel, openPunten: open });
+      momentopname.push({ id: t.id, titel: t.titel, openPunten: open.map((o) => ({ id: o.id, tekst: o.tekst })) });
     }
     const [call] = await db.insert(calls).values({ employeeId, status: 'gepland', bron: 'handmatig', onderwerpen: momentopname }).returning();
     const resultaat = await voice({
-      telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id,
+      telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde,
     });
     if (!resultaat.gebeld) {
       await db.update(calls).set({ status: 'mislukt', fout: resultaat.reden, afgerondOp: new Date() }).where(eq(calls.id, call.id));

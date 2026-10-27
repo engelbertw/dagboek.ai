@@ -35,11 +35,11 @@ def _map() -> Path:
     return pad
 
 
-def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "") -> str:
+def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "") -> str:
     call_id = uuid.uuid4().hex
     spec = {
         "call_id": call_id, "nummer": nummer, "medewerker": medewerker, "onderwerpen": onderwerpen,
-        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "aangemaakt": time.time(),
+        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "aangemaakt": time.time(),
     }
     (_map() / f"{call_id}.json").write_text(json.dumps(spec, ensure_ascii=False, indent=2), encoding="utf-8")
     return call_id

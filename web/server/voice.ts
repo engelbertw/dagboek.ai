@@ -6,6 +6,7 @@ export interface BelOpdracht {
   onderwerpen: Onderwerp[];
   toestemming_nodig: boolean;
   web_call_id: string;
+  houding?: string;
 }
 
 export interface Onderwerp {
@@ -15,6 +16,7 @@ export interface Onderwerp {
   laatste_update?: string;
   laatste_update_datum?: string;
   open_punten?: string[];
+  te_laat_punten?: string[];
 }
 
 export type BelResultaat = { gebeld: true; call_id: string } | { gebeld: false; reden: string };

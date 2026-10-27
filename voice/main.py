@@ -130,6 +130,7 @@ class BelVerzoek(BaseModel):
     onderwerpen: list[dict] = Field(default_factory=list, max_length=10)
     toestemming_nodig: bool = True
     web_call_id: str = Field(default="", max_length=64)
+    houding: str = Field(default="", max_length=4000)
 
 
 @app.post("/bel")
@@ -143,7 +144,7 @@ async def bel(verzoek: BelVerzoek, authorization: str = Header(default="")):
     mag, reden = calls.mag_bellen(nummer)
     if not mag:
         return {"gebeld": False, "reden": reden}
-    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id)
+    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding)
     resultaat = calls.start_gesprek(call_id)
     if not resultaat.get("gebeld"):
         calls.rapporteer(call_id, "mislukt", fout=resultaat.get("reden"))

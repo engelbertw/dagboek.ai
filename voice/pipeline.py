@@ -120,7 +120,7 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
     afsluiting = AfsluitProcessor()
     taal_status = {"huidige": "nl"}
     context = LLMContext(
-        messages=[{"role": "system", "content": build_system_prompt(cfg["opdrachtgever"], spec["medewerker"], spec["onderwerpen"])}],
+        messages=[{"role": "system", "content": build_system_prompt(cfg["opdrachtgever"], spec["medewerker"], spec["onderwerpen"], houding=spec.get("houding", ""))}],
         tools=[_einde_gesprek_schema(afsluiting)],
     )
     user_aggregator, assistant_aggregator = LLMContextAggregatorPair(
