@@ -1,0 +1,13 @@
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# Secrets: nooit committen, .example-bestanden zijn wel veilig
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
