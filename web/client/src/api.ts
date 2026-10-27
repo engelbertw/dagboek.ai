@@ -12,6 +12,7 @@ export interface OpenPunt { id: string; tekst: string; status: 'open' | 'afgeron
 export interface Actie { id: string; tekst: string; topicId: string; topicTitel: string; eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null }
 export interface Stand { open: number; teLaat: number; binnenkort: number; zonderDeadline: number; opTijd: number; laatAfgerond: number; nakoming: number | null }
 export interface DashboardData { vandaag: string; totaal: Stand; perEigenaar: (Stand & { id: string | null; naam: string })[]; teLaat: Actie[]; binnenkort: Actie[] }
+export interface Suggestie { id: string; soort: 'onderwerp' | 'verbetering'; tekst: string; status: 'nieuw' | 'overgenomen' | 'afgewezen' | 'klaar'; createdAt: string; employeeId: string | null; employeeNaam: string | null; topicId: string | null }
 export interface Houding { waarde: string; standaard: boolean }
 export const vandaagIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
 export const deadlineTekst = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'geen deadline');

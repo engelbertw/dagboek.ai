@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { InlogBeperking, controleerWachtwoord, leesSessie, maakSessie } from './auth.js';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
-import { calls, employees, openItems, projects, schedules, topics, updateHistorie, updates } from './schema.js';
+import { calls, employees, openItems, projects, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { bewaarHouding, leesHouding } from './instellingen.js';
 import { puntenVoorGesprek } from './voor-gesprek.js';
@@ -243,6 +243,31 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     deadline: openItems.deadline, status: openItems.status, createdAt: openItems.createdAt, afgerondOp: openItems.afgerondOp,
   }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
     .orderBy(asc(openItems.status), sql`${openItems.deadline} asc nulls last`, asc(openItems.createdAt)));
+  // ── Suggesties uit gesprekken ───────────────────────────────────────────
+  app.get('/api/suggesties', async () => db.select({
+    id: suggesties.id, soort: suggesties.soort, tekst: suggesties.tekst, status: suggesties.status, createdAt: suggesties.createdAt,
+    employeeId: suggesties.employeeId, employeeNaam: employees.naam, topicId: suggesties.topicId,
+  }).from(suggesties).leftJoin(employees, eq(suggesties.employeeId, employees.id)).orderBy(desc(suggesties.createdAt)));
+  app.patch('/api/suggesties/:id', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const b = z.object({ status: z.enum(['nieuw', 'afgewezen', 'klaar']) }).parse(req.body);
+    const [rij] = await db.update(suggesties).set(b).where(eq(suggesties.id, id)).returning();
+    return rij ?? reply.code(404).send({ fout: 'Suggestie niet gevonden' });
+  });
+  // Een voorgesteld onderwerp wordt pas een onderwerp als de beheerder dat wil; de collega die het voorstelde wordt de eigenaar.
+  app.post('/api/suggesties/:id/overnemen', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const [s] = await db.select().from(suggesties).where(eq(suggesties.id, id));
+    if (!s) return reply.code(404).send({ fout: 'Suggestie niet gevonden' });
+    if (s.soort !== 'onderwerp') return reply.code(409).send({ fout: 'Alleen een voorgesteld onderwerp kan worden overgenomen' });
+    if (s.status === 'overgenomen') return reply.code(409).send({ fout: 'Deze suggestie is al overgenomen' });
+    const b = z.object({ titel: nonEmpty.max(200).optional() }).parse(req.body ?? {});
+    return db.transaction(async (tx) => {
+      const [topic] = await tx.insert(topics).values({ titel: b.titel ?? s.tekst.slice(0, 200), eigenaarId: s.employeeId }).returning();
+      await tx.update(suggesties).set({ status: 'overgenomen', topicId: topic.id }).where(eq(suggesties.id, id));
+      return reply.code(201).send(topic);
+    });
+  });
   app.get('/api/instellingen/houding', async () => leesHouding(db));
   app.put('/api/instellingen/houding', async (req) => {
     const { waarde } = z.object({ waarde: z.string().max(4000) }).parse(req.body);

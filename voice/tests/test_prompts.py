@@ -66,3 +66,11 @@ def test_te_late_punten_staan_voorop_met_doorvragen_naar_weerstand():
     assert "Deadline niet gehaald: Offerte versturen (deadline 2026-10-30, 3 dagen te laat)" in prompt
     assert prompt.index("Deadline niet gehaald") < prompt.index("Nog open sinds de vorige keer")
     assert "weerstand" in prompt and "voorkomen" in prompt
+
+
+def test_aan_het_eind_vraagt_de_assistent_naar_nieuwe_onderwerpen_en_verbeteringen():
+    prompt = prompts.build_system_prompt("Engelbert", "Daan", [{"titel": "Offertes"}])
+    einde = prompt.index("Als alle onderwerpen aan bod zijn geweest")
+    assert prompt.index("nieuw onderwerp, project of taak") > einde
+    assert "verbeteren" in prompt[einde:]
+    assert prompt.index("verbeteren", einde) < prompt.index("`einde_gesprek` aan.", einde)

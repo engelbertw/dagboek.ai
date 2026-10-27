@@ -99,6 +99,17 @@ export const openItems = pgTable('open_items', {
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
 });
 
+export const suggesties = pgTable('suggesties', {
+  id: id(),
+  soort: text('soort', { enum: ['onderwerp', 'verbetering'] }).notNull(),
+  tekst: text('tekst').notNull(),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['nieuw', 'overgenomen', 'afgewezen', 'klaar'] }).notNull().default('nieuw'),
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+});
+
 export const instellingen = pgTable('instellingen', {
   sleutel: text('sleutel').primaryKey(),
   waarde: text('waarde').notNull(),
