@@ -76,8 +76,8 @@ describe('dagboek', () => {
     const o = (await t.api('POST', '/api/topics', { titel: 'Deelonderwerp', type: 'taak', status: 'wacht', projectId: p.id, eigenaarId: m.id, aanwijzingen: 'let op' })).json();
     expect((await t.api('PATCH', `/api/topics/${o.id}`, { titel: 'Deelonderwerp 2' })).json()).toMatchObject({ type: 'taak', status: 'wacht', projectId: p.id, eigenaarId: m.id, aanwijzingen: 'let op' });
 
-    const sch = (await t.api('POST', `/api/employees/${m.id}/schedules`, { dagen: [1], tijden: ['09:00'], actief: false, maxPogingen: 4 })).json();
-    expect((await t.api('PATCH', `/api/schedules/${sch.id}`, { tijden: ['10:00'] })).json()).toMatchObject({ actief: false, maxPogingen: 4 });
+    const sch = (await t.api('POST', '/api/plannings', { naam: 'Ochtend', dagen: [1], tijden: ['09:00'], actief: false, maxPogingen: 4, employeeIds: [m.id] })).json();
+    expect((await t.api('PATCH', `/api/plannings/${sch.id}`, { tijden: ['10:00'] })).json()).toMatchObject({ naam: 'Ochtend', actief: false, maxPogingen: 4, employeeIds: [m.id] });
     await t.api('DELETE', `/api/employees/${m.id}`);
     await t.api('DELETE', `/api/projects/${p.id}`);
   });
@@ -120,11 +120,14 @@ describe('dagboek', () => {
     expect((await t.api('GET', `/api/topics/${topic.id}`)).json().afgerondOp).toBeNull();
   });
 
-  it('beheert schema’s met geldige tijden en ontdubbelt ze', async () => {
-    expect((await t.api('POST', `/api/employees/${medewerker.id}/schedules`, { dagen: [1, 3], tijden: ['25:00'] })).statusCode).toBe(400);
-    const s = (await t.api('POST', `/api/employees/${medewerker.id}/schedules`, { dagen: [3, 1, 1], tijden: ['16:00', '09:30', '09:30'] })).json();
-    expect(s).toMatchObject({ dagen: [1, 3], tijden: ['09:30', '16:00'], maxPogingen: 2 });
-    expect((await t.api('DELETE', `/api/schedules/${s.id}`)).statusCode).toBe(200);
+  it('beheert planningen met geldige tijden en ontdubbelt ze', async () => {
+    expect((await t.api('POST', '/api/plannings', { dagen: [1, 3], tijden: ['25:00'], employeeIds: [medewerker.id] })).statusCode).toBe(400);
+    expect((await t.api('POST', '/api/plannings', { dagen: [1, 3], tijden: [], employeeIds: [medewerker.id] })).statusCode).toBe(400);
+    expect((await t.api('POST', '/api/plannings', { dagen: [1], tijden: ['09:00'], employeeIds: [] })).statusCode).toBe(400);
+    expect((await t.api('POST', '/api/plannings', { dagen: [1], tijden: ['09:00'], employeeIds: ['00000000-0000-4000-8000-000000000000'] })).statusCode).toBe(400);
+    const s = (await t.api('POST', '/api/plannings', { dagen: [3, 1, 1], tijden: ['16:00', '09:30', '09:30'], employeeIds: [medewerker.id, medewerker.id] })).json();
+    expect(s).toMatchObject({ dagen: [1, 3], tijden: ['09:30', '16:00'], maxPogingen: 2, employeeIds: [medewerker.id] });
+    expect((await t.api('DELETE', `/api/plannings/${s.id}`)).statusCode).toBe(200);
   });
 });
 

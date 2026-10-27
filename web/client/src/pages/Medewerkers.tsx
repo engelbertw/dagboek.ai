@@ -1,44 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { DAGEN, api, datum, type Medewerker, type Schema } from '../api';
+import { Link } from 'react-router-dom';
+import { api, datum, type Medewerker } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
-
-function Schemas({ medewerker }: { medewerker: Medewerker }) {
-  const lijst = useLaden(() => api<Schema[]>('GET', `/employees/${medewerker.id}/schedules`), [medewerker.id]);
-  const [dagen, setDagen] = useState<number[]>([1, 2, 3, 4, 5]);
-  const [tijd, setTijd] = useState('09:30');
-  const [fout, setFout] = useState<string | null>(null);
-
-  async function voegToe(e: FormEvent) {
-    e.preventDefault();
-    try { await api('POST', `/employees/${medewerker.id}/schedules`, { dagen, tijden: [tijd] }); setFout(null); lijst.ververs(); } catch (err) { setFout(foutTekst(err)); }
-  }
-  return (
-    <div className="stapel">
-      <h3>Wanneer bellen?</h3>
-      <p className="zacht klein">Het schema wordt opgeslagen. Automatisch bellen volgens dit schema komt in de volgende stap; tot die tijd gebruik je ‘Bel nu’.</p>
-      {lijst.data?.length === 0 && <Leeg>Nog geen schema.</Leeg>}
-      {lijst.data?.map((s) => (
-        <div key={s.id} className="rij spreid">
-          <span>{s.dagen.map((d) => DAGEN[d - 1]).join(' ')} om {s.tijden.join(', ') || '—'} {!s.actief && <Badge>uit</Badge>}</span>
-          <div className="rij">
-            <button className="tekstknop" onClick={async () => { await api('PATCH', `/schedules/${s.id}`, { actief: !s.actief }); lijst.ververs(); }}>{s.actief ? 'Uitzetten' : 'Aanzetten'}</button>
-            <button className="tekstknop gevaar" onClick={async () => { await api('DELETE', `/schedules/${s.id}`); lijst.ververs(); }}>Verwijderen</button>
-          </div>
-        </div>
-      ))}
-      <form className="rij" onSubmit={voegToe}>
-        <div className="dagen" role="group" aria-label="Dagen">
-          {DAGEN.map((naam, i) => (
-            <label key={naam}><input type="checkbox" checked={dagen.includes(i + 1)} onChange={(e) => setDagen(e.target.checked ? [...dagen, i + 1] : dagen.filter((d) => d !== i + 1))} />{naam}</label>
-          ))}
-        </div>
-        <input type="time" value={tijd} onChange={(e) => setTijd(e.target.value)} aria-label="Tijd" style={{ width: 'auto' }} required />
-        <button type="submit" disabled={!dagen.length}>Schema toevoegen</button>
-      </form>
-      <Melding tekst={fout} />
-    </div>
-  );
-}
 
 function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void }) {
   const [open, setOpen] = useState(false);
@@ -88,7 +51,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
             <button type="button" onClick={() => wijzig({ actief: !m.actief })}>{m.actief ? 'Op niet actief zetten' : 'Weer actief maken'}</button>
             <button type="button" className="gevaar" onClick={wis}>Verwijderen</button>
           </div>
-          <Schemas medewerker={m} />
+          <p className="zacht klein">Wanneer deze collega wordt gebeld, stel je in onder <Link to="/planning">Planning</Link>.</p>
         </form>
       )}
       {melding && <Melding tekst={melding.tekst} soort={melding.soort} />}

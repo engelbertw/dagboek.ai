@@ -9,10 +9,11 @@ import { z } from 'zod';
 import { InlogBeperking, controleerWachtwoord, leesSessie, maakSessie } from './auth.js';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
-import { calls, employees, openItems, projects, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { calls, employees, openItems, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
+import { startGesprek } from './gesprek-starten.js';
 import { bewaarHouding, leesHouding } from './instellingen.js';
-import { puntenVoorGesprek } from './voor-gesprek.js';
+import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard, type ActieRij } from './dashboard.js';
 import { samenvattenGesprek, vandaagNL } from './samenvatten.js';
 import type { GespreksOnderwerp } from './schema.js';
@@ -44,8 +45,10 @@ const topicBody = z.object({
 });
 const updateBody = z.object({ samenvatting: nonEmpty.max(8000), besluiten: z.string().max(4000).default('') });
 const scheduleBody = z.object({
-  dagen: z.array(z.number().int().min(1).max(7)).min(1).max(7), tijden: z.array(tijd).max(6),
+  naam: z.string().trim().max(100).default(''),
+  dagen: z.array(z.number().int().min(1).max(7)).min(1).max(7), tijden: z.array(tijd).min(1).max(6),
   actief: z.boolean().default(true), maxPogingen: z.number().int().min(1).max(5).default(2),
+  employeeIds: z.array(uuid).min(1).max(50),
 });
 const actieVelden = {
   eigenaarId: uuid.nullable().optional(), eigenaarExtern: z.string().trim().max(100).optional(),
@@ -282,27 +285,57 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Punt niet gevonden' });
   });
 
-  // ── Schema's ────────────────────────────────────────────────────────────
-  app.get('/api/employees/:id/schedules', async (req) =>
-    db.select().from(schedules).where(eq(schedules.employeeId, uuid.parse((req.params as any).id))).orderBy(asc(schedules.createdAt)));
-  app.post('/api/employees/:id/schedules', async (req, reply) => {
-    const employeeId = uuid.parse((req.params as any).id);
-    const [m] = await db.select({ id: employees.id }).from(employees).where(eq(employees.id, employeeId));
-    if (!m) return reply.code(404).send({ fout: 'Medewerker niet gevonden' });
-    const b = scheduleBody.parse(req.body);
-    return reply.code(201).send((await db.insert(schedules).values({ ...b, tijden: [...new Set(b.tijden)].sort(), dagen: [...new Set(b.dagen)].sort(), employeeId }).returning())[0]);
+  // ── Planning (terugkerende gesprekken) ──────────────────────────────────
+  const planningen = async (alleenId?: string) => {
+    const rijen = await db.select().from(schedules).where(alleenId ? eq(schedules.id, alleenId) : undefined).orderBy(asc(schedules.createdAt));
+    const leden = rijen.length ? await db.select().from(scheduleEmployees).where(inArray(scheduleEmployees.scheduleId, rijen.map((r) => r.id))) : [];
+    return rijen.map((r) => ({ ...r, employeeIds: leden.filter((l) => l.scheduleId === r.id).map((l) => l.employeeId) }));
+  };
+  const controleerMedewerkers = async (ids: string[]) => {
+    const gevonden = await db.select({ id: employees.id }).from(employees).where(inArray(employees.id, ids));
+    return gevonden.length === new Set(ids).size;
+  };
+  app.get('/api/plannings', async () => planningen());
+  app.post('/api/plannings', async (req, reply) => {
+    const { employeeIds, ...b } = scheduleBody.parse(req.body);
+    const ids = [...new Set(employeeIds)];
+    if (!(await controleerMedewerkers(ids))) return reply.code(400).send({ fout: 'Onbekende medewerker' });
+    const id = await db.transaction(async (tx) => {
+      const [rij] = await tx.insert(schedules).values({ ...b, tijden: [...new Set(b.tijden)].sort(), dagen: [...new Set(b.dagen)].sort() }).returning();
+      await tx.insert(scheduleEmployees).values(ids.map((employeeId) => ({ scheduleId: rij.id, employeeId })));
+      return rij.id;
+    });
+    return reply.code(201).send((await planningen(id))[0]);
   });
-  app.patch('/api/schedules/:id', async (req, reply) => {
-    const b = deelwijziging(scheduleBody).parse(req.body);
+  app.patch('/api/plannings/:id', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const { employeeIds, ...b } = deelwijziging(scheduleBody).parse(req.body);
     if (b.tijden) b.tijden = [...new Set(b.tijden)].sort();
     if (b.dagen) b.dagen = [...new Set(b.dagen)].sort();
-    if (!Object.keys(b).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
-    const [rij] = await db.update(schedules).set(b).where(eq(schedules.id, uuid.parse((req.params as any).id))).returning();
-    return rij ?? reply.code(404).send({ fout: 'Schema niet gevonden' });
+    if (!Object.keys(b).length && !employeeIds) return reply.code(400).send({ fout: 'Niets te wijzigen' });
+    const ids = employeeIds ? [...new Set(employeeIds)] : undefined;
+    if (ids && !(await controleerMedewerkers(ids))) return reply.code(400).send({ fout: 'Onbekende medewerker' });
+    const gevonden = await db.transaction(async (tx) => {
+      const [bestaat] = await tx.select({ id: schedules.id }).from(schedules).where(eq(schedules.id, id));
+      if (!bestaat) return false;
+      if (Object.keys(b).length) await tx.update(schedules).set(b).where(eq(schedules.id, id));
+      if (ids) {
+        await tx.delete(scheduleEmployees).where(eq(scheduleEmployees.scheduleId, id));
+        await tx.insert(scheduleEmployees).values(ids.map((employeeId) => ({ scheduleId: id, employeeId })));
+      }
+      return true;
+    });
+    return gevonden ? (await planningen(id))[0] : reply.code(404).send({ fout: 'Planning niet gevonden' });
   });
-  app.delete('/api/schedules/:id', async (req, reply) => {
+  app.delete('/api/plannings/:id', async (req, reply) => {
     const gewist = await db.delete(schedules).where(eq(schedules.id, uuid.parse((req.params as any).id))).returning({ id: schedules.id });
-    return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Schema niet gevonden' });
+    return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Planning niet gevonden' });
+  });
+  app.get('/api/instellingen/automatisch-bellen', async () => ({ aan: await automatischBellenAan(db) }));
+  app.put('/api/instellingen/automatisch-bellen', async (req) => {
+    const { aan } = z.object({ aan: z.boolean() }).parse(req.body);
+    await zetAutomatischBellen(db, aan);
+    return { aan };
   });
 
   // ── Gesprekken ──────────────────────────────────────────────────────────
@@ -330,39 +363,9 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   });
 
   app.post('/api/employees/:id/bel', async (req, reply) => {
-    const employeeId = uuid.parse((req.params as any).id);
-    const [m] = await db.select().from(employees).where(eq(employees.id, employeeId));
-    if (!m) return reply.code(404).send({ fout: 'Medewerker niet gevonden' });
-    if (!m.actief) return reply.code(409).send({ fout: 'Deze medewerker is niet actief' });
-    const mijnTopics = await db.select({ t: topics, projectNaam: projects.naam }).from(topics)
-      .leftJoin(projects, eq(topics.projectId, projects.id)).where(and(eq(topics.eigenaarId, employeeId), eq(topics.status, 'actief'))).orderBy(asc(topics.createdAt));
-    const onderwerpen: Onderwerp[] = [];
-    const momentopname: GespreksOnderwerp[] = [];
-    for (const { t, projectNaam } of mijnTopics) {
-      const [laatste] = await db.select().from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
-      const open = await db.select({
-        id: openItems.id, tekst: openItems.tekst, deadline: openItems.deadline, eigenaarId: openItems.eigenaarId,
-        eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
-      }).from(openItems).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
-        .where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'))).orderBy(asc(openItems.createdAt));
-      const punten = puntenVoorGesprek(open, vandaagNL(), employeeId);
-      onderwerpen.push({
-        titel: t.titel, project: projectNaam ?? undefined, aanwijzingen: t.aanwijzingen || undefined,
-        laatste_update: laatste?.samenvatting, laatste_update_datum: laatste?.createdAt.toISOString().slice(0, 10),
-        open_punten: punten.open, te_laat_punten: punten.teLaat,
-      });
-      momentopname.push({ id: t.id, titel: t.titel, openPunten: open.map((o) => ({ id: o.id, tekst: o.tekst })) });
-    }
-    const [call] = await db.insert(calls).values({ employeeId, status: 'gepland', bron: 'handmatig', onderwerpen: momentopname }).returning();
-    const resultaat = await voice({
-      telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde,
-    });
-    if (!resultaat.gebeld) {
-      await db.update(calls).set({ status: 'mislukt', fout: resultaat.reden, afgerondOp: new Date() }).where(eq(calls.id, call.id));
-      return reply.code(502).send({ fout: resultaat.reden, callId: call.id });
-    }
-    await db.update(calls).set({ status: 'belt', voiceCallId: resultaat.call_id, gestartOp: new Date() }).where(eq(calls.id, call.id));
-    return reply.code(202).send({ callId: call.id, onderwerpen: onderwerpen.length });
+    const r = await startGesprek({ db, voice }, uuid.parse((req.params as any).id));
+    if (!r.ok) return reply.code(r.status).send({ fout: r.fout, ...(r.callId ? { callId: r.callId } : {}) });
+    return reply.code(202).send({ callId: r.callId, onderwerpen: r.onderwerpen });
   });
 
   // De voice-service meldt hier de uitkomst van een gesprek (alleen met de servicesleutel).

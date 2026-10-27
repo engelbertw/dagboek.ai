@@ -60,3 +60,5 @@ textarea { min-height: 84px; resize: vertical; }
 .tabelrand { overflow-x: auto; } table { border-collapse: collapse; width: 100%; } th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--rand); white-space: nowrap; }
 thead th { color: var(--zacht); font-weight: 600; font-size: .85rem; } .fouttekst { color: var(--fout); font-weight: 700; }
 .punt { flex-wrap: wrap; }
+
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; } legend { font-weight: 600; font-size: .9rem; padding: 0 0 .35rem; }

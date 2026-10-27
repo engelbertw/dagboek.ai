@@ -10,6 +10,7 @@ import { Instellingen } from './pages/Instellingen';
 import { Medewerkers } from './pages/Medewerkers';
 import { Onderwerp } from './pages/Onderwerp';
 import { Suggesties } from './pages/Suggesties';
+import { Planning } from './pages/Planning';
 import { Projecten } from './pages/Projecten';
 
 function Inloggen({ klaar }: { klaar: () => void }) {
@@ -49,6 +50,7 @@ export function App() {
           <NavLink to="/medewerkers" className={({ isActive }) => (isActive ? 'actief' : '')}>Medewerkers</NavLink>
           <NavLink to="/projecten" className={({ isActive }) => (isActive ? 'actief' : '')}>Projecten</NavLink>
           <NavLink to="/gesprekken" className={({ isActive }) => (isActive ? 'actief' : '')}>Gesprekken</NavLink>
+          <NavLink to="/planning" className={({ isActive }) => (isActive ? 'actief' : '')}>Planning</NavLink>
           <NavLink to="/suggesties" className={({ isActive }) => (isActive ? 'actief' : '')}>Suggesties</NavLink>
           <NavLink to="/instellingen" className={({ isActive }) => (isActive ? 'actief' : '')}>Instellingen</NavLink>
         </nav>
@@ -59,6 +61,7 @@ export function App() {
           <Route path="/" element={<Dagboek />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/acties" element={<Acties />} />
+          <Route path="/planning" element={<Planning />} />
           <Route path="/suggesties" element={<Suggesties />} />
           <Route path="/instellingen" element={<Instellingen />} />
           <Route path="/onderwerp/:id" element={<Onderwerp />} />

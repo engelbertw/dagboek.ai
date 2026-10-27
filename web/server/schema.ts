@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 
 /** Momentopname van wat er in een gesprek aan bod kon komen. */
 export interface GespreksOnderwerp {
@@ -51,6 +51,9 @@ export const calls = pgTable('calls', {
     enum: ['gepland', 'belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt'],
   }).notNull().default('gepland'),
   bron: text('bron', { enum: ['handmatig', 'schema'] }).notNull().default('handmatig'),
+  scheduleId: uuid('schedule_id'),
+  slotStart: timestamp('slot_start', { withTimezone: true }),
+  poging: integer('poging').notNull().default(1),
   voiceCallId: text('voice_call_id'),
   twilioSid: text('twilio_sid'),
   transcript: jsonb('transcript'),
@@ -110,6 +113,11 @@ export const suggesties = pgTable('suggesties', {
   createdAt: createdAt(),
 });
 
+export const scheduleEmployees = pgTable('schedule_employees', {
+  scheduleId: uuid('schedule_id').notNull().references(() => schedules.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.scheduleId, t.employeeId] })]);
+
 export const instellingen = pgTable('instellingen', {
   sleutel: text('sleutel').primaryKey(),
   waarde: text('waarde').notNull(),
@@ -118,7 +126,7 @@ export const instellingen = pgTable('instellingen', {
 
 export const schedules = pgTable('schedules', {
   id: id(),
-  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  naam: text('naam').notNull().default(''),
   dagen: integer('dagen').array().notNull().default([1, 2, 3, 4, 5]),
   tijden: text('tijden').array().notNull().default([]),
   actief: boolean('actief').notNull().default(true),
