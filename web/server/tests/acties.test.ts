@@ -90,11 +90,11 @@ describe('acties via de api en uit een gesprek', () => {
     const vragen: string[] = [];
     const t = await maakTestApp({ gebeld: true, call_id: 'v' }, async (_s, g) => {
       vragen.push(g);
-      return JSON.stringify({ toestemming: 'gegeven', onderwerpen: [{ nr: 1, besproken: true, samenvatting: 'Stand besproken.', nieuwe_open_punten: [
-        { tekst: 'Offerte versturen', eigenaar: 'collega', deadline: vandaag },
-        { tekst: 'Aanvraag beoordelen', eigenaar: 'Jarich', deadline: 'volgende week' },
-        { tekst: 'Contract aanleveren', eigenaar: 'Hans van Holstein', deadline: null },
-        'Losse tekst als actie',
+      return JSON.stringify({ toestemming: 'gegeven', toestemming_citaat: 'Ja, dat is goed', onderwerpen: [{ nr: 1, besproken: true, samenvatting: 'Stand besproken.', nieuwe_open_punten: [
+        { tekst: 'Offerte versturen', eigenaar: 'collega', deadline: vandaag, citaat: 'Ik stuur de offerte vandaag' },
+        { tekst: 'Aanvraag beoordelen', eigenaar: 'Jarich', deadline: 'volgende week', citaat: 'Jarich beoordeelt de aanvraag volgende week' },
+        { tekst: 'Contract aanleveren', eigenaar: 'Hans van Holstein', deadline: null, citaat: 'Hans van Holstein levert het contract aan' },
+        { tekst: 'Losse tekst als actie', eigenaar: '', deadline: null, citaat: 'losse tekst als actie' },
       ] }] });
     });
     open.push(t);
@@ -102,7 +102,7 @@ describe('acties via de api en uit een gesprek', () => {
     const jarich = (await t.api('POST', '/api/employees', { naam: 'Jarich Ypma', telefoon: '0687654321' })).json();
     const topic = (await t.api('POST', '/api/topics', { titel: 'Offertes', eigenaarId: daan.id })).json();
     const { callId } = (await t.api('POST', `/api/employees/${daan.id}/bel`)).json();
-    await t.app.inject({ method: 'POST', url: `/api/intern/calls/${callId}/resultaat`, headers: { 'x-service-key': SERVICE_KEY }, payload: { status: 'gesproken', transcript: [{ role: 'user', content: 'Ja, dat is goed. Ik stuur de offerte vandaag.' }] } });
+    await t.app.inject({ method: 'POST', url: `/api/intern/calls/${callId}/resultaat`, headers: { 'x-service-key': SERVICE_KEY }, payload: { status: 'gesproken', transcript: [{ role: 'user', content: 'Ja, dat is goed. Ik stuur de offerte vandaag. Jarich beoordeelt de aanvraag volgende week. Hans van Holstein levert het contract aan. Verder nog losse tekst als actie.' }] } });
     await t.klaarMetAchtergrond();
 
     expect(vragen[0]).toContain(`Vandaag is het ${vandaag}`);

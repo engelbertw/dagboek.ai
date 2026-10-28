@@ -12,6 +12,8 @@ export interface Config {
   llmApiKey: string;
   llmModel: string;
   transcriptBewaarDagen: number;
+  /** Zonder bevestigde toestemming bewaren we een transcript hooguit zoveel uur. */
+  transcriptOnbevestigdUren: number;
 }
 
 export function loadConfig(env = process.env): Config {
@@ -29,6 +31,7 @@ export function loadConfig(env = process.env): Config {
     llmApiKey: env.TSYSTEMS_API_KEY ?? '',
     llmModel: env.LLM_MODEL ?? 'gemma-4',
     transcriptBewaarDagen: Number(env.TRANSCRIPT_BEWAAR_DAGEN ?? 30),
+    transcriptOnbevestigdUren: Number(env.TRANSCRIPT_ONBEVESTIGD_UREN ?? 24),
   };
 }
 

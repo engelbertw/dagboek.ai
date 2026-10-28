@@ -2,6 +2,7 @@ export interface ActieRij {
   id: string; tekst: string; topicId: string; topicTitel: string;
   eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string;
   deadline: string | null; status: 'open' | 'afgerond'; createdAt: Date; afgerondOp: Date | null;
+  controleNodig?: boolean;
 }
 
 export interface Stand { open: number; teLaat: number; binnenkort: number; zonderDeadline: number; opTijd: number; laatAfgerond: number; nakoming: number | null }

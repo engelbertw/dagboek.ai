@@ -222,3 +222,29 @@ def test_schrijven_van_de_opdracht_is_atomair(data_dir):
     spec = calls.lees_opdracht(cid)
     assert all(spec[f"veld{i}"] == i for i in range(40))  # geen verloren updates
     assert not list((data_dir / "_calls").glob(".*.tmp"))
+
+
+def test_transcript_op_schijf_wordt_gewist_zodra_de_web_service_het_heeft(monkeypatch, data_dir):
+    _met_web(monkeypatch, [])
+    (data_dir / "transcripten").mkdir()
+    bestand = data_dir / "transcripten" / "t.json"
+    bestand.write_text("{}")
+    cid = calls.maak_opdracht("+31612345678", "D", [], web_call_id="w9")
+    calls.update_opdracht(cid, transcript="t.json")
+    calls.schrijf_checkpoint(cid, [{"role": "user", "content": "x"}])
+    assert calls.rapporteer(cid, "gesproken", transcript=[]) is True
+    assert not bestand.exists() and not (data_dir / "transcripten" / f"checkpoint-{cid}.json").exists()
+
+
+def test_transcript_blijft_staan_zolang_de_web_service_het_niet_heeft_en_wordt_daarna_gewist(monkeypatch, data_dir):
+    _met_web(monkeypatch, [], ok=False)
+    (data_dir / "transcripten").mkdir()
+    bestand = data_dir / "transcripten" / "t.json"
+    bestand.write_text("{}")
+    cid = calls.maak_opdracht("+31612345678", "D", [], web_call_id="w10")
+    calls.update_opdracht(cid, transcript="t.json")
+    assert calls.rapporteer(cid, "gesproken", transcript=[]) is False
+    assert bestand.exists()  # nog niet afgeleverd: de enige kopie blijft bewaard
+    _met_web(monkeypatch, [], ok=True)
+    assert calls.herhaal_rapporten() == 1
+    assert not bestand.exists()

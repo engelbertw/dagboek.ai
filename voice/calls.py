@@ -211,12 +211,28 @@ def rapporteer(call_id: str, status: str, **extra) -> bool:
     if _verstuur(web_id, body):
         if status in EIND_STATUSSEN:
             update_opdracht(call_id, eind_gemeld=status)
+        if status in ("gesproken", "onderbroken"):
+            _wis_transcript(call_id)
         return True
     if status in EIND_STATUSSEN:
         with _LOCK:
             open_ = (lees_opdracht(call_id) or {}).get("rapport_open", [])
             update_opdracht(call_id, eind_gemeld=status, rapport_open=[*open_, body])
     return False
+
+
+def _wis_transcript(call_id: str) -> None:
+    """Zodra de web-service het transcript heeft aangenomen is dat de enige blijvende kopie: het bestand op de data-schijf wordt gewist.
+    Mislukt het wissen, dan blijft de bewaartermijn (opschoning op leeftijd) als vangnet."""
+    spec = lees_opdracht(call_id) or {}
+    naam = Path(str(spec.get("transcript") or "")).name
+    try:
+        if naam:
+            (Path(config.DATA_DIR) / "transcripten" / naam).unlink(missing_ok=True)
+        wis_checkpoint(call_id)
+        update_opdracht(call_id, transcript=None, transcript_gewist=time.time())
+    except OSError as e:
+        logger.warning(f"Transcript wissen na melding mislukt (opdracht {call_id}): {type(e).__name__}")
 
 
 def herhaal_rapporten() -> int:
@@ -228,8 +244,10 @@ def herhaal_rapporten() -> int:
             continue
         rest = list(spec["rapport_open"])
         while rest and _verstuur(spec["web_call_id"], rest[0]):
-            rest.pop(0)
+            afgeleverd = rest.pop(0)
             verstuurd += 1
+            if afgeleverd.get("status") in ("gesproken", "onderbroken"):
+                _wis_transcript(pad.stem)
         update_opdracht(pad.stem, rapport_open=rest)
     return verstuurd
 

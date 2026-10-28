@@ -12,7 +12,8 @@ export async function ruimTranscriptenOp(db: Db, dagen: number, nu = new Date())
   const rijen = await db.update(calls)
     .set({ transcript: null, samenvattingRuw: null })
     .where(and(
-      sql`coalesce(${calls.afgerondOp}, ${calls.createdAt}) < ${grens}`,
+      // Een uiterste bewaardatum (zonder bevestigde toestemming) gaat voor; zonder datum geldt de standaard bewaartermijn.
+      sql`(${calls.transcriptBewarenTot} < ${nu} or (${calls.transcriptBewarenTot} is null and coalesce(${calls.afgerondOp}, ${calls.createdAt}) < ${grens}))`,
       ne(calls.samenvattingStatus, 'bezig'),
       sql`(${calls.transcript} is not null or ${calls.samenvattingRuw} is not null)`,
     )).returning({ id: calls.id });

@@ -23,11 +23,12 @@ export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }
   const momentopname: GespreksOnderwerp[] = [];
   for (const { t, projectNaam } of mijnTopics) {
     const [laatste] = await db.select().from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
+    // Punten die nog gecontroleerd moeten worden (uit het taalmodel, niet onderbouwd) komen niet in de prompt van het volgende gesprek.
     const open = await db.select({
       id: openItems.id, tekst: openItems.tekst, deadline: openItems.deadline, eigenaarId: openItems.eigenaarId,
       eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
     }).from(openItems).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
-      .where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'))).orderBy(asc(openItems.createdAt));
+      .where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'), eq(openItems.controleNodig, false))).orderBy(asc(openItems.createdAt));
     const punten = puntenVoorGesprek(open, vandaagNL(), employeeId);
     onderwerpen.push({
       titel: t.titel, project: projectNaam ?? undefined, aanwijzingen: t.aanwijzingen || undefined,

@@ -63,6 +63,10 @@ export const calls = pgTable('calls', {
   samenvattingStatus: text('samenvatting_status', {
     enum: ['geen', 'bezig', 'klaar', 'geen_inhoud', 'geweigerd', 'onduidelijk', 'mislukt'],
   }).notNull().default('geen'),
+  toestemmingStatus: text('toestemming_status', {
+    enum: ['niet_nodig', 'onbekend', 'gegeven', 'geweigerd', 'onduidelijk', 'ingetrokken'],
+  }).notNull().default('onbekend'),
+  transcriptBewarenTot: timestamp('transcript_bewaren_tot', { withTimezone: true }),
   samenvattingFout: text('samenvatting_fout'),
   samenvattingRuw: jsonb('samenvatting_ruw'),
   samenvattingGestartOp: timestamp('samenvatting_gestart_op', { withTimezone: true }),
@@ -100,9 +104,26 @@ export const openItems = pgTable('open_items', {
   eigenaarId: uuid('eigenaar_id').references(() => employees.id, { onDelete: 'set null' }),
   eigenaarExtern: text('eigenaar_extern').notNull().default(''),
   deadline: date('deadline'),
+  bron: text('bron', { enum: ['handmatig', 'gesprek'] }).notNull().default('handmatig'),
+  controleNodig: boolean('controle_nodig').notNull().default(false),
+  controleReden: text('controle_reden'),
+  deadlineOorspronkelijk: date('deadline_oorspronkelijk'),
+  deadlineGewijzigdAantal: integer('deadline_gewijzigd_aantal').notNull().default(0),
   status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
   createdAt: createdAt(),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
+});
+
+export const toestemmingen = pgTable('toestemmingen', {
+  id: id(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  besluit: text('besluit', { enum: ['gegeven', 'geweigerd', 'ingetrokken'] }).notNull(),
+  bron: text('bron', { enum: ['gesprek', 'beheerder', 'migratie'] }).notNull(),
+  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  versie: text('versie').notNull(),
+  doel: text('doel').notNull().default('samenvatting_dagboek'),
+  citaat: text('citaat'),
+  vastgelegdOp: timestamp('vastgelegd_op', { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const suggesties = pgTable('suggesties', {

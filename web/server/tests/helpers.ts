@@ -14,7 +14,7 @@ export async function maakTestApp(voiceAntwoord: BelResultaat = { gebeld: true, 
   const config: Config = {
     port: 0, databaseUrl: '', sessionSecret: 'geheim-voor-tests', adminEmail: 'beheer@test.nl',
     adminPasswordHash: hashWachtwoord(WACHTWOORD), secureCookies: false, voiceUrl: '', voiceAdminToken: '', serviceKey: SERVICE_KEY,
-    llmBaseUrl: '', llmApiKey: '', llmModel: 'test', transcriptBewaarDagen: 30,
+    llmBaseUrl: '', llmApiKey: '', llmModel: 'test', transcriptBewaarDagen: 30, transcriptOnbevestigdUren: 24,
   };
   const opdrachten: BelOpdracht[] = [];
   const taken: Promise<unknown>[] = [];

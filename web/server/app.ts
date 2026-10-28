@@ -18,6 +18,7 @@ import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js'
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard, type ActieRij } from './dashboard.js';
 import { samenvattenGesprek, vandaagNL } from './samenvatten.js';
+import { bepaalBewaartermijn, leggToestemmingVast } from './toestemming.js';
 import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient } from './voice.js';
 
@@ -116,19 +117,31 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   app.get('/api/employees', async () => db.select().from(employees).orderBy(asc(employees.naam)));
   app.post('/api/employees', async (req, reply) => {
     const b = medewerkerBody.parse(req.body);
-    const [rij] = await db.insert(employees).values({
-      naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie, toestemmingOp: b.toestemming ? new Date() : null,
-    }).returning();
+    const rij = await db.transaction(async (tx) => {
+      const [nieuw] = await tx.insert(employees).values({
+        naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie,
+      }).returning();
+      if (!b.toestemming) return nieuw;
+      await leggToestemmingVast(tx, { employeeId: nieuw.id, besluit: 'gegeven', bron: 'beheerder' });
+      return (await tx.select().from(employees).where(eq(employees.id, nieuw.id)))[0];
+    });
     return reply.code(201).send(rij);
   });
   app.patch('/api/employees/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
     const b = deelwijziging(medewerkerBody).parse(req.body);
     const { toestemming, ...rest } = b;
-    const waarden: Record<string, unknown> = { ...rest };
-    if (toestemming !== undefined) waarden.toestemmingOp = toestemming ? new Date() : null;
-    if (!Object.keys(waarden).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
-    const [rij] = await db.update(employees).set(waarden).where(eq(employees.id, id)).returning();
+    if (!Object.keys(rest).length && toestemming === undefined) return reply.code(400).send({ fout: 'Niets te wijzigen' });
+    const rij = await db.transaction(async (tx) => {
+      // De rij blijft vergrendeld tot het einde, zodat een samenvatting die tegelijk loopt de toestemming niet halverwege ziet veranderen.
+      const [huidig] = await tx.select().from(employees).where(eq(employees.id, id)).for('update');
+      if (!huidig) return undefined;
+      if (Object.keys(rest).length) await tx.update(employees).set(rest).where(eq(employees.id, id));
+      // Alleen een echte verandering komt in het register; het opnieuw aanvinken verandert niets.
+      if (toestemming === true && !huidig.toestemmingOp) await leggToestemmingVast(tx, { employeeId: id, besluit: 'gegeven', bron: 'beheerder' });
+      if (toestemming === false && huidig.toestemmingOp) await leggToestemmingVast(tx, { employeeId: id, besluit: 'ingetrokken', bron: 'beheerder' });
+      return (await tx.select().from(employees).where(eq(employees.id, id)))[0];
+    });
     return rij ?? reply.code(404).send({ fout: 'Medewerker niet gevonden' });
   });
   app.delete('/api/employees/:id', async (req, reply) => {
@@ -232,7 +245,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     const [topic] = await db.select({ id: topics.id, eigenaarId: topics.eigenaarId }).from(topics).where(eq(topics.id, topicId));
     if (!topic) return reply.code(404).send({ fout: 'Onderwerp niet gevonden' });
     const eigenaarId = b.eigenaarId === undefined ? topic.eigenaarId : b.eigenaarId;
-    return reply.code(201).send((await db.insert(openItems).values({ topicId, tekst: b.tekst, eigenaarId, eigenaarExtern: b.eigenaarExtern ?? '', deadline: b.deadline ?? null }).returning())[0]);
+    return reply.code(201).send((await db.insert(openItems).values({ topicId, tekst: b.tekst, eigenaarId, eigenaarExtern: b.eigenaarExtern ?? '', deadline: b.deadline ?? null, deadlineOorspronkelijk: b.deadline ?? null }).returning())[0]);
   });
   app.patch('/api/open-items/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
@@ -240,13 +253,39 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     const waarden: Record<string, unknown> = { ...b };
     if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
     if (!Object.keys(waarden).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
-    const [rij] = await db.update(openItems).set(waarden).where(eq(openItems.id, id)).returning();
+    const rij = await db.transaction(async (tx) => {
+      const [huidig] = await tx.select({ deadline: openItems.deadline, oorspronkelijk: openItems.deadlineOorspronkelijk }).from(openItems).where(eq(openItems.id, id)).for('update');
+      if (!huidig) return undefined;
+      // Een verschoven of verwijderde deadline wordt bijgehouden; het eerste instellen telt niet als wijziging.
+      if (b.deadline !== undefined && (b.deadline ?? null) !== huidig.deadline) {
+        if (huidig.deadline) waarden.deadlineGewijzigdAantal = sql`${openItems.deadlineGewijzigdAantal} + 1`;
+        if (!huidig.oorspronkelijk) waarden.deadlineOorspronkelijk = huidig.deadline ?? b.deadline ?? null;
+      }
+      return (await tx.update(openItems).set(waarden).where(eq(openItems.id, id)).returning())[0];
+    });
     return rij ?? reply.code(404).send({ fout: 'Punt niet gevonden' });
+  });
+  // Een actie die het taalmodel heeft voorgesteld maar die niet te onderbouwen was, wacht op een besluit van de beheerder.
+  app.post('/api/open-items/:id/controle', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const { besluit } = z.object({ besluit: z.enum(['goedkeuren', 'afwijzen']) }).parse(req.body);
+    const [punt] = await db.select().from(openItems).where(eq(openItems.id, id));
+    if (!punt) return reply.code(404).send({ fout: 'Punt niet gevonden' });
+    if (!punt.controleNodig) return reply.code(409).send({ fout: 'Dit punt hoeft niet gecontroleerd te worden' });
+    const afrondingVoorgesteld = punt.controleReden === 'mogelijk_afgerond';
+    if (besluit === 'afwijzen' && !afrondingVoorgesteld) {
+      await db.delete(openItems).where(eq(openItems.id, id));
+      return { ok: true, verwijderd: true };
+    }
+    const sluit = besluit === 'goedkeuren' && afrondingVoorgesteld;
+    const [rij] = await db.update(openItems).set({ controleNodig: false, controleReden: null, ...(sluit ? { status: 'afgerond' as const, afgerondOp: new Date() } : {}) }).where(eq(openItems.id, id)).returning();
+    return rij;
   });
   const actieRijen = async (): Promise<ActieRij[]> => (await db.select({
     id: openItems.id, tekst: openItems.tekst, topicId: openItems.topicId, topicTitel: topics.titel,
     eigenaarId: openItems.eigenaarId, eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
     deadline: openItems.deadline, status: openItems.status, createdAt: openItems.createdAt, afgerondOp: openItems.afgerondOp,
+    controleNodig: openItems.controleNodig, controleReden: openItems.controleReden, deadlineOorspronkelijk: openItems.deadlineOorspronkelijk, deadlineGewijzigdAantal: openItems.deadlineGewijzigdAantal,
   }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
     .orderBy(asc(openItems.status), sql`${openItems.deadline} asc nulls last`, asc(openItems.createdAt)));
   // ── Suggesties uit gesprekken ───────────────────────────────────────────
@@ -281,7 +320,8 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     return leesHouding(db);
   });
   app.get('/api/acties', async () => actieRijen());
-  app.get('/api/dashboard', async () => berekenDashboard(await actieRijen(), vandaagNL()));
+  // Punten die nog gecontroleerd moeten worden tellen niet mee: ze zijn (nog) geen vastgestelde feiten.
+  app.get('/api/dashboard', async () => berekenDashboard((await actieRijen()).filter((r) => !r.controleNodig), vandaagNL()));
 
   app.delete('/api/open-items/:id', async (req, reply) => {
     const gewist = await db.delete(openItems).where(eq(openItems.id, uuid.parse((req.params as any).id))).returning({ id: openItems.id });
@@ -422,6 +462,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
       ...(eind ? { afgerondOp: new Date() } : {}),
     });
     if (!gewijzigd) return { ok: true, genegeerd: true };
+    if (b.transcript !== undefined && b.transcript !== null) await bepaalBewaartermijn(db, config, id, b.status);
     if (b.status === 'gesproken') achtergrond(samenvattenGesprek({ db, llm }, id));
     return { ok: true };
   });
