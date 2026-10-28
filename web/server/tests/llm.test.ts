@@ -31,4 +31,9 @@ describe('taalmodel-client', () => {
     await expect(maakLlmClient(config)('s', 'g')).rejects.toThrow('timeout');
     expect(f).toHaveBeenCalledTimes(2);
   });
+
+  it('meldt een antwoord dat voortijdig stopte', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: 'length', message: { content: '{"a":' } }] }), { status: 200 })));
+    await expect(maakLlmClient(config)('s', 'g')).rejects.toThrow('voortijdig (length)');
+  });
 });

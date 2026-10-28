@@ -136,6 +136,7 @@ describe('samenvatting na een gesprek', () => {
     const c = await s.call();
     expect(c.samenvattingStatus).toBe('mislukt');
     expect(c.samenvattingFout).toContain('niet te lezen');
+    expect(c.samenvattingFout).toContain('begin: "Sorry, dat kan ik niet."');
     expect(await s.alleUpdates()).toHaveLength(0);
 
     antwoord = GOED;

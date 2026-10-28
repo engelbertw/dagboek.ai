@@ -26,7 +26,9 @@ export function maakLlmClient(config: Config): LlmClient {
       r = await aanroep();
     }
     if (!r.ok) throw new Error(`Taalmodel gaf ${r.status}`);
-    const data = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+    const data = (await r.json()) as { choices?: { finish_reason?: string; message?: { content?: string } }[] };
+    const reden = data.choices?.[0]?.finish_reason;
+    if (reden === 'length' || reden === 'content_filter') throw new Error(`Taalmodel stopte voortijdig (${reden})`);
     const tekst = data.choices?.[0]?.message?.content;
     if (!tekst) throw new Error('Taalmodel gaf een leeg antwoord');
     return tekst;
