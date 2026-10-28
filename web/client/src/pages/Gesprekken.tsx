@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, datumTijd, type Gesprek, type GesprekRegel, type SamenvattingStatus } from '../api';
+import { api, datumTijd, MOTOR_LABEL, type Gesprek, type GesprekRegel, type SamenvattingStatus } from '../api';
 import { Badge, Leeg, Melding, foutTekst, useLaden } from '../ui';
 
 const LABEL: Record<string, string> = {
@@ -19,6 +19,52 @@ const SAMENVATTING: Record<SamenvattingStatus, { label: string; uitleg: string }
 const BADGE: Record<SamenvattingStatus, string> = {
   geen: '', bezig: 'belt', klaar: 'afgerond', geen_inhoud: '', geweigerd: 'mislukt', onduidelijk: 'wacht', mislukt: 'mislukt',
 };
+
+function Beoordeling({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
+  const [opmerking, setOpmerking] = useState(g.beoordelingOpmerking ?? '');
+  const [fout, setFout] = useState<string | null>(null);
+  async function zet(beoordeling: number | null) {
+    try { await api('PUT', `/calls/${g.id}/beoordeling`, { beoordeling, opmerking }); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); }
+  }
+  return (
+    <div className="rij" role="group" aria-label="Beoordeling van het gesprek">
+      <span className="zacht klein">Kwaliteit van het gesprek:</span>
+      {[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" className={g.beoordeling === n ? 'primair' : ''} aria-pressed={g.beoordeling === n} onClick={() => void zet(g.beoordeling === n ? null : n)}>{n}</button>)}
+      <input value={opmerking} onChange={(e) => setOpmerking(e.target.value)} onBlur={() => { if (g.beoordeling && opmerking !== (g.beoordelingOpmerking ?? '')) void zet(g.beoordeling); }} placeholder="Opmerking (bijv. verstond hij me goed?)" maxLength={1000} style={{ flex: 1, minWidth: 180 }} aria-label="Opmerking bij de beoordeling" />
+      <Melding tekst={fout} />
+    </div>
+  );
+}
+
+/** Per motor naast elkaar: aantal gesprekken, hoeveel er zijn gesproken, de gemiddelde duur en de gemiddelde beoordeling. */
+function Vergelijking({ lijst }: { lijst: GesprekRegel[] }) {
+  const groepen = new Map<string, GesprekRegel[]>();
+  for (const g of lijst) groepen.set(g.engine ?? 'pipecat', [...(groepen.get(g.engine ?? 'pipecat') ?? []), g]);
+  if (groepen.size < 2) return null;
+  const gem = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  return (
+    <section className="paneel stapel" aria-label="Vergelijking van gespreksmotoren">
+      <h2>Vergelijking per motor</h2>
+      <table>
+        <thead><tr><th>Motor</th><th>Gesprekken</th><th>Gesproken</th><th>Samengevat</th><th>Gem. duur</th><th>Gem. beoordeling</th></tr></thead>
+        <tbody>
+          {[...groepen].map(([motor, gs]) => {
+            const gesproken = gs.filter((g) => g.status === 'gesproken');
+            const duur = gem(gesproken.filter((g) => g.gestartOp && g.afgerondOp).map((g) => (new Date(g.afgerondOp!).getTime() - new Date(g.gestartOp!).getTime()) / 60000));
+            const score = gem(gs.filter((g) => g.beoordeling).map((g) => g.beoordeling!));
+            return (
+              <tr key={motor}>
+                <td>{MOTOR_LABEL[motor as keyof typeof MOTOR_LABEL] ?? motor}</td><td>{gs.length}</td><td>{gesproken.length}</td>
+                <td>{gesproken.filter((g) => g.samenvattingStatus === 'klaar').length}</td>
+                <td>{duur === null ? '–' : `${duur.toFixed(1)} min`}</td><td>{score === null ? '–' : score.toFixed(1)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </section>
+  );
+}
 
 function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
   const [detail, setDetail] = useState<Gesprek | null>(null);
@@ -45,7 +91,7 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{g.employeeNaam}</h3><span className="zacht klein">{datumTijd(g.createdAt)} · {g.bron}</span></div>
+        <div><h3>{g.employeeNaam}</h3><span className="zacht klein">{datumTijd(g.createdAt)} · {g.bron}{g.engine && ` · ${MOTOR_LABEL[g.engine]}`}</span></div>
         <div className="rij"><Badge soort={g.status}>{LABEL[g.status]}</Badge><button onClick={toggle} aria-expanded={!!detail}>{detail ? 'Verbergen' : 'Bekijken'}</button></div>
       </div>
       {g.fout && <p className="zacht klein">{g.fout}</p>}
@@ -56,6 +102,7 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
           {kanOpnieuw && <button onClick={opnieuw} disabled={bezig}>{bezig ? 'Bezig…' : g.samenvattingStatus === 'geen' ? 'Nu samenvatten' : 'Opnieuw proberen'}</button>}
         </div>
       )}
+      {g.status === 'gesproken' && <Beoordeling g={g} ververs={ververs} />}
       <Melding tekst={fout} />
       {detail && (detail.transcript?.length ? (
         <div className="chat" aria-label="Transcript">
@@ -85,6 +132,7 @@ export function Gesprekken() {
       </div>
       <Melding tekst={lijst.fout} />
       {lijst.data?.length === 0 && <Leeg>Nog geen gesprekken. Start er een via Medewerkers → Bel nu.</Leeg>}
+      {lijst.data && <Vergelijking lijst={lijst.data} />}
       {lijst.data?.map((g) => <Regel key={g.id} g={g} ververs={lijst.ververs} />)}
     </div>
   );

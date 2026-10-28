@@ -8,6 +8,7 @@ export interface BelOpdracht {
   web_call_id: string;
   houding?: string;
   instructie?: string;
+  engine?: 'pipecat' | 'elevenlabs_agent';
 }
 
 export interface Onderwerp {

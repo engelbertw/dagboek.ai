@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { api, datum, type Medewerker } from '../api';
+import { api, datum, MOTOR_LABEL, type Medewerker, type Motor } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void }) {
@@ -8,6 +8,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
   const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [bezig, setBezig] = useState(false);
+  const [motor, setMotor] = useState<'' | Motor>('');
 
   const wijzig = async (body: object) => { try { await api('PATCH', `/employees/${m.id}`, body); setMelding(null); ververs(); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); } };
 
@@ -15,7 +16,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
     if (!confirm(`${m.naam} nu bellen op ${m.telefoon}?`)) return;
     setBezig(true);
     try {
-      const r = await api<{ onderwerpen: number }>('POST', `/employees/${m.id}/bel`);
+      const r = await api<{ onderwerpen: number }>('POST', `/employees/${m.id}/bel`, motor ? { motor } : {});
       setMelding({ tekst: `Gesprek gestart. ${r.onderwerpen} ${r.onderwerpen === 1 ? 'onderwerp' : 'onderwerpen'} meegegeven. Zie Gesprekken voor de uitkomst.`, soort: 'ok' });
     } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); } finally { setBezig(false); }
   }
@@ -29,6 +30,10 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
       <div className="rij spreid">
         <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
         <div className="rij">
+          <select aria-label="Gespreksmotor voor dit gesprek" value={motor} onChange={(e) => setMotor(e.target.value as '' | Motor)}>
+            <option value="">Motor: standaard</option>
+            {(Object.keys(MOTOR_LABEL) as Motor[]).map((k) => <option key={k} value={k}>{MOTOR_LABEL[k]}</option>)}
+          </select>
           <button className="primair" onClick={bel} disabled={bezig || !m.actief}>{bezig ? 'Bezig…' : 'Bel nu'}</button>
           <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Sluiten' : 'Instellingen'}</button>
         </div>

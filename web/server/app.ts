@@ -16,7 +16,7 @@ import { foutcode, log } from './log.js';
 import { opschoningStatus } from './opschoning.js';
 import { logGebeurtenis } from './call-log.js';
 import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
-import { bewaarHouding, bewaarInstructie, leesHouding, leesInstructie } from './instellingen.js';
+import { MOTOREN, bewaarGespreksmotor, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard, type ActieRij } from './dashboard.js';
@@ -339,6 +339,12 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     await bewaarHouding(db, waarde);
     return leesHouding(db);
   });
+  app.get('/api/instellingen/gespreksmotor', async () => ({ motor: await leesGespreksmotor(db) }));
+  app.put('/api/instellingen/gespreksmotor', async (req) => {
+    const { motor } = z.object({ motor: z.enum(MOTOREN) }).parse(req.body);
+    await bewaarGespreksmotor(db, motor);
+    return { motor: await leesGespreksmotor(db) };
+  });
   app.get('/api/acties', async () => actieRijen());
   // Punten die nog gecontroleerd moeten worden tellen niet mee: ze zijn (nog) geen vastgestelde feiten.
   app.get('/api/dashboard', async () => berekenDashboard((await actieRijen()).filter((r) => !r.controleNodig), vandaagNL()));
@@ -446,6 +452,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
       id: calls.id, status: calls.status, bron: calls.bron, fout: calls.fout, gestartOp: calls.gestartOp, afgerondOp: calls.afgerondOp,
       createdAt: calls.createdAt, employeeId: calls.employeeId, employeeNaam: employees.naam,
       samenvattingStatus: calls.samenvattingStatus, samenvattingFout: calls.samenvattingFout,
+      engine: calls.engine, beoordeling: calls.beoordeling, beoordelingOpmerking: calls.beoordelingOpmerking,
     }).from(calls).innerJoin(employees, eq(calls.employeeId, employees.id))
       .where(employeeId ? eq(calls.employeeId, employeeId) : undefined).orderBy(desc(calls.createdAt)).limit(100);
   });
@@ -454,6 +461,12 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     return rij ?? reply.code(404).send({ fout: 'Gesprek niet gevonden' });
   });
 
+  app.put('/api/calls/:id/beoordeling', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const b = z.object({ beoordeling: z.number().int().min(1).max(5).nullable(), opmerking: z.string().trim().max(1000).default('') }).parse(req.body);
+    const [rij] = await db.update(calls).set({ beoordeling: b.beoordeling, beoordelingOpmerking: b.beoordeling === null ? null : b.opmerking }).where(eq(calls.id, id)).returning({ id: calls.id });
+    return rij ? { ok: true } : reply.code(404).send({ fout: 'Gesprek niet gevonden' });
+  });
   app.post('/api/calls/:id/samenvatten', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
     const [rij] = await db.select({ status: calls.status, samenvattingStatus: calls.samenvattingStatus }).from(calls).where(eq(calls.id, id));
@@ -464,7 +477,8 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   });
 
   app.post('/api/employees/:id/bel', async (req, reply) => {
-    const r = await startGesprek({ db, voice }, uuid.parse((req.params as any).id));
+    const { motor } = z.object({ motor: z.enum(MOTOREN).optional() }).parse(req.body ?? {});
+    const r = await startGesprek({ db, voice }, uuid.parse((req.params as any).id), undefined, motor);
     if (!r.ok) return reply.code(r.status).send({ fout: r.fout, ...(r.callId ? { callId: r.callId } : {}) });
     return reply.code(202).send({ callId: r.callId, onderwerpen: r.onderwerpen });
   });

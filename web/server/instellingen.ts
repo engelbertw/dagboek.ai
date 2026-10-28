@@ -6,6 +6,7 @@ import { instellingen } from './schema.js';
 export const STANDAARD_HOUDING = 'Je bent meedenkend, vooruitstrevend en ondersteunend. Je denkt mee over oplossingen en kijkt vooruit. '
   + 'Je stelt kritische vragen als een deadline niet is gehaald: wat is er gebeurd, wat is er nodig en wanneer wordt het wel afgerond. '
   + 'Je vraagt door naar weerstanden, bij mensen, klanten of in de organisatie, en je vraagt hoe we dit de volgende keer kunnen voorkomen. '
+  + 'Je denkt proactief mee over de volgende stap: hoor je een taak of afspraak, dan vraag je naar het doel en wat de collega nodig heeft, en bied je hulp aan waar dat past. '
   + 'Je blijft respectvol: kritisch op de zaak, nooit op de persoon.';
 
 /** Wat de assistent in een gesprek doet, als een planning geen eigen instructie heeft. De vaste regels (onderwerpen langslopen, eindvragen, grenzen) staan in de voice-service. */
@@ -32,3 +33,13 @@ export const leesHouding = (db: Db) => lees(db, 'houding', STANDAARD_HOUDING);
 export const bewaarHouding = (db: Db, waarde: string) => bewaar(db, 'houding', waarde);
 export const leesInstructie = (db: Db) => lees(db, 'gespreksinstructie', STANDAARD_INSTRUCTIE);
 export const bewaarInstructie = (db: Db, waarde: string) => bewaar(db, 'gespreksinstructie', waarde);
+
+export const MOTOREN = ['pipecat', 'elevenlabs_agent'] as const;
+export type Motor = (typeof MOTOREN)[number];
+
+/** Welke gespreksmotor een gesprek gebruikt als er niets anders is gekozen. Onbekende of lege waarden betekenen Pipecat. */
+export async function leesGespreksmotor(db: Db): Promise<Motor> {
+  const { waarde } = await lees(db, 'gespreksmotor', 'pipecat');
+  return (MOTOREN as readonly string[]).includes(waarde) ? (waarde as Motor) : 'pipecat';
+}
+export const bewaarGespreksmotor = (db: Db, motor: Motor) => bewaar(db, 'gespreksmotor', motor === 'pipecat' ? '' : motor);

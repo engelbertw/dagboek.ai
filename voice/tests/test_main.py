@@ -182,3 +182,14 @@ def test_ready_belt_geen_externe_diensten(client, monkeypatch):
     monkeypatch.setattr(httpx, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("extern netwerk")))
     monkeypatch.setattr(httpx, "post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("extern netwerk")))
     assert client.get("/ready").status_code == 200
+
+
+def test_elevenlabs_webhook_vereist_geldige_handtekening(client, monkeypatch):
+    import hashlib, hmac, json, time
+    monkeypatch.setenv("ELEVENLABS_WEBHOOK_SECRET", "geheim")
+    body = json.dumps({"type": "post_call_transcription", "data": {"conversation_id": "onbekend"}}).encode()
+    assert client.post("/elevenlabs/webhook", content=body).status_code == 401
+    assert client.post("/elevenlabs/webhook", content=body, headers={"elevenlabs-signature": "t=1,v0=00"}).status_code == 401
+    t = int(time.time())
+    sig = hmac.new(b"geheim", f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+    assert client.post("/elevenlabs/webhook", content=body, headers={"elevenlabs-signature": f"t={t},v0={sig}"}).status_code == 200

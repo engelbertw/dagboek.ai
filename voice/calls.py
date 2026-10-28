@@ -47,11 +47,11 @@ def _schrijf(pad: Path, spec: dict) -> None:
     os.replace(tmp, pad)
 
 
-def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "") -> str:
+def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat") -> str:
     call_id = call_id or uuid.uuid4().hex
     spec = {
         "call_id": call_id, "nummer": nummer, "medewerker": medewerker, "onderwerpen": onderwerpen,
-        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "aangemaakt": time.time(),
+        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "engine": engine, "aangemaakt": time.time(),
         "bijgewerkt": time.time(),
     }
     with _LOCK:
@@ -145,7 +145,27 @@ def mag_bellen(nummer: str, nu: float | None = None) -> tuple[bool, str]:
     return True, ""
 
 
+def vind_op_conversation(conversation_id: str) -> dict | None:
+    """De opdracht die bij een ElevenLabs-gesprek hoort (de agent-motor meldt zich alleen met zijn eigen gespreks-id)."""
+    if not conversation_id:
+        return None
+    for pad in _map().glob("*.json"):
+        spec = lees_opdracht(pad.stem)
+        if spec and spec.get("agent_conversation_id") == conversation_id:
+            return spec
+    return None
+
+
 def start_gesprek(call_id: str) -> dict:
+    """Start het gesprek met de gekozen motor: Pipecat via Twilio (standaard) of een ElevenLabs-agent."""
+    spec = lees_opdracht(call_id)
+    if spec and spec.get("engine") == "elevenlabs_agent":
+        import agent_elevenlabs
+        return agent_elevenlabs.start_gesprek_agent(call_id)
+    return _start_gesprek_pipecat(call_id)
+
+
+def _start_gesprek_pipecat(call_id: str) -> dict:
     """Start het gesprek bij Twilio, met statuscallback, voicemailherkenning en een beltimeout."""
     from twilio.rest import Client as TwilioClient
 

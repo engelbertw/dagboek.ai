@@ -1,8 +1,10 @@
 import asyncio
 import hmac
+import json
 import os
 import signal
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import uvicorn
 from dotenv import load_dotenv
@@ -37,6 +39,8 @@ async def _herstel_lus() -> None:
     while True:
         try:
             await asyncio.to_thread(calls.herstel_opdrachten)
+            import agent_elevenlabs
+            await asyncio.to_thread(agent_elevenlabs.herstel_agentgesprekken)
             await asyncio.to_thread(calls.herhaal_rapporten)
         except Exception as e:
             logger.error(f"Herstel mislukt: {type(e).__name__}")
@@ -199,6 +203,7 @@ class BelVerzoek(BaseModel):
     web_call_id: str = Field(default="", max_length=64)
     houding: str = Field(default="", max_length=4000)
     instructie: str = Field(default="", max_length=4000)
+    engine: Literal["pipecat", "elevenlabs_agent"] | None = None
 
 
 @app.post("/bel")
@@ -227,11 +232,27 @@ async def bel(verzoek: BelVerzoek, authorization: str = Header(default="")):
             calls.maak_opdracht(nummer, verzoek.medewerker, [], verzoek.toestemming_nodig, verzoek.web_call_id, call_id=call_id)
             calls.update_opdracht(call_id, status="mislukt", fout=reden, geweigerd=True, onderwerpen=[])
         return {"gebeld": False, "reden": reden}
-    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie, call_id=call_id)
+    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie, call_id=call_id, engine=verzoek.engine or os.getenv("VOICE_ENGINE", "pipecat"))
     resultaat = calls.start_gesprek(call_id)
     if not resultaat.get("gebeld") and not resultaat.get("onzeker"):
         calls.rapporteer(call_id, "mislukt", fout=resultaat.get("reden"))
     return resultaat
+
+
+@app.post("/elevenlabs/webhook")
+async def elevenlabs_webhook(request: Request):
+    """Post-call-webhook van de ElevenLabs-agent: levert het eindtranscript van een gesprek af of meldt dat er niet is opgenomen."""
+    import agent_elevenlabs
+    body = await request.body()
+    if not agent_elevenlabs.controleer_handtekening(body, request.headers.get("elevenlabs-signature", ""), os.getenv("ELEVENLABS_WEBHOOK_SECRET", "")):
+        return Response(status_code=401)
+    try:
+        gebeurtenis = json.loads(body)
+    except ValueError:
+        return Response(status_code=400)
+    uitkomst = await asyncio.to_thread(agent_elevenlabs.verwerk_webhook, gebeurtenis)
+    logger.info(f"ElevenLabs-webhook {gebeurtenis.get('type')}: {uitkomst}")
+    return Response(status_code=200)
 
 
 @app.get("/bel/{web_call_id}")
