@@ -12,7 +12,7 @@ export function maakLlmClient(config: Config): LlmClient {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${config.llmApiKey}` },
       body: JSON.stringify({
-        model: config.llmModel, temperature: 0.1, max_tokens: 2500,
+        model: config.llmModel, temperature: 0.1, max_tokens: 8000,
         messages: [{ role: 'system', content: systeem }, { role: 'user', content: gebruiker }],
       }),
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
