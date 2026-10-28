@@ -8,7 +8,8 @@
     "build": "tsc -p server/tsconfig.json && node -e \"require('node:fs').cpSync('server/migrations','dist-server/migrations',{recursive:true})\" && vite build --config client/vite.config.ts",
     "start": "node dist-server/index.js",
     "test": "vitest run",
-    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit"
+    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit",
+    "test:pg": "bash scripts/test-pg.sh"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
