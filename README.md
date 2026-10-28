@@ -170,9 +170,19 @@ Nog niet (of niet live) bewezen:
 - De scheduler met een echte klok in productie; de logica is getest met een nagebootste klok.
 - Het eigen Twilio-nummer: tijdelijk wordt het demonummer van Inwoner.AI gebruikt.
 
-Gepland: een wachtwoord wijzigen in het scherm, een verlofperiode per medewerker, de koppeling met Atlassian (Jira en Confluence, eerst alleen lezen), het domein dagboek.ai, meerdere organisaties en inloggen via Keycloak/LOCGOV.
+Gepland: een wachtwoord wijzigen in het scherm, een verlofperiode per medewerker, de koppeling met Confluence en het terugsturen van de Jira-status naar het dagboek, het domein dagboek.ai, meerdere organisaties en inloggen via Keycloak/LOCGOV.
 
 ## Afspraken
 
 - Alleen branch `main`; Railway deployt daarvan.
 - Geen secrets in git (`.env` staat in `.gitignore`).
+
+## Jira: open punten als ticket
+
+Bij **Acties** kun je van een open punt (of alle zichtbare open punten) een Jira-ticket maken, na een voorbeeld en jouw bevestiging. Er gaat alleen de tekst van het punt, het onderwerp, de eigenaar, de deadline en een link naar het dagboek naar Jira, nooit een gesprek of transcript.
+
+- Instellingen: bij **Instellingen → Jira** vul je de site (`naam.atlassian.net`), de projectsleutel en het issuetype in. Alleen `atlassian.net` is toegestaan.
+- Inloggegevens: `JIRA_EMAIL` en `JIRA_API_TOKEN` als variabelen op de web-service (nooit in de database). Gebruik een apart Atlassian-account; een token verloopt na een jaar. Optioneel `PUBLIC_URL` voor de link terug naar het dagboek.
+- Een punt krijgt nooit twee tickets: de ticketsleutel is uniek en elk ticket krijgt het label `dagboek-<id van het punt>`; voor het aanmaken wordt daarop gezocht, ook als een eerdere poging halverwege mislukte.
+- Punten die nog gecontroleerd moeten worden of al zijn afgerond worden overgeslagen. De eigenaar wordt alleen toegewezen als het e-mailadres van de medewerker precies één Jira-gebruiker oplevert.
+- Migratie `015_jira.sql` voegt alleen kolommen toe.

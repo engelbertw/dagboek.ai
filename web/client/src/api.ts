@@ -9,7 +9,7 @@ export interface TopicRegel {
 }
 export interface Update { id: string; topicId: string; bron: 'voice' | 'handmatig'; samenvatting: string; besluiten: string; createdAt: string; bewerktOp: string | null }
 export interface OpenPunt { id: string; tekst: string; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; eigenaarId: string | null; eigenaarExtern: string; deadline: string | null }
-export interface Actie { id: string; tekst: string; topicId: string; topicTitel: string; eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; controleNodig?: boolean; controleReden?: string | null }
+export interface Actie { id: string; tekst: string; topicId: string; topicTitel: string; eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; controleNodig?: boolean; controleReden?: string | null; jiraSleutel?: string | null; jiraUrl?: string | null }
 export interface Stand { open: number; teLaat: number; binnenkort: number; zonderDeadline: number; opTijd: number; laatAfgerond: number; deadlineVerschoven: number }
 export interface Team { nakoming: number | null; basis: number; onvoldoendeGegevens: boolean; minimum: number }
 export interface DashboardData { vandaag: string; totaal: Stand; team: Team; perEigenaar: (Stand & { id: string | null; naam: string })[]; teLaat: Actie[]; binnenkort: Actie[] }
@@ -49,3 +49,5 @@ export const datum = (iso: string | null) => (iso ? new Date(iso).toLocaleDateSt
 export const datumTijd = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 export const DAGEN = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
+export interface JiraInstelling { site: string; project: string; issuetype: string; inloggegevens: boolean; geconfigureerd: boolean }
+export interface JiraUitkomst { id: string; status: 'voorbeeld' | 'aangemaakt' | 'gekoppeld' | 'overgeslagen' | 'fout'; reden?: string; sleutel?: string; url?: string; samenvatting?: string; eigenaar?: string | null; deadline?: string | null; project?: string }

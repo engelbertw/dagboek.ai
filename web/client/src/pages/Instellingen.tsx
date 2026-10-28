@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api, MOTOR_LABEL, type Houding, type Motor } from '../api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { api, MOTOR_LABEL, type Houding, type JiraInstelling, type Motor } from '../api';
 import { Melding, Systeemstatus, Veld, foutTekst, useLaden } from '../ui';
 
 function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitleg: string; label: string; pad: string; rijen: number }) {
@@ -50,12 +50,42 @@ function Gespreksmotor() {
   );
 }
 
+function Jira() {
+  const huidig = useLaden(() => api<JiraInstelling>('GET', '/instellingen/jira'));
+  const [site, setSite] = useState('');
+  const [project, setProject] = useState('');
+  const [issuetype, setIssuetype] = useState('Task');
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  useEffect(() => { if (huidig.data) { setSite(huidig.data.site); setProject(huidig.data.project); setIssuetype(huidig.data.issuetype); } }, [huidig.data]);
+  async function bewaar(e: FormEvent) {
+    e.preventDefault();
+    try { await api('PUT', '/instellingen/jira', { site, project, issuetype }); setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); huidig.ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
+  }
+  async function test() {
+    try { const r = await api<{ naam: string; project: string }>('POST', '/instellingen/jira/test'); setMelding({ tekst: `Verbonden als ${r.naam}, project ${r.project}.`, soort: 'ok' }); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
+  }
+  return (
+    <form className="paneel stapel" onSubmit={bewaar}>
+      <h2>Jira</h2>
+      <p className="zacht klein">Van een open punt maak je bij Acties een Jira-ticket, na een voorbeeld en jouw bevestiging. Er gaat alleen de tekst van het punt, het onderwerp, de eigenaar en de deadline naar Jira, geen gesprek of transcript. De inloggegevens staan als <code>JIRA_EMAIL</code> en <code>JIRA_API_TOKEN</code> bij de web-service, niet hier. {huidig.data && !huidig.data.inloggegevens && <strong>Ze ontbreken nu.</strong>}</p>
+      <Veld label="Jira-site"><input value={site} onChange={(e) => setSite(e.target.value)} placeholder="naam.atlassian.net" /></Veld>
+      <div className="rij">
+        <Veld label="Projectsleutel"><input value={project} onChange={(e) => setProject(e.target.value)} placeholder="PROJ" /></Veld>
+        <Veld label="Issuetype"><input value={issuetype} onChange={(e) => setIssuetype(e.target.value)} placeholder="Task" /></Veld>
+      </div>
+      <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
+      <div className="rij"><button type="submit" className="primair">Opslaan</button><button type="button" onClick={() => void test()}>Verbinding testen</button></div>
+    </form>
+  );
+}
+
 export function Instellingen() {
   return (
     <div className="stapel">
       <Systeemstatus />
       <div><h1>Instellingen</h1><p className="zacht">Algemene instellingen voor alle gesprekken. Een planning kan een eigen gespreksinstructie krijgen; zonder eigen instructie geldt de algemene.</p></div>
       <Gespreksmotor />
+      <Jira />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />
       <Instelling titel="Algemene gespreksinstructie" label="Gespreksinstructie" pad="/instellingen/gespreksinstructie" rijen={9}

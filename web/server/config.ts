@@ -14,6 +14,11 @@ export interface Config {
   transcriptBewaarDagen: number;
   /** Zonder bevestigde toestemming bewaren we een transcript hooguit zoveel uur. */
   transcriptOnbevestigdUren: number;
+  /** Inloggegevens voor Jira Cloud; alleen als omgevingsvariabele, nooit in de database. */
+  jiraEmail: string;
+  jiraApiToken: string;
+  /** Publieke URL van deze app, voor de link vanuit een Jira-ticket terug naar het dagboek. */
+  publiekeUrl: string;
 }
 
 export function loadConfig(env = process.env): Config {
@@ -32,6 +37,9 @@ export function loadConfig(env = process.env): Config {
     llmModel: env.LLM_MODEL ?? 'gemma-4',
     transcriptBewaarDagen: Number(env.TRANSCRIPT_BEWAAR_DAGEN ?? 30),
     transcriptOnbevestigdUren: Number(env.TRANSCRIPT_ONBEVESTIGD_UREN ?? 24),
+    jiraEmail: env.JIRA_EMAIL ?? '',
+    jiraApiToken: env.JIRA_API_TOKEN ?? '',
+    publiekeUrl: (env.PUBLIC_URL ?? '').replace(/\/$/, ''),
   };
 }
 

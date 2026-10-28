@@ -2,7 +2,7 @@ export interface ActieRij {
   id: string; tekst: string; topicId: string; topicTitel: string;
   eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string;
   deadline: string | null; status: 'open' | 'afgerond'; createdAt: Date; afgerondOp: Date | null;
-  controleNodig?: boolean; deadlineGewijzigdAantal?: number;
+  controleNodig?: boolean; deadlineGewijzigdAantal?: number; jiraSleutel?: string | null; jiraUrl?: string | null;
 }
 
 /** Feiten over acties. Bewust geen score per persoon: dit dashboard beschrijft de stand van afspraken, het beoordeelt geen mensen. */

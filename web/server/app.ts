@@ -16,7 +16,8 @@ import { foutcode, log } from './log.js';
 import { opschoningStatus } from './opschoning.js';
 import { logGebeurtenis } from './call-log.js';
 import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
-import { MOTOREN, bewaarGespreksmotor, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
+import { JiraFout, geldigProject, schoneSite, type JiraClient, type JiraPunt } from './jira.js';
+import { MOTOREN, bewaarGespreksmotor, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard, type ActieRij } from './dashboard.js';
@@ -70,11 +71,13 @@ const gelijk = (a: string, b: string) => a.length === b.length && timingSafeEqua
 
 export interface AppDeps {
   db: Db; config: Config; voice: VoiceClient; llm: LlmClient; clientDir?: string;
+  /** Zonder client kan er niets naar Jira. */
+  jira?: JiraClient;
   /** Start werk dat na het antwoord doorloopt. Standaard fire-and-forget; tests wachten erop. */
   achtergrond?: (taak: Promise<unknown>) => void;
 }
 
-export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
+export function buildApp({ db, config, voice, llm, clientDir, jira, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const beperking = new InlogBeperking();
   app.register(cookie);
@@ -305,6 +308,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     id: openItems.id, tekst: openItems.tekst, topicId: openItems.topicId, topicTitel: topics.titel,
     eigenaarId: openItems.eigenaarId, eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
     deadline: openItems.deadline, status: openItems.status, createdAt: openItems.createdAt, afgerondOp: openItems.afgerondOp,
+    jiraSleutel: openItems.jiraSleutel, jiraUrl: openItems.jiraUrl,
     controleNodig: openItems.controleNodig, controleReden: openItems.controleReden, deadlineOorspronkelijk: openItems.deadlineOorspronkelijk, deadlineGewijzigdAantal: openItems.deadlineGewijzigdAantal,
   }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
     .orderBy(asc(openItems.status), sql`${openItems.deadline} asc nulls last`, asc(openItems.createdAt)));
@@ -345,6 +349,70 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     await bewaarGespreksmotor(db, motor);
     return { motor: await leesGespreksmotor(db) };
   });
+  // ── Jira: open punten als ticket ────────────────────────────────────────
+  const jiraStatus = async () => {
+    const i = await leesJira(db);
+    return { site: i?.site ?? '', project: i?.project ?? '', issuetype: i?.issuetype ?? 'Task', inloggegevens: !!jira?.beschikbaar(), geconfigureerd: !!(i && jira?.beschikbaar()) };
+  };
+  const jiraFoutAntwoord = (e: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
+    if (e instanceof JiraFout) return reply.code(e.status === 401 || e.status === 403 ? 502 : e.status === 429 ? 503 : e.status === 404 ? 422 : e.status).send({ fout: e.message });
+    throw e;
+  };
+  app.get('/api/instellingen/jira', async () => jiraStatus());
+  app.put('/api/instellingen/jira', async (req, reply) => {
+    const b = z.object({ site: z.string().max(200), project: z.string().trim().toUpperCase().max(10), issuetype: nonEmpty.max(50) }).parse(req.body);
+    const site = schoneSite(b.site);
+    if (!site) return reply.code(400).send({ fout: 'Gebruik een Jira Cloud-site zoals naam.atlassian.net' });
+    if (!geldigProject(b.project)) return reply.code(400).send({ fout: 'Een projectsleutel bestaat uit 2 tot 10 hoofdletters of cijfers, zoals PROJ' });
+    await bewaarJira(db, { site, project: b.project, issuetype: b.issuetype });
+    return jiraStatus();
+  });
+  app.post('/api/instellingen/jira/test', async (_req, reply) => {
+    const i = await leesJira(db);
+    if (!jira?.beschikbaar()) return reply.code(409).send({ fout: 'JIRA_EMAIL en JIRA_API_TOKEN ontbreken op de web-service' });
+    if (!i) return reply.code(409).send({ fout: 'Sla eerst de site, projectsleutel en het issuetype op' });
+    try { return { ok: true, ...(await jira.test(i)) }; } catch (e) { return jiraFoutAntwoord(e, reply); }
+  });
+  // Maakt van open punten tickets. `voorbeeld` laat zien wat er zou gaan zonder iets aan te maken.
+  app.post('/api/open-items/jira', async (req, reply) => {
+    const b = z.object({ ids: z.array(uuid).min(1).max(50), voorbeeld: z.boolean().default(false), controleBevestigd: z.boolean().default(false) }).parse(req.body);
+    const i = await leesJira(db);
+    if (!i || !jira?.beschikbaar()) return reply.code(409).send({ fout: 'Jira is niet ingesteld (zie Instellingen)' });
+    const ids = [...new Set(b.ids)];
+    const rijen = await db.select({
+      p: openItems, topicTitel: topics.titel, eigenaarNaam: employees.naam, eigenaarEmail: employees.email,
+    }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id)).where(inArray(openItems.id, ids));
+    const perId = new Map(rijen.map((r) => [r.p.id, r]));
+    const uitkomst: Record<string, unknown>[] = [];
+    for (const id of ids) {
+      const r = perId.get(id);
+      if (!r) { uitkomst.push({ id, status: 'overgeslagen', reden: 'niet_gevonden' }); continue; }
+      const { p } = r;
+      if (p.jiraSleutel) { uitkomst.push({ id, status: 'overgeslagen', reden: 'al_in_jira', sleutel: p.jiraSleutel, url: p.jiraUrl }); continue; }
+      if (p.status === 'afgerond') { uitkomst.push({ id, status: 'overgeslagen', reden: 'afgerond' }); continue; }
+      if (p.controleNodig && !b.controleBevestigd) { uitkomst.push({ id, status: 'overgeslagen', reden: 'controle_nodig' }); continue; }
+      const punt: JiraPunt = {
+        id, tekst: p.tekst, onderwerp: r.topicTitel, eigenaar: r.eigenaarNaam ?? p.eigenaarExtern, eigenaarEmail: r.eigenaarEmail ?? '',
+        deadline: p.deadline, link: config.publiekeUrl ? `${config.publiekeUrl}/onderwerp/${p.topicId}` : null,
+      };
+      if (b.voorbeeld) { uitkomst.push({ id, status: 'voorbeeld', samenvatting: punt.tekst.slice(0, 255), onderwerp: punt.onderwerp, eigenaar: punt.eigenaar || null, deadline: punt.deadline, project: i.project }); continue; }
+      try {
+        const t = await jira.maakAan(i, punt);
+        const [bijgewerkt] = await db.update(openItems).set({ jiraSleutel: t.sleutel, jiraUrl: t.url, jiraAangemaaktOp: new Date() })
+          .where(and(eq(openItems.id, id), sql`${openItems.jiraSleutel} is null`)).returning({ id: openItems.id });
+        log('info', 'jira.ticket', { punt: id, sleutel: t.sleutel, bestondAl: t.bestondAl });
+        uitkomst.push({ id, status: bijgewerkt ? (t.bestondAl ? 'gekoppeld' : 'aangemaakt') : 'overgeslagen', sleutel: t.sleutel, url: t.url, ...(bijgewerkt ? {} : { reden: 'al_in_jira' }) });
+      } catch (e) {
+        if (!(e instanceof JiraFout)) throw e;
+        log('warn', 'jira.mislukt', { punt: id, status: e.status });
+        uitkomst.push({ id, status: 'fout', reden: e.message });
+        // Bij ongeldige inloggegevens of een tijdelijke blokkade heeft doorgaan geen zin.
+        if (e.status === 401 || e.status === 403 || e.status === 429) break;
+      }
+    }
+    return { resultaat: uitkomst };
+  });
+
   app.get('/api/acties', async () => actieRijen());
   // Punten die nog gecontroleerd moeten worden tellen niet mee: ze zijn (nog) geen vastgestelde feiten.
   app.get('/api/dashboard', async () => berekenDashboard((await actieRijen()).filter((r) => !r.controleNodig), vandaagNL()));

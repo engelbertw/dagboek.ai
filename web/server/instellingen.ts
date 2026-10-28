@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from './db.js';
+import { geldigProject, schoneSite, type JiraInstellingen } from './jira.js';
 import { instellingen } from './schema.js';
 
 /** Dezelfde tekst als de terugvalwaarde van de voice-service (voice/prompts.py), zodat de beheerder hem kan zien en aanpassen. */
@@ -43,3 +44,13 @@ export async function leesGespreksmotor(db: Db): Promise<Motor> {
   return (MOTOREN as readonly string[]).includes(waarde) ? (waarde as Motor) : 'pipecat';
 }
 export const bewaarGespreksmotor = (db: Db, motor: Motor) => bewaar(db, 'gespreksmotor', motor === 'pipecat' ? '' : motor);
+
+/** Waar Jira-tickets heen gaan. De inloggegevens staan niet hier maar in omgevingsvariabelen. */
+export async function leesJira(db: Db): Promise<JiraInstellingen | null> {
+  const { waarde } = await lees(db, 'jira', '');
+  try {
+    const j = JSON.parse(waarde) as Partial<JiraInstellingen>;
+    return schoneSite(j.site ?? '') && geldigProject(j.project ?? '') && j.issuetype ? { site: j.site!, project: j.project!, issuetype: j.issuetype } : null;
+  } catch { return null; }
+}
+export const bewaarJira = (db: Db, i: JiraInstellingen | null) => bewaar(db, 'jira', i ? JSON.stringify(i) : '');

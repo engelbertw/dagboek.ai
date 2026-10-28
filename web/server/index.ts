@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { loadConfig, ontbrekendeInstellingen } from './config.js';
 import { connectMemory, connectPostgres, migrate } from './db.js';
+import { maakJiraClient } from './jira.js';
 import { maakLlmClient } from './llm.js';
 import { startScheduler } from './scheduler.js';
 import { voerOpschoningUit } from './opschoning.js';
@@ -26,7 +27,7 @@ if (nieuw.length) log('info', 'start.migraties', { toegepast: nieuw.join(',') })
 const hier = dirname(fileURLToPath(import.meta.url));
 const voice = maakVoiceClient(config);
 const llm = maakLlmClient(config);
-const app = buildApp({ db: handle.db, config, voice, llm, clientDir: join(hier, '..', 'dist', 'client') });
+const app = buildApp({ db: handle.db, config, voice, llm, jira: maakJiraClient(config), clientDir: join(hier, '..', 'dist', 'client') });
 const opzoeken = maakVoiceOpzoeker(config);
 const herstel = async () => {
   await herstelVastgelopen(handle.db);
