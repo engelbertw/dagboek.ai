@@ -47,7 +47,7 @@ def _write_transcript(call_id: str, stream_sid: str, context: LLMContext, knelpu
         # Naar het dagboek gaat alleen het gesprek zelf, niet de systeemprompt.
         return [{"role": m["role"], "content": m["content"]} for m in schoon if isinstance(m, dict) and m.get("role") in ("assistant", "user") and isinstance(m.get("content"), str)]
     except Exception as e:
-        logger.error(f"Transcript wegschrijven mislukt: {type(e).__name__}: {e}")
+        logger.error(f"Transcript wegschrijven mislukt: {type(e).__name__}")
         return None
 
 
@@ -100,6 +100,9 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
         logger.warning(f"Opdracht {call_id} heeft al een verbinding gehad, extra verbinding geweigerd")
         await websocket.close(code=1008)
         return
+    # Vanaf hier dragen alle logregels van dit gesprek (ook die uit taken die hieruit voortkomen) het call-id van de web-service.
+    logcontext = logger.contextualize(corr=spec.get("web_call_id") or call_id)
+    logcontext.__enter__()
     calls.update_opdracht(call_id, status="gesprek", stream_sid=stream_sid)
     await asyncio.to_thread(calls.rapporteer, call_id, "gesprek")
 
@@ -188,4 +191,7 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
 
     runner = WorkerRunner(handle_sigint=False, force_gc=True)
     await runner.add_workers(worker)
-    await runner.run()
+    try:
+        await runner.run()
+    finally:
+        logcontext.__exit__(None, None, None)

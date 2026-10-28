@@ -2,6 +2,7 @@ import { and, eq, gte, inArray } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { startGesprek } from './gesprek-starten.js';
 import { LOPENDE_STATUSSEN } from './gesprek-status.js';
+import { foutcode, log } from './log.js';
 import { calls, employees, instellingen, scheduleEmployees, schedules } from './schema.js';
 import type { VoiceClient } from './voice.js';
 
@@ -102,11 +103,19 @@ export async function tik(
       const r = await startGesprek({ db, voice }, taak.employeeId, { scheduleId: taak.scheduleId, slotStart: taak.slotStart, poging: taak.poging });
       if (r.ok) uitkomst.gestart++; else if (r.status === 409) uitkomst.overgeslagen++; else uitkomst.mislukt++;
     } catch (e) {
-      console.error(`Planning: gesprek starten mislukt voor ${taak.employeeId}: ${(e as Error).message}`);
+      log('error', 'planning.starten_mislukt', { planningId: taak.scheduleId, poging: taak.poging, foutcode: foutcode(e) });
       uitkomst.mislukt++;
     }
   }
   return uitkomst;
+}
+
+/** Laat zien dat de planning draait; de app waarschuwt als dit te lang uitblijft. */
+async function schrijfHartslag(db: Db, nu: Date): Promise<void> {
+  try {
+    await db.insert(instellingen).values({ sleutel: 'scheduler_hartslag', waarde: nu.toISOString() })
+      .onConflictDoUpdate({ target: instellingen.sleutel, set: { waarde: nu.toISOString(), bijgewerktOp: nu } });
+  } catch { /* geen database: de tik zelf faalt dan ook en wordt gelogd */ }
 }
 
 export interface SchedulerHandle { stop(): Promise<void> }
@@ -120,16 +129,20 @@ export function startScheduler(deps: { db: Db; voice: VoiceClient }, elkeMs = 30
     lopend = (async () => {
       try {
         const r = await tik(deps, new Date());
-        if (r.gestart || r.mislukt) console.log(`Planning: ${r.gestart} gesprek(ken) gestart, ${r.mislukt} mislukt`);
-      } catch (e) { console.error('Planning: tik mislukt', e); } finally { lopend = null; }
+        if (r.gestart || r.mislukt) log('info', 'planning.tik', { gestart: r.gestart, mislukt: r.mislukt });
+      } catch (e) { log('error', 'planning.tik_mislukt', { foutcode: foutcode(e) }); } finally { lopend = null; }
     })();
   };
   const timer = setInterval(lus, elkeMs);
   timer.unref();
+  // De hartslag staat los van de tik: een tik met pauzes tussen gesprekken duurt langer dan de waarschuwingsgrens.
+  const hartslag = setInterval(() => void schrijfHartslag(deps.db, new Date()), 30_000);
+  hartslag.unref();
+  void schrijfHartslag(deps.db, new Date());
   return {
     // Een tik die tijdens het afsluiten nog pauzeert tussen gesprekken, wordt niet afgewacht: de rest wordt door het inhaalvenster later gestart.
     async stop() {
-      gestopt = true; clearInterval(timer);
+      gestopt = true; clearInterval(timer); clearInterval(hartslag);
       if (lopend) await Promise.race([lopend, new Promise((r) => setTimeout(r, 25_000).unref())]);
     },
   };

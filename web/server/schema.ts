@@ -67,6 +67,7 @@ export const calls = pgTable('calls', {
     enum: ['niet_nodig', 'onbekend', 'gegeven', 'geweigerd', 'onduidelijk', 'ingetrokken'],
   }).notNull().default('onbekend'),
   transcriptBewarenTot: timestamp('transcript_bewaren_tot', { withTimezone: true }),
+  transcriptGewistOp: timestamp('transcript_gewist_op', { withTimezone: true }),
   samenvattingFout: text('samenvatting_fout'),
   samenvattingRuw: jsonb('samenvatting_ruw'),
   samenvattingGestartOp: timestamp('samenvatting_gestart_op', { withTimezone: true }),
@@ -112,6 +113,25 @@ export const openItems = pgTable('open_items', {
   status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
   createdAt: createdAt(),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
+});
+
+export const opschoningRuns = pgTable('opschoning_runs', {
+  id: id(),
+  bron: text('bron', { enum: ['web', 'voice'] }).notNull(),
+  gestartOp: timestamp('gestart_op', { withTimezone: true }).notNull().defaultNow(),
+  klaarOp: timestamp('klaar_op', { withTimezone: true }),
+  status: text('status', { enum: ['ok', 'deels', 'mislukt'] }).notNull(),
+  gewist: integer('gewist').notNull().default(0),
+  mislukt: integer('mislukt').notNull().default(0),
+  foutcode: text('foutcode'),
+});
+
+export const callLog = pgTable('call_log', {
+  id: id(),
+  callId: uuid('call_id').notNull().references(() => calls.id, { onDelete: 'cascade' }),
+  tijd: timestamp('tijd', { withTimezone: true }).notNull().defaultNow(),
+  bron: text('bron').notNull(),
+  gebeurtenis: text('gebeurtenis').notNull(),
 });
 
 export const toestemmingen = pgTable('toestemmingen', {

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { api, deadlineTekst, type Actie, type DashboardData, type Stand } from '../api';
-import { Badge, Leeg, Melding, useLaden } from '../ui';
+import { Badge, Leeg, Melding, Systeemstatus, useLaden } from '../ui';
 
 const Tegel = ({ waarde, label, soort }: { waarde: string | number; label: string; soort?: 'fout' | 'ok' }) => (
   <div className={`tegel ${soort ?? ''}`}><strong>{waarde}</strong><span>{label}</span></div>
@@ -28,6 +28,7 @@ export function Dashboard() {
   const t = d.data?.totaal;
   return (
     <div className="stapel">
+      <Systeemstatus />
       <div><h1>Dashboard</h1><p className="zacht">Hoe goed komen we afspraken na? Het percentage telt acties met een deadline in de afgelopen 90 dagen: op tijd afgerond, ten opzichte van te laat of nog open na de deadline.</p></div>
       <Melding tekst={d.fout} />
       {t && d.data && (

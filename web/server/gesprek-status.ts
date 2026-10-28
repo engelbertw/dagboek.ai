@@ -1,5 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from './db.js';
+import { logGebeurtenis } from './call-log.js';
 import { calls } from './schema.js';
 
 export type GesprekStatus = (typeof calls.$inferSelect)['status'];
@@ -36,8 +37,9 @@ type Velden = Partial<Omit<typeof calls.$inferInsert, 'id' | 'status'>>;
  * Compare-and-set: de status verandert alleen als de huidige status een geldige voorganger is, in één UPDATE
  * (geen lees-dan-schrijf). Geeft false terug als de overgang niet (meer) mag, bijvoorbeeld bij een dubbele of te late melding.
  */
-export async function zetStatus(db: Db, id: string, naar: GesprekStatus, velden: Velden = {}): Promise<boolean> {
+export async function zetStatus(db: Db, id: string, naar: GesprekStatus, velden: Velden = {}, bron: 'web' | 'voice' | 'scheduler' | 'herstel' = 'web'): Promise<boolean> {
   const rijen = await db.update(calls).set({ ...velden, status: naar })
     .where(and(eq(calls.id, id), inArray(calls.status, VORIGE(naar)))).returning({ id: calls.id });
+  if (rijen.length) await logGebeurtenis(db, id, bron, `status:${naar}`);
   return rijen.length > 0;
 }

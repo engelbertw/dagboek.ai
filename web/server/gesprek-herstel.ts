@@ -1,6 +1,7 @@
 import { and, eq, inArray, like, lt, sql } from 'drizzle-orm';
 import type { Db } from './db.js';
 import type { LlmClient } from './llm.js';
+import { logGebeurtenis } from './call-log.js';
 import { zetStatus } from './gesprek-status.js';
 import { calls } from './schema.js';
 import { samenvattenGesprek } from './samenvatten.js';
@@ -36,19 +37,20 @@ export async function herstelGesprekken(
     // Onzeker (voice weet niet of de aanroep naar Twilio is gelukt) behandelen we als onbereikbaar: wachten, en uiteindelijk aan de beheerder laten.
     const zeker = r.bereikt && (!r.bekend || r.gebeld || !r.onzeker);
     if (!zeker) {
-      if (c.statusGewijzigdOp.getTime() < nu.getTime() - VERZENDEN_OPGEVEN_MIN * MINUUT && await zetStatus(db, c.id, 'onderbroken', { fout: 'onzeker_of_gebeld', afgerondOp: nu })) uitkomst.onderbroken++;
+      if (c.statusGewijzigdOp.getTime() < nu.getTime() - VERZENDEN_OPGEVEN_MIN * MINUUT && await zetStatus(db, c.id, 'onderbroken', { fout: 'onzeker_of_gebeld', afgerondOp: nu }, 'herstel')) uitkomst.onderbroken++;
     } else if (!r.bekend) {
       // Voice heeft het verzoek nooit ontvangen: zeker niet gebeld, dus veilig opnieuw te proberen.
-      if (await zetStatus(db, c.id, 'mislukt', { fout: 'niet_verzonden', afgerondOp: nu })) uitkomst.opgelost++;
+      if (await zetStatus(db, c.id, 'mislukt', { fout: 'niet_verzonden', afgerondOp: nu }, 'herstel')) uitkomst.opgelost++;
     } else if (r.gebeld) {
-      if (await zetStatus(db, c.id, 'belt', { voiceCallId: r.call_id, gestartOp: c.gestartOp ?? nu })) uitkomst.opgelost++;
-    } else if (await zetStatus(db, c.id, 'mislukt', { fout: 'Bellen mislukt bij voice', afgerondOp: nu })) uitkomst.opgelost++;
+      if (await zetStatus(db, c.id, 'belt', { voiceCallId: r.call_id, gestartOp: c.gestartOp ?? nu }, 'herstel')) uitkomst.opgelost++;
+    } else if (await zetStatus(db, c.id, 'mislukt', { fout: 'Bellen mislukt bij voice', afgerondOp: nu }, 'herstel')) uitkomst.opgelost++;
   }
 
   // 2. Gebeld of in gesprek, maar nooit een uitkomst ontvangen. Een late melding van voice kan dit later nog verbeteren.
   const verlopen = await db.update(calls).set({ status: 'onderbroken', fout: 'geen_uitkomst_ontvangen', afgerondOp: nu })
     .where(and(inArray(calls.status, ['belt', 'gesprek']), lt(calls.statusGewijzigdOp, new Date(nu.getTime() - GEEN_UITKOMST_MIN * MINUUT)))).returning({ id: calls.id });
   uitkomst.onderbroken += verlopen.length;
+  for (const v of verlopen) await logGebeurtenis(db, v.id, 'herstel', 'status:onderbroken');
 
   // 3. Gesproken, maar de samenvatting is nooit gestart (proces gestopt vóór de achtergrondtaak) of eerder onderbroken.
   const kandidaten = await db.select({ id: calls.id }).from(calls).where(and(

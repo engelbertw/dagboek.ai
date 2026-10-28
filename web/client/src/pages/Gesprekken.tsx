@@ -24,9 +24,17 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
   const [detail, setDetail] = useState<Gesprek | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [bezig, setBezig] = useState(false);
+  const [verloop, setVerloop] = useState<{ tijd: string; bron: string; gebeurtenis: string }[]>([]);
   async function toggle() {
     if (detail) return setDetail(null);
-    try { setDetail(await api<Gesprek>('GET', `/calls/${g.id}`)); } catch (e) { setFout(foutTekst(e)); }
+    try {
+      setDetail(await api<Gesprek>('GET', `/calls/${g.id}`));
+      setVerloop(await api('GET', `/calls/${g.id}/verloop`));
+    } catch (e) { setFout(foutTekst(e)); }
+  }
+  async function wisTranscript() {
+    if (!window.confirm('Het transcript van dit gesprek definitief wissen? De samenvatting in het dagboek blijft staan.')) return;
+    try { await api('DELETE', `/calls/${g.id}/transcript`); setDetail(null); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); }
   }
   async function opnieuw() {
     setBezig(true);
@@ -54,6 +62,15 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
           {detail.transcript.map((m, i) => <p key={i} className={m.role}><strong>{m.role === 'assistant' ? 'Assistent' : g.employeeNaam}:</strong> {m.content}</p>)}
         </div>
       ) : <Leeg>Geen transcript beschikbaar.</Leeg>)}
+      {detail && !!detail.transcript?.length && <div className="rij"><button type="button" onClick={wisTranscript}>Transcript wissen</button></div>}
+      {detail && verloop.length > 0 && (
+        <details>
+          <summary>Verloop van dit gesprek</summary>
+          <ul className="klein" style={{ margin: '4px 0 0', paddingLeft: 20 }}>
+            {verloop.map((v, i) => <li key={i}>{datumTijd(v.tijd)} · {v.bron} · {v.gebeurtenis}</li>)}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

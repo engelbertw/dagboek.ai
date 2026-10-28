@@ -9,9 +9,12 @@ import { z } from 'zod';
 import { InlogBeperking, controleerWachtwoord, leesSessie, maakSessie } from './auth.js';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
-import { calls, employees, openItems, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, employees, instellingen, openItems, opschoningRuns, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
+import { foutcode, log } from './log.js';
+import { opschoningStatus } from './opschoning.js';
+import { logGebeurtenis } from './call-log.js';
 import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
 import { bewaarHouding, bewaarInstructie, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
@@ -71,15 +74,15 @@ export interface AppDeps {
   achtergrond?: (taak: Promise<unknown>) => void;
 }
 
-export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) => void t.catch((e) => console.error('Achtergrondtaak mislukt', e)) }: AppDeps): FastifyInstance {
+export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const beperking = new InlogBeperking();
   app.register(cookie);
 
-  app.setErrorHandler((err: any, _req, reply) => {
+  app.setErrorHandler((err: any, req, reply) => {
     if (err instanceof z.ZodError) return reply.code(400).send({ fout: 'Ongeldige invoer', details: err.issues.map((i) => `${i.path.join('.')}: ${i.message}`) });
     if (err.statusCode && err.statusCode < 500) return reply.code(err.statusCode).send({ fout: err.message });
-    console.error(err);
+    log('error', 'verzoek.mislukt', { foutcode: foutcode(err), pad: req.url.split('?')[0] });
     return reply.code(500).send({ fout: 'Interne fout' });
   });
 
@@ -386,7 +389,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.
   const geefSuggestie = async (reply: any, onderwerpen: OnderwerpVoorSuggestie[], doel: 'planning' | 'onderwerp') => {
     try { return { tekst: await stelInstructieVoor(llm, onderwerpen, doel) }; } catch (e) {
-      console.error('Suggestie mislukt:', (e as Error).message);
+      log('error', 'suggestie.mislukt', { foutcode: foutcode(e) });
       return reply.code(502).send({ fout: 'Een suggestie is nu niet beschikbaar. Probeer het later opnieuw of schrijf de instructie zelf.' });
     }
   };
@@ -449,6 +452,33 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     return reply.code(202).send({ callId: r.callId, onderwerpen: r.onderwerpen });
   });
 
+  // Het gespreksverloop (codes en tijden, geen inhoud) en wissen op verzoek.
+  app.get('/api/calls/:id/verloop', async (req) => {
+    const id = uuid.parse((req.params as any).id);
+    return db.select({ tijd: callLog.tijd, bron: callLog.bron, gebeurtenis: callLog.gebeurtenis }).from(callLog).where(eq(callLog.callId, id)).orderBy(asc(callLog.tijd));
+  });
+  app.delete('/api/calls/:id/transcript', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const gewist = await db.update(calls).set({ transcript: null, samenvattingRuw: null, transcriptBewarenTot: null, transcriptGewistOp: new Date() }).where(eq(calls.id, id)).returning({ id: calls.id });
+    if (!gewist.length) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
+    await logGebeurtenis(db, id, 'beheer', 'transcript:gewist_op_verzoek');
+    return { ok: true };
+  });
+  app.get('/api/systeem/status', async () => {
+    const [hartslag] = await db.select().from(instellingen).where(eq(instellingen.sleutel, 'scheduler_hartslag'));
+    const opschoning = await opschoningStatus(db, config.transcriptBewaarDagen);
+    const laatsteTik = hartslag ? new Date(hartslag.waarde) : null;
+    const planningVerouderd = (await automatischBellenAan(db)) && (!laatsteTik || Date.now() - laatsteTik.getTime() > 2 * 60_000);
+    return { opschoning, scheduler: { laatsteTik, verouderd: planningVerouderd }, waarschuwingen: [...opschoning.waarschuwingen, ...(planningVerouderd ? ['De planning heeft de afgelopen 2 minuten niet gedraaid.'] : [])] };
+  });
+
+  // De voice-service meldt hier de uitkomst van een opschoonronde: alleen aantallen en een foutcode.
+  app.post('/api/intern/opschoning', async (req) => {
+    const b = z.object({ gewist: z.number().int().min(0).max(1_000_000), mislukt: z.number().int().min(0).max(1_000_000), foutcode: z.string().max(60).regex(/^[A-Za-z0-9_:.-]*$/).optional() }).parse(req.body);
+    await db.insert(opschoningRuns).values({ bron: 'voice', klaarOp: new Date(), status: b.mislukt ? (b.gewist ? 'deels' : 'mislukt') : 'ok', gewist: b.gewist, mislukt: b.mislukt, foutcode: b.foutcode || null });
+    return { ok: true };
+  });
+
   // De voice-service meldt hier de uitkomst van een gesprek (alleen met de servicesleutel).
   app.post('/api/intern/calls/:id/resultaat', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
@@ -460,7 +490,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     const gewijzigd = await zetStatus(db, id, b.status, {
       twilioSid: b.twilioSid, fout: b.fout, ...(b.transcript !== undefined ? { transcript: b.transcript } : {}),
       ...(eind ? { afgerondOp: new Date() } : {}),
-    });
+    }, 'voice');
     if (!gewijzigd) return { ok: true, genegeerd: true };
     if (b.transcript !== undefined && b.transcript !== null) await bepaalBewaartermijn(db, config, id, b.status);
     if (b.status === 'gesproken') achtergrond(samenvattenGesprek({ db, llm }, id));

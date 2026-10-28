@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Db } from './db.js';
 import type { LlmClient } from './llm.js';
 import { calls, employees, openItems, suggesties, topics, updates, type GespreksOnderwerp } from './schema.js';
+import { logGebeurtenis } from './call-log.js';
 import { leggToestemmingVast } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, schoonVoorPrompt } from './vertrouwen.js';
 
@@ -145,6 +146,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
 
   const eindig = async (status: SamenvattingStatus, extra: Partial<typeof calls.$inferInsert> = {}) => {
     await db.update(calls).set({ samenvattingStatus: status, ...extra }).where(eq(calls.id, callId));
+    await logGebeurtenis(db, callId, 'web', `samenvatting:${status}`);
   };
 
   try {
@@ -175,7 +177,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
 
     // Toestemming is een beslissing met gevolgen, dus het oordeel van het model alleen telt niet: "gegeven" en "ingetrokken" gelden pas
     // als de woorden van de collega echt in het gesprek staan. Zonder dat bewaren we niets uit dit gesprek.
-    const gewist = { transcript: null, samenvattingRuw: null, transcriptBewarenTot: null } as const;
+    const gewist = { transcript: null, samenvattingRuw: null, transcriptBewarenTot: null, transcriptGewistOp: new Date() };
     const citaatOk = citaatKomtVoor(uitkomst.toestemming_citaat, transcript);
     const zegtNee = uitkomst.toestemming === 'geweigerd' || uitkomst.toestemming === 'ingetrokken';
     if (toestemmingNodig) {
@@ -185,6 +187,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
           await leggToestemmingVast(tx, { employeeId: medewerker.id, besluit: 'geweigerd', bron: 'gesprek', callId });
           await tx.update(calls).set({ samenvattingStatus: 'geweigerd', toestemmingStatus: 'geweigerd', ...gewist }).where(eq(calls.id, callId));
         });
+        await logGebeurtenis(db, callId, 'web', 'samenvatting:geweigerd');
         return { status: 'geweigerd' };
       }
       if (!(uitkomst.toestemming === 'gegeven' && citaatOk)) {
@@ -197,6 +200,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
           await leggToestemmingVast(tx, { employeeId: medewerker.id, besluit: 'ingetrokken', bron: 'gesprek', callId });
           await tx.update(calls).set({ samenvattingStatus: 'geweigerd', toestemmingStatus: 'ingetrokken', ...gewist }).where(eq(calls.id, callId));
         });
+        await logGebeurtenis(db, callId, 'web', 'samenvatting:toestemming_ingetrokken');
         return { status: 'geweigerd' };
       }
       // Het model denkt dat de toestemming is ingetrokken, maar het is niet te onderbouwen: niets opslaan, de beheerder kijkt mee.
@@ -276,6 +280,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
       await eindig('geweigerd', { toestemmingStatus: 'ingetrokken', ...gewist });
       return { status: 'geweigerd' };
     }
+    await logGebeurtenis(db, callId, 'web', 'samenvatting:klaar');
     return { status: 'klaar', ...tellers };
   } catch (e) {
     const fout = (e as Error).message.slice(0, 500);

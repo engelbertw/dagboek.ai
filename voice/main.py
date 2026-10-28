@@ -16,14 +16,19 @@ from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 load_dotenv()
 
 import calls
+import logconfig
 import opschoning
+
+logconfig.instellen()
 
 async def _opschoon_lus() -> None:
     while True:
         try:
-            await asyncio.to_thread(opschoning.ruim_op)
+            gewist, mislukt = await asyncio.to_thread(opschoning.ruim_op_detail)
+            await asyncio.to_thread(opschoning.meld_run, gewist, mislukt)
         except Exception as e:
-            logger.error(f"Opschoning mislukt: {type(e).__name__}: {e}")
+            logger.error(f"Opschoning mislukt: {type(e).__name__}")
+            await asyncio.to_thread(opschoning.meld_run, 0, 1, type(e).__name__)
         await asyncio.sleep(6 * 3600)
 
 

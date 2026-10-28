@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { ApiFout } from './api';
+import { ApiFout, api } from './api';
 
 export function useLaden<T>(laad: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData] = useState<T | null>(null);
@@ -31,4 +31,16 @@ export function Badge({ children, soort }: { children: ReactNode; soort?: string
 
 export function Leeg({ children }: { children: ReactNode }) {
   return <p className="leeg">{children}</p>;
+}
+
+/** Waarschuwingen over de werking van het systeem (opschoning, planning) die een beheerder niet mag missen. */
+export function Systeemstatus() {
+  const { data } = useLaden(() => api<{ waarschuwingen: string[] }>('GET', '/systeem/status'));
+  if (!data?.waarschuwingen.length) return null;
+  return (
+    <section className="melding fout" role="alert" aria-label="Waarschuwingen">
+      <strong>Let op</strong>
+      <ul style={{ margin: '4px 0 0', paddingLeft: 20 }}>{data.waarschuwingen.map((w) => <li key={w}>{w}</li>)}</ul>
+    </section>
+  );
 }

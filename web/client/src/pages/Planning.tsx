@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { DAGEN, api, type Medewerker, type Planning as PlanningData } from '../api';
-import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+import { Badge, Leeg, Melding, Systeemstatus, Veld, foutTekst, useLaden } from '../ui';
 
 interface Waarden { naam: string; dagen: number[]; tijden: string[]; maxPogingen: number; employeeIds: string[]; gespreksinstructie: string | null }
 const LEEG: Waarden = { naam: '', dagen: [1, 2, 3, 4, 5], tijden: ['09:00'], maxPogingen: 2, employeeIds: [], gespreksinstructie: null };
@@ -107,6 +107,7 @@ export function Planning() {
 
   return (
     <div className="stapel">
+      <Systeemstatus />
       <div className="rij spreid">
         <div><h1>Planning</h1><p className="zacht">Wanneer wie wordt gebeld. Eén planning kan meerdere personen en tijden hebben.</p></div>
         <button className="primair" onClick={() => setBewerk(bewerk === 'nieuw' ? null : 'nieuw')}>{bewerk === 'nieuw' ? 'Annuleren' : 'Nieuwe planning'}</button>

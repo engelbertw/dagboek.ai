@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, type Houding } from '../api';
-import { Melding, Veld, foutTekst, useLaden } from '../ui';
+import { Melding, Systeemstatus, Veld, foutTekst, useLaden } from '../ui';
 
 function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitleg: string; label: string; pad: string; rijen: number }) {
   const huidig = useLaden(() => api<Houding>('GET', pad));
@@ -33,6 +33,7 @@ function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitle
 export function Instellingen() {
   return (
     <div className="stapel">
+      <Systeemstatus />
       <div><h1>Instellingen</h1><p className="zacht">Algemene instellingen voor alle gesprekken. Een planning kan een eigen gespreksinstructie krijgen; zonder eigen instructie geldt de algemene.</p></div>
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />
