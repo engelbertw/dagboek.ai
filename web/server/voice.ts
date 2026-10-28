@@ -24,6 +24,17 @@ export interface Onderwerp {
 export type BelResultaat = { gebeld: true; call_id: string } | { gebeld: false; reden: string; onzeker?: boolean };
 export type VoiceClient = (opdracht: BelOpdracht) => Promise<BelResultaat>;
 
+/** Welke velden voice afwees en waarom (alleen veldnaam en regel, nooit de ingevoerde waarde). */
+async function validatieDetail(r: Response): Promise<string> {
+  try {
+    const { detail } = (await r.json()) as { detail?: { loc?: unknown[]; msg?: string }[] };
+    const delen = (detail ?? []).slice(0, 3).map((d) => `${(d.loc ?? []).filter((x) => x !== 'body').join('.')}: ${d.msg ?? '?'}`);
+    return delen.length ? ` (${delen.join('; ')})` : '';
+  } catch {
+    return '';
+  }
+}
+
 export function maakVoiceClient(config: Config): VoiceClient {
   return async (opdracht) => {
     if (!config.voiceUrl || !config.voiceAdminToken) return { gebeld: false, reden: 'voice-service is niet geconfigureerd' };
@@ -34,7 +45,7 @@ export function maakVoiceClient(config: Config): VoiceClient {
         body: JSON.stringify(opdracht),
         signal: AbortSignal.timeout(30_000),
       });
-      if (!r.ok) return { gebeld: false, reden: `voice-service gaf ${r.status}`, onzeker: r.status >= 500 };
+      if (!r.ok) return { gebeld: false, reden: `voice-service gaf ${r.status}${r.status === 422 ? await validatieDetail(r) : ''}`, onzeker: r.status >= 500 };
       return (await r.json()) as BelResultaat;
     } catch (e) {
       return { gebeld: false, reden: `voice-service niet bereikbaar (${(e as Error).name})`, onzeker: true };
