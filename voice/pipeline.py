@@ -95,6 +95,11 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
         logger.error(f"Onbekende opdracht {call_id!r}, verbinding gesloten")
         await websocket.close(code=1008)
         return
+    if spec.get("status") in ("gesprek", "gesproken", "onderbroken"):
+        # Elk gesprek heeft precies één websocket; een tweede verbinding zou het gesprek dubbel voeren en dubbel melden.
+        logger.warning(f"Opdracht {call_id} heeft al een verbinding gehad, extra verbinding geweigerd")
+        await websocket.close(code=1008)
+        return
     calls.update_opdracht(call_id, status="gesprek", stream_sid=stream_sid)
     await asyncio.to_thread(calls.rapporteer, call_id, "gesprek")
 
@@ -142,8 +147,25 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
         params=PipelineParams(audio_in_sample_rate=8000, audio_out_sample_rate=8000, allow_interruptions=True),
     )
 
+    checkpoint_taak: list[asyncio.Task] = []
+
+    async def _checkpoints() -> None:
+        """Elke paar seconden het (gemaskeerde) gesprek tot nu toe bewaren, zodat een afgebroken gesprek niet alles verliest."""
+        laatste = -1
+        while True:
+            await asyncio.sleep(5)
+            try:
+                berichten = context.get_messages() if hasattr(context, "get_messages") else context.messages
+                if len(berichten) != laatste:
+                    laatste = len(berichten)
+                    schoon = [{**m, "content": maskeer(m["content"])} if isinstance(m, dict) and isinstance(m.get("content"), str) else m for m in berichten]
+                    await asyncio.to_thread(calls.schrijf_checkpoint, call_id, [m for m in schoon if isinstance(m, dict) and m.get("role") in ("assistant", "user")])
+            except Exception as e:
+                logger.warning(f"Checkpoint mislukt: {type(e).__name__}")
+
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
+        checkpoint_taak.append(asyncio.create_task(_checkpoints()))
         logger.info(f"Client verbonden (prompt {PROMPT_VERSION})")
         groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")))
         # Geen handmatige context.add_message: de assistant-aggregator vangt een TTSSpeakFrame zelf op.
@@ -152,6 +174,8 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
     @transport.event_handler("on_client_disconnected")
     async def on_client_disconnected(transport, client):
         logger.info("Client verbroken")
+        for t in checkpoint_taak:
+            t.cancel()
         knelpunten = [naam for naam, fired in (
             ("stilte_na_agent", silence_timeout.fired), ("geen_tijdige_reactie", turn_watchdog.fired),
             ("stt_geen_transcriptie", stt_timeout.fired),
@@ -159,6 +183,7 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
         transcript = _write_transcript(call_id, stream_sid, context, knelpunten)
         calls.update_opdracht(call_id, status="gesproken", afgerond_om=datetime.now().timestamp(), afgesloten_door_model=afsluiting.gevraagd)
         await asyncio.to_thread(calls.rapporteer, call_id, "gesproken", transcript=transcript)
+        await asyncio.to_thread(calls.wis_checkpoint, call_id)
         await worker.cancel()
 
     runner = WorkerRunner(handle_sigint=False, force_gc=True)

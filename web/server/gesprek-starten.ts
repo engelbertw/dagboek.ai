@@ -4,6 +4,7 @@ import { leesHouding, leesInstructie } from './instellingen.js';
 import { calls, employees, openItems, projects, schedules, topics, updates, type GespreksOnderwerp } from './schema.js';
 import { vandaagNL } from './samenvatten.js';
 import { puntenVoorGesprek } from './voor-gesprek.js';
+import { zetStatus } from './gesprek-status.js';
 import type { Onderwerp, VoiceClient } from './voice.js';
 
 export interface PlanningInfo { scheduleId: string; slotStart: Date; poging: number }
@@ -45,13 +46,17 @@ export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }
   }).onConflictDoNothing().returning();
   if (!call) return { ok: false, status: 409, fout: 'Dit gesprek is al gestart' };
 
+  // Vlak vóór de aanroep naar 'verzenden': vanaf hier is niet meer zeker of er gebeld is, ook als het antwoord uitblijft.
+  if (!(await zetStatus(db, call.id, 'verzenden'))) return { ok: false, status: 409, fout: 'Dit gesprek is al gestart', callId: call.id };
   const resultaat = await voice({
     telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde, instructie,
   });
   if (!resultaat.gebeld) {
-    await db.update(calls).set({ status: 'mislukt', fout: resultaat.reden, afgerondOp: new Date() }).where(eq(calls.id, call.id));
+    // Bij een onzekere uitkomst (time-out) blijft de status 'verzenden': het herstel vraagt voice later wat er echt is gebeurd en belt nooit blind opnieuw.
+    if (!resultaat.onzeker) await zetStatus(db, call.id, 'mislukt', { fout: resultaat.reden, afgerondOp: new Date() });
     return { ok: false, status: 502, fout: resultaat.reden, callId: call.id };
   }
-  await db.update(calls).set({ status: 'belt', voiceCallId: resultaat.call_id, gestartOp: new Date() }).where(eq(calls.id, call.id));
+  // Een snellere melding van voice ('gesprek', 'gesproken') wordt hierdoor niet teruggedraaid.
+  await zetStatus(db, call.id, 'belt', { voiceCallId: resultaat.call_id, gestartOp: new Date() });
   return { ok: true, callId: call.id, onderwerpen: onderwerpen.length };
 }

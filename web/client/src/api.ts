@@ -22,7 +22,7 @@ export interface TopicDetail {
 }
 export interface Historie { id: string; vorigeSamenvatting: string; vorigeBesluiten: string; gewijzigdOp: string }
 export interface Planning { id: string; naam: string; dagen: number[]; tijden: string[]; actief: boolean; maxPogingen: number; employeeIds: string[]; gespreksinstructie: string | null }
-export type CallStatus = 'gepland' | 'belt' | 'gesprek' | 'gesproken' | 'niet_bereikt' | 'voicemail' | 'mislukt';
+export type CallStatus = 'gepland' | 'verzenden' | 'onderbroken' | 'belt' | 'gesprek' | 'gesproken' | 'niet_bereikt' | 'voicemail' | 'mislukt';
 export type SamenvattingStatus = 'geen' | 'bezig' | 'klaar' | 'geen_inhoud' | 'geweigerd' | 'onduidelijk' | 'mislukt';
 export interface GesprekRegel { id: string; status: CallStatus; bron: string; fout: string | null; samenvattingStatus: SamenvattingStatus; samenvattingFout: string | null; gestartOp: string | null; afgerondOp: string | null; createdAt: string; employeeId: string; employeeNaam: string }
 export interface Gesprek extends GesprekRegel { transcript: { role: string; content: string }[] | null }

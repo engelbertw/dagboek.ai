@@ -12,6 +12,7 @@ import type { Db } from './db.js';
 import { calls, employees, openItems, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
+import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
 import { bewaarHouding, bewaarInstructie, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
@@ -57,7 +58,7 @@ const actieVelden = {
   deadline: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNaN(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d, 'Ongeldige datum').nullable().optional(),
 };
 const resultaatBody = z.object({
-  status: z.enum(['belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt']),
+  status: z.enum(['belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt', 'onderbroken']),
   transcript: z.unknown().optional(), twilioSid: z.string().max(100).optional(), fout: z.string().max(500).optional(),
 });
 
@@ -412,15 +413,15 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   app.post('/api/intern/calls/:id/resultaat', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
     const b = resultaatBody.parse(req.body);
-    const eind = ['gesproken', 'niet_bereikt', 'voicemail', 'mislukt'].includes(b.status);
-    const [bestaand] = await db.select({ status: calls.status }).from(calls).where(eq(calls.id, id));
+    const eind = EINDSTATUSSEN.includes(b.status);
+    const [bestaand] = await db.select({ id: calls.id }).from(calls).where(eq(calls.id, id));
     if (!bestaand) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
-    // Een eindstatus wordt niet meer overschreven door een late, tragere melding.
-    if (['gesproken', 'niet_bereikt', 'voicemail', 'mislukt'].includes(bestaand.status) && !(b.status === 'gesproken' && bestaand.status !== 'gesproken')) return { ok: true, genegeerd: true };
-    await db.update(calls).set({
-      status: b.status, twilioSid: b.twilioSid, fout: b.fout, ...(b.transcript !== undefined ? { transcript: b.transcript } : {}),
+    // Eén voorwaardelijke UPDATE: een dubbele, te late of omgekeerde melding wordt genegeerd en kan een nieuwere status nooit overschrijven.
+    const gewijzigd = await zetStatus(db, id, b.status, {
+      twilioSid: b.twilioSid, fout: b.fout, ...(b.transcript !== undefined ? { transcript: b.transcript } : {}),
       ...(eind ? { afgerondOp: new Date() } : {}),
-    }).where(eq(calls.id, id));
+    });
+    if (!gewijzigd) return { ok: true, genegeerd: true };
     if (b.status === 'gesproken') achtergrond(samenvattenGesprek({ db, llm }, id));
     return { ok: true };
   });

@@ -48,7 +48,7 @@ export const calls = pgTable('calls', {
   id: id(),
   employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   status: text('status', {
-    enum: ['gepland', 'belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt'],
+    enum: ['gepland', 'verzenden', 'belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt', 'onderbroken'],
   }).notNull().default('gepland'),
   bron: text('bron', { enum: ['handmatig', 'schema'] }).notNull().default('handmatig'),
   scheduleId: uuid('schedule_id'),
@@ -66,6 +66,8 @@ export const calls = pgTable('calls', {
   samenvattingFout: text('samenvatting_fout'),
   samenvattingRuw: jsonb('samenvatting_ruw'),
   samenvattingGestartOp: timestamp('samenvatting_gestart_op', { withTimezone: true }),
+  statusGewijzigdOp: timestamp('status_gewijzigd_op', { withTimezone: true }).notNull().defaultNow(),
+  samenvattingPogingen: integer('samenvatting_pogingen').notNull().default(0),
   gestartOp: timestamp('gestart_op', { withTimezone: true }),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
   createdAt: createdAt(),

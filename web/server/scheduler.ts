@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { startGesprek } from './gesprek-starten.js';
+import { LOPENDE_STATUSSEN } from './gesprek-status.js';
 import { calls, employees, instellingen, scheduleEmployees, schedules } from './schema.js';
 import type { VoiceClient } from './voice.js';
 
@@ -88,7 +89,7 @@ export async function tik(
 
   // Wie al in gesprek is (of net gebeld wordt) slaan we over, ook als dat voor een andere planning of handmatig was.
   const recent = await db.select({ employeeId: calls.employeeId }).from(calls)
-    .where(and(inArray(calls.status, ['gepland', 'belt', 'gesprek']), gte(calls.createdAt, new Date(nu.getTime() - 20 * MINUUT))));
+    .where(and(inArray(calls.status, LOPENDE_STATUSSEN), gte(calls.createdAt, new Date(nu.getTime() - 20 * MINUUT))));
   const bezig = new Set(recent.map((r) => r.employeeId));
   const unieke = new Set<string>();
   let eerste = true;
@@ -108,18 +109,28 @@ export async function tik(
   return uitkomst;
 }
 
-let loopt = false;
-/** Draait tik() elke halve minuut. Een tik die nog bezig is (door de pauzes) wordt niet dubbel gestart. */
-export function startScheduler(deps: { db: Db; voice: VoiceClient }, elkeMs = 30_000): () => void {
-  const lus = async () => {
-    if (loopt) return;
-    loopt = true;
-    try {
-      const r = await tik(deps);
-      if (r.gestart || r.mislukt) console.log(`Planning: ${r.gestart} gesprek(ken) gestart, ${r.mislukt} mislukt`);
-    } catch (e) { console.error('Planning: tik mislukt', e); } finally { loopt = false; }
+export interface SchedulerHandle { stop(): Promise<void> }
+
+/** Draait tik() elke halve minuut. Een tik die nog bezig is (door de pauzes) wordt niet dubbel gestart; stop() wacht op een lopende tik. */
+export function startScheduler(deps: { db: Db; voice: VoiceClient }, elkeMs = 30_000): SchedulerHandle {
+  let lopend: Promise<void> | null = null;
+  let gestopt = false;
+  const lus = () => {
+    if (lopend || gestopt) return;
+    lopend = (async () => {
+      try {
+        const r = await tik(deps, new Date());
+        if (r.gestart || r.mislukt) console.log(`Planning: ${r.gestart} gesprek(ken) gestart, ${r.mislukt} mislukt`);
+      } catch (e) { console.error('Planning: tik mislukt', e); } finally { lopend = null; }
+    })();
   };
-  const timer = setInterval(() => void lus(), elkeMs);
+  const timer = setInterval(lus, elkeMs);
   timer.unref();
-  return () => clearInterval(timer);
+  return {
+    // Een tik die tijdens het afsluiten nog pauzeert tussen gesprekken, wordt niet afgewacht: de rest wordt door het inhaalvenster later gestart.
+    async stop() {
+      gestopt = true; clearInterval(timer);
+      if (lopend) await Promise.race([lopend, new Promise((r) => setTimeout(r, 25_000).unref())]);
+    },
+  };
 }

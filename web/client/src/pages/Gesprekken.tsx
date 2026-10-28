@@ -3,7 +3,7 @@ import { api, datumTijd, type Gesprek, type GesprekRegel, type SamenvattingStatu
 import { Badge, Leeg, Melding, foutTekst, useLaden } from '../ui';
 
 const LABEL: Record<string, string> = {
-  gepland: 'gepland', belt: 'belt', gesprek: 'in gesprek', gesproken: 'gesproken', niet_bereikt: 'niet bereikt', voicemail: 'voicemail', mislukt: 'mislukt',
+  gepland: 'gepland', verzenden: 'wordt verzonden', onderbroken: 'onderbroken', belt: 'belt', gesprek: 'in gesprek', gesproken: 'gesproken', niet_bereikt: 'niet bereikt', voicemail: 'voicemail', mislukt: 'mislukt',
 };
 
 const SAMENVATTING: Record<SamenvattingStatus, { label: string; uitleg: string }> = {

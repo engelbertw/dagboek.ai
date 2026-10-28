@@ -1,6 +1,7 @@
 import asyncio
 import hmac
 import os
+import signal
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -26,11 +27,41 @@ async def _opschoon_lus() -> None:
         await asyncio.sleep(6 * 3600)
 
 
+async def _herstel_lus() -> None:
+    """Elke minuut: eerder mislukte meldingen aan de web-service herhalen en afgebroken gesprekken melden."""
+    while True:
+        try:
+            await asyncio.to_thread(calls.herstel_opdrachten)
+            await asyncio.to_thread(calls.herhaal_rapporten)
+        except Exception as e:
+            logger.error(f"Herstel mislukt: {type(e).__name__}")
+        await asyncio.sleep(60)
+
+
+# Bij een herstart (deploy) neemt de service geen nieuwe gesprekken meer aan; lopende gesprekken lopen door tot het platform stopt.
+DRAINING = False
+
+
+def _bij_sigterm(vorige):
+    def handler(signum, frame):
+        global DRAINING
+        DRAINING = True
+        logger.info("SIGTERM ontvangen: geen nieuwe gesprekken meer")
+        if callable(vorige):
+            vorige(signum, frame)
+    return handler
+
+
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
-    taak = asyncio.create_task(_opschoon_lus())
+    try:
+        signal.signal(signal.SIGTERM, _bij_sigterm(signal.getsignal(signal.SIGTERM)))
+    except ValueError:  # niet in de hoofdthread (tests)
+        pass
+    taken = [asyncio.create_task(_opschoon_lus()), asyncio.create_task(_herstel_lus())]
     yield
-    taak.cancel()
+    for t in taken:
+        t.cancel()
 
 
 app = FastAPI(lifespan=_lifespan)
@@ -99,7 +130,8 @@ async def status_callback(request: Request):
     form = await request.form()
     twilio_status = form.get("CallStatus", "")
     spec = calls.lees_opdracht(call_id)
-    if spec is not None and twilio_status in {"busy", "no-answer", "failed", "canceled"}:
+    # Een melding die te laat komt (het gesprek is al verbonden of afgerond) mag de uitkomst niet terugdraaien.
+    if spec is not None and spec.get("status") not in ("gesprek", "gesproken") and twilio_status in {"busy", "no-answer", "failed", "canceled"}:
         calls.update_opdracht(call_id, status="niet_bereikt", twilio_status=twilio_status)
         calls.rapporteer(call_id, "mislukt" if twilio_status == "failed" else "niet_bereikt", fout=f"Twilio: {twilio_status}", twilioSid=form.get("CallSid"))
     logger.info(f"Status opdracht {call_id}: {twilio_status}")
@@ -139,17 +171,43 @@ async def bel(verzoek: BelVerzoek, authorization: str = Header(default="")):
     """Start een gesprek. Fase 0: alleen voor handmatige tests, achter ADMIN_TOKEN. De scheduler (fase 2) roept dezelfde functies aan."""
     if not ADMIN_TOKEN or not hmac.compare_digest(authorization, f"Bearer {ADMIN_TOKEN}"):
         raise HTTPException(status_code=401, detail="Niet toegestaan")
+    if DRAINING:
+        raise HTTPException(status_code=503, detail="herstart bezig, probeer het zo opnieuw")
     nummer = calls.normaliseer_nl_nummer(verzoek.telefoonnummer)
     if not nummer:
         return {"gebeld": False, "reden": "ongeldig telefoonnummer"}
+    call_id = ""
+    if verzoek.web_call_id:
+        # Idempotent op web_call_id: een herhaald verzoek (time-out, retry) belt nooit een tweede keer.
+        try:
+            nieuw, call_id = calls.claim_web_call(verzoek.web_call_id)
+        except ValueError:
+            return {"gebeld": False, "reden": "ongeldige web_call_id"}
+        if not nieuw:
+            logger.info(f"Herhaald verzoek (web_call_id {verzoek.web_call_id}), niet opnieuw gebeld")
+            return calls.uitkomst_van(call_id)
     mag, reden = calls.mag_bellen(nummer)
     if not mag:
+        if call_id:
+            calls.maak_opdracht(nummer, verzoek.medewerker, [], verzoek.toestemming_nodig, verzoek.web_call_id, call_id=call_id)
+            calls.update_opdracht(call_id, status="mislukt", fout=reden, geweigerd=True, onderwerpen=[])
         return {"gebeld": False, "reden": reden}
-    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie)
+    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie, call_id=call_id)
     resultaat = calls.start_gesprek(call_id)
-    if not resultaat.get("gebeld"):
+    if not resultaat.get("gebeld") and not resultaat.get("onzeker"):
         calls.rapporteer(call_id, "mislukt", fout=resultaat.get("reden"))
     return resultaat
+
+
+@app.get("/bel/{web_call_id}")
+async def bel_opzoeken(web_call_id: str, authorization: str = Header(default="")):
+    """Laat de web-service navragen wat er met een eerder verzoek is gebeurd (na een time-out of crash), zonder iets te starten."""
+    if not ADMIN_TOKEN or not hmac.compare_digest(authorization, f"Bearer {ADMIN_TOKEN}"):
+        raise HTTPException(status_code=401, detail="Niet toegestaan")
+    gevonden = calls.opzoeken(web_call_id)
+    if gevonden is None:
+        raise HTTPException(status_code=404, detail="Onbekend")
+    return gevonden
 
 
 @app.websocket("/ws")
