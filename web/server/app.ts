@@ -16,7 +16,7 @@ import { foutcode, log } from './log.js';
 import { opschoningStatus } from './opschoning.js';
 import { logGebeurtenis } from './call-log.js';
 import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
-import { JiraFout, geldigProject, schoneSite, type JiraClient, type JiraPunt } from './jira.js';
+import { JiraFout, geldigProject, geldigTeamId, schoneSite, type JiraClient, type JiraPunt } from './jira.js';
 import { MOTOREN, bewaarGespreksmotor, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
@@ -352,7 +352,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, achtergrond 
   // ── Jira: open punten als ticket ────────────────────────────────────────
   const jiraStatus = async () => {
     const i = await leesJira(db);
-    return { site: i?.site ?? '', project: i?.project ?? '', issuetype: i?.issuetype ?? 'Task', inloggegevens: !!jira?.beschikbaar(), geconfigureerd: !!(i && jira?.beschikbaar()) };
+    return { site: i?.site ?? '', project: i?.project ?? '', issuetype: i?.issuetype ?? 'Task', teamId: i?.teamId ?? '', inloggegevens: !!jira?.beschikbaar(), geconfigureerd: !!(i && jira?.beschikbaar()) };
   };
   const jiraFoutAntwoord = (e: unknown, reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
     if (e instanceof JiraFout) return reply.code(e.status === 401 || e.status === 403 ? 502 : e.status === 429 ? 503 : e.status === 404 ? 422 : e.status).send({ fout: e.message });
@@ -360,11 +360,12 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, achtergrond 
   };
   app.get('/api/instellingen/jira', async () => jiraStatus());
   app.put('/api/instellingen/jira', async (req, reply) => {
-    const b = z.object({ site: z.string().max(200), project: z.string().trim().toUpperCase().max(10), issuetype: nonEmpty.max(50) }).parse(req.body);
+    const b = z.object({ site: z.string().max(200), project: z.string().trim().toUpperCase().max(10), issuetype: nonEmpty.max(50), teamId: z.string().trim().max(40).default('') }).parse(req.body);
     const site = schoneSite(b.site);
     if (!site) return reply.code(400).send({ fout: 'Gebruik een Jira Cloud-site zoals naam.atlassian.net' });
     if (!geldigProject(b.project)) return reply.code(400).send({ fout: 'Een projectsleutel bestaat uit 2 tot 10 hoofdletters of cijfers, zoals PROJ' });
-    await bewaarJira(db, { site, project: b.project, issuetype: b.issuetype });
+    if (b.teamId && !geldigTeamId(b.teamId)) return reply.code(400).send({ fout: 'Een team-id ziet eruit als a9249ebd-cccb-4d5e-be27-fc98fdc877be' });
+    await bewaarJira(db, { site, project: b.project, issuetype: b.issuetype, ...(b.teamId ? { teamId: b.teamId } : {}) });
     return jiraStatus();
   });
   app.post('/api/instellingen/jira/test', async (_req, reply) => {

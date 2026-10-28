@@ -49,5 +49,5 @@ export const datum = (iso: string | null) => (iso ? new Date(iso).toLocaleDateSt
 export const datumTijd = (iso: string | null) =>
   iso ? new Date(iso).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 export const DAGEN = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
-export interface JiraInstelling { site: string; project: string; issuetype: string; inloggegevens: boolean; geconfigureerd: boolean }
+export interface JiraInstelling { site: string; project: string; issuetype: string; teamId: string; inloggegevens: boolean; geconfigureerd: boolean }
 export interface JiraUitkomst { id: string; status: 'voorbeeld' | 'aangemaakt' | 'gekoppeld' | 'overgeslagen' | 'fout'; reden?: string; sleutel?: string; url?: string; samenvatting?: string; eigenaar?: string | null; deadline?: string | null; project?: string }

@@ -185,4 +185,5 @@ Bij **Acties** kun je van een open punt (of alle zichtbare open punten) een Jira
 - Inloggegevens: `JIRA_EMAIL` en `JIRA_API_TOKEN` als variabelen op de web-service (nooit in de database). Gebruik een apart Atlassian-account; een token verloopt na een jaar. Optioneel `PUBLIC_URL` voor de link terug naar het dagboek.
 - Een punt krijgt nooit twee tickets: de ticketsleutel is uniek en elk ticket krijgt het label `dagboek-<id van het punt>`; voor het aanmaken wordt daarop gezocht, ook als een eerdere poging halverwege mislukte.
 - Punten die nog gecontroleerd moeten worden of al zijn afgerond worden overgeslagen. De eigenaar wordt alleen toegewezen als het e-mailadres van de medewerker precies één Jira-gebruiker oplevert.
+- Optioneel een team-id (veld Team): dat wordt dan aan elk ticket gekoppeld.
 - Migratie `015_jira.sql` voegt alleen kolommen toe.

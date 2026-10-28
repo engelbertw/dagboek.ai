@@ -74,6 +74,12 @@ describe('jira-client', () => {
     expect(fout.message).not.toContain('geheim-token');
   });
 
+  it('koppelt het ingestelde team aan het ticket', () => {
+    const team = 'a9249ebd-cccb-4d5e-be27-fc98fdc877be';
+    expect(bouwTicket({ ...INST, teamId: team }, PUNT).fields).toMatchObject({ customfield_10001: team });
+    expect(bouwTicket(INST, PUNT).fields).not.toHaveProperty('customfield_10001');
+  });
+
   it('begrenst en reinigt tekst uit het gesprek', () => {
     const t = bouwTicket(INST, { ...PUNT, tekst: `Doe dit\n\u0000nu ${'x'.repeat(400)}` });
     expect(t.fields.summary.length).toBeLessThanOrEqual(255);
@@ -106,6 +112,14 @@ describe('jira-koppeling in de app', () => {
     const r = (await t.api('PUT', '/api/instellingen/jira', { site: 'https://acme.atlassian.net', project: 'proj', issuetype: 'Task' })).json();
     expect(r).toMatchObject({ site: 'acme.atlassian.net', project: 'PROJ', geconfigureerd: true });
     expect(JSON.stringify(r)).not.toContain('token');
+  });
+
+  it('bewaart een team-id en weigert een ongeldig id', async () => {
+    const { t } = await met(nepJira().client);
+    const basis = { site: 'acme.atlassian.net', project: 'PROJ', issuetype: 'Story' };
+    expect((await t.api('PUT', '/api/instellingen/jira', { ...basis, teamId: 'geen-uuid' })).statusCode).toBe(400);
+    expect((await t.api('PUT', '/api/instellingen/jira', { ...basis, teamId: 'a9249ebd-cccb-4d5e-be27-fc98fdc877be' })).json()).toMatchObject({ teamId: 'a9249ebd-cccb-4d5e-be27-fc98fdc877be' });
+    expect((await t.api('PUT', '/api/instellingen/jira', basis)).json()).toMatchObject({ teamId: '' });
   });
 
   it('weigert tickets zolang Jira niet is ingesteld', async () => {

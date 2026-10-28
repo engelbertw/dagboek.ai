@@ -1,6 +1,11 @@
 import type { Config } from './config.js';
 
-export interface JiraInstellingen { site: string; project: string; issuetype: string }
+/** `teamId`: het id van het Team in Jira (veld Team); leeg betekent geen team koppelen. */
+export interface JiraInstellingen { site: string; project: string; issuetype: string; teamId?: string }
+
+/** Het Team-veld van Jira Cloud heeft in deze omgeving dit veldnummer. */
+export const TEAM_VELD = 'customfield_10001';
+export const geldigTeamId = (t: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t);
 
 /** Wat er van een open punt naar Jira gaat. Nooit gespreksinhoud: alleen de tekst van het punt zelf. */
 export interface JiraPunt {
@@ -57,6 +62,7 @@ export function bouwTicket(i: JiraInstellingen, p: JiraPunt, accountId?: string)
         ],
       },
       labels: ['dagboek', jiraLabel(p.id)],
+      ...(i.teamId ? { [TEAM_VELD]: i.teamId } : {}),
       ...(p.deadline ? { duedate: p.deadline } : {}),
       ...(accountId ? { assignee: { accountId } } : {}),
     },

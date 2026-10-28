@@ -55,11 +55,12 @@ function Jira() {
   const [site, setSite] = useState('');
   const [project, setProject] = useState('');
   const [issuetype, setIssuetype] = useState('Task');
+  const [teamId, setTeamId] = useState('');
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
-  useEffect(() => { if (huidig.data) { setSite(huidig.data.site); setProject(huidig.data.project); setIssuetype(huidig.data.issuetype); } }, [huidig.data]);
+  useEffect(() => { if (huidig.data) { setSite(huidig.data.site); setProject(huidig.data.project); setIssuetype(huidig.data.issuetype); setTeamId(huidig.data.teamId); } }, [huidig.data]);
   async function bewaar(e: FormEvent) {
     e.preventDefault();
-    try { await api('PUT', '/instellingen/jira', { site, project, issuetype }); setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); huidig.ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
+    try { await api('PUT', '/instellingen/jira', { site, project, issuetype, teamId }); setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); huidig.ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
   }
   async function test() {
     try { const r = await api<{ naam: string; project: string }>('POST', '/instellingen/jira/test'); setMelding({ tekst: `Verbonden als ${r.naam}, project ${r.project}.`, soort: 'ok' }); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
@@ -73,6 +74,7 @@ function Jira() {
         <Veld label="Projectsleutel"><input value={project} onChange={(e) => setProject(e.target.value)} placeholder="PROJ" /></Veld>
         <Veld label="Issuetype"><input value={issuetype} onChange={(e) => setIssuetype(e.target.value)} placeholder="Task" /></Veld>
       </div>
+      <Veld label="Team-id (optioneel, wordt aan elk ticket gekoppeld)"><input value={teamId} onChange={(e) => setTeamId(e.target.value)} placeholder="a9249ebd-cccb-4d5e-be27-fc98fdc877be" /></Veld>
       <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
       <div className="rij"><button type="submit" className="primair">Opslaan</button><button type="button" onClick={() => void test()}>Verbinding testen</button></div>
     </form>
