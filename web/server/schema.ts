@@ -54,6 +54,7 @@ export const calls = pgTable('calls', {
   scheduleId: uuid('schedule_id'),
   slotStart: timestamp('slot_start', { withTimezone: true }),
   poging: integer('poging').notNull().default(1),
+  instructie: text('instructie'),
   voiceCallId: text('voice_call_id'),
   twilioSid: text('twilio_sid'),
   transcript: jsonb('transcript'),
@@ -127,6 +128,7 @@ export const instellingen = pgTable('instellingen', {
 export const schedules = pgTable('schedules', {
   id: id(),
   naam: text('naam').notNull().default(''),
+  gespreksinstructie: text('gespreksinstructie'),
   dagen: integer('dagen').array().notNull().default([1, 2, 3, 4, 5]),
   tijden: text('tijden').array().notNull().default([]),
   actief: boolean('actief').notNull().default(true),

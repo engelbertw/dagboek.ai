@@ -2,14 +2,23 @@ import { useState, type FormEvent } from 'react';
 import { DAGEN, api, type Medewerker, type Planning as PlanningData } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
-interface Waarden { naam: string; dagen: number[]; tijden: string[]; maxPogingen: number; employeeIds: string[] }
-const LEEG: Waarden = { naam: '', dagen: [1, 2, 3, 4, 5], tijden: ['09:00'], maxPogingen: 2, employeeIds: [] };
+interface Waarden { naam: string; dagen: number[]; tijden: string[]; maxPogingen: number; employeeIds: string[]; gespreksinstructie: string | null }
+const LEEG: Waarden = { naam: '', dagen: [1, 2, 3, 4, 5], tijden: ['09:00'], maxPogingen: 2, employeeIds: [], gespreksinstructie: null };
 
-function Formulier({ start, medewerkers, bewaar, annuleer, knop }: {
-  start: Waarden; medewerkers: Medewerker[]; bewaar: (w: Waarden) => Promise<void>; annuleer: () => void; knop: string;
+function Formulier({ start, medewerkers, algemeen, bewaar, annuleer, knop }: {
+  start: Waarden; medewerkers: Medewerker[]; algemeen: string; bewaar: (w: Waarden) => Promise<void>; annuleer: () => void; knop: string;
 }) {
   const [w, setW] = useState(start);
   const [fout, setFout] = useState<string | null>(null);
+  const [suggestie, setSuggestie] = useState<string | null>(null);
+  const [bezig, setBezig] = useState(false);
+  const eigen = w.gespreksinstructie !== null;
+
+  async function vraagSuggestie() {
+    setBezig(true); setSuggestie(null);
+    try { setSuggestie((await api<{ tekst: string }>('POST', '/plannings/suggestie', { employeeIds: w.employeeIds })).tekst); setFout(null); }
+    catch (err) { setFout(foutTekst(err)); } finally { setBezig(false); }
+  }
   const zet = <K extends keyof Waarden>(k: K, v: Waarden[K]) => setW((huidig) => ({ ...huidig, [k]: v }));
   const wissel = (lijst: number[], n: number) => (lijst.includes(n) ? lijst.filter((x) => x !== n) : [...lijst, n]);
   async function verstuur(e: FormEvent) {
@@ -56,6 +65,29 @@ function Formulier({ start, medewerkers, bewaar, annuleer, knop }: {
           ))}
         </div>
       </fieldset>
+      <fieldset className="stapel">
+        <legend>Gespreksinstructie</legend>
+        <div className="rij">
+          <label className="rij"><input type="radio" name="instructie" checked={!eigen} onChange={() => zet('gespreksinstructie', null)} style={{ width: 'auto', minHeight: 0 }} />Algemene instructie gebruiken (uit Instellingen)</label>
+          <label className="rij"><input type="radio" name="instructie" checked={eigen} onChange={() => zet('gespreksinstructie', w.gespreksinstructie ?? algemeen)} style={{ width: 'auto', minHeight: 0 }} />Eigen instructie voor deze planning</label>
+        </div>
+        {!eigen && <details><summary className="zacht klein">Bekijk de algemene instructie</summary><p className="zacht klein" style={{ whiteSpace: 'pre-wrap' }}>{algemeen}</p></details>}
+        {eigen && <textarea rows={7} aria-label="Eigen gespreksinstructie" value={w.gespreksinstructie ?? ''} onChange={(e) => zet('gespreksinstructie', e.target.value)} maxLength={4000} />}
+        <div className="rij">
+          <button type="button" onClick={vraagSuggestie} disabled={bezig || !w.employeeIds.length} title={w.employeeIds.length ? '' : 'Kies eerst wie er gebeld wordt'}>{bezig ? 'Bezig…' : 'Suggestie vragen'}</button>
+          <span className="zacht klein">Gebaseerd op de onderwerpen van de gekozen personen. Er wordt niets opgeslagen zonder dat je het overneemt.</span>
+        </div>
+        {suggestie && (
+          <div className="paneel stapel" role="region" aria-label="Suggestie">
+            <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{suggestie}</p>
+            <div className="rij">
+              <button type="button" className="primair" onClick={() => { zet('gespreksinstructie', suggestie); setSuggestie(null); }}>Overnemen</button>
+              <button type="button" onClick={vraagSuggestie} disabled={bezig}>Opnieuw</button>
+              <button type="button" className="tekstknop" onClick={() => setSuggestie(null)}>Verwerpen</button>
+            </div>
+          </div>
+        )}
+      </fieldset>
       <Melding tekst={fout} />
       <div className="rij"><button className="primair" type="submit" disabled={!w.dagen.length || !w.employeeIds.length}>{knop}</button><button type="button" onClick={annuleer}>Annuleren</button></div>
     </form>
@@ -65,6 +97,7 @@ function Formulier({ start, medewerkers, bewaar, annuleer, knop }: {
 export function Planning() {
   const lijst = useLaden(() => api<PlanningData[]>('GET', '/plannings'));
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
+  const algemeen = useLaden(() => api<{ waarde: string }>('GET', '/instellingen/gespreksinstructie'));
   const schakelaar = useLaden(() => api<{ aan: boolean }>('GET', '/instellingen/automatisch-bellen'));
   const [bewerk, setBewerk] = useState<string | 'nieuw' | null>(null);
   const [fout, setFout] = useState<string | null>(null);
@@ -92,17 +125,17 @@ export function Planning() {
       </section>
 
       <Melding tekst={fout ?? lijst.fout} />
-      {bewerk === 'nieuw' && <Formulier start={LEEG} medewerkers={alle} knop="Planning opslaan" annuleer={() => setBewerk(null)}
+      {bewerk === 'nieuw' && <Formulier start={LEEG} medewerkers={alle} algemeen={algemeen.data?.waarde ?? ''} knop="Planning opslaan" annuleer={() => setBewerk(null)}
         bewaar={async (w) => { await api('POST', '/plannings', w); setBewerk(null); lijst.ververs(); }} />}
       {lijst.data?.length === 0 && bewerk !== 'nieuw' && <Leeg>Nog geen planning. Maak er een met ‘Nieuwe planning’.</Leeg>}
       {lijst.data?.map((p) => bewerk === p.id ? (
-        <Formulier key={p.id} start={{ naam: p.naam, dagen: p.dagen, tijden: p.tijden, maxPogingen: p.maxPogingen, employeeIds: p.employeeIds }} medewerkers={alle} knop="Wijzigingen opslaan" annuleer={() => setBewerk(null)}
+        <Formulier key={p.id} start={{ naam: p.naam, dagen: p.dagen, tijden: p.tijden, maxPogingen: p.maxPogingen, employeeIds: p.employeeIds, gespreksinstructie: p.gespreksinstructie }} medewerkers={alle} algemeen={algemeen.data?.waarde ?? ''} knop="Wijzigingen opslaan" annuleer={() => setBewerk(null)}
           bewaar={async (w) => { await api('PATCH', `/plannings/${p.id}`, w); setBewerk(null); lijst.ververs(); }} />
       ) : (
         <div key={p.id} className="paneel stapel">
           <div className="rij spreid">
             <div>
-              <h3>{p.naam || 'Planning zonder naam'} {!p.actief && <Badge>uit</Badge>}</h3>
+              <h3>{p.naam || 'Planning zonder naam'} {!p.actief && <Badge>uit</Badge>} {p.gespreksinstructie && <Badge soort="wacht">eigen instructie</Badge>}</h3>
               <span className="zacht klein">{p.dagen.map((d) => DAGEN[d - 1]).join(' ')} om {p.tijden.join(' en ')} · {p.maxPogingen === 1 ? '1 poging' : `${p.maxPogingen} pogingen`}</span>
             </div>
             <div className="rij">

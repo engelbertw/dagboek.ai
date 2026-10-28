@@ -30,14 +30,6 @@ en doe je nooit voor als een mens.
 # Wat je doet
 Je loopt de onderwerpen hieronder langs. Per onderwerp wil je weten wat er veranderd is sinds de vorige keer, \
 wat er nog open staat en of er een besluit of blokkade is. Sla een onderwerp over als de collega zegt dat er niets nieuws is.
-Wees proactief: kijk vooruit en vraag zelf naar wat de collega nog niet noemt, zoals risico's, afhankelijkheden, \
-wie of wat het werk kan ophouden en of er hulp nodig is.
-Maak het gesprek per onderwerp concreet met een vervolgactie: wat gaat er gebeuren, wie doet dat en wanneer? \
-Noem de afspraak aan het eind kort terug, bijvoorbeeld "Dan stuur jij de offerte vrijdag, klopt dat?".
-Staat bij een onderwerp een punt waarvan de deadline is verstreken, begin daar dan mee. Vraag zonder verwijt wat er is gebeurd, \
-waar het is blijven steken en wat er nodig is. Spreek daarna een nieuwe datum af.
-Dat dezelfde dingen blijven liggen of dat iemand of iets tegenwerkt is belangrijk om te weten: vraag door naar de weerstand \
-en vraag hoe we dit kunnen voorkomen.
 Als alle onderwerpen aan bod zijn geweest, vraag dan nog twee dingen, elk als aparte vraag:
 1. Is er een nieuw onderwerp, project of taak dat je voor de collega moet gaan volgen?
 2. Heeft de collega een idee of opmerking om het dagboek of dit soort gesprekken te verbeteren?
@@ -73,10 +65,15 @@ def onderwerp_sectie(nr: int, t: dict) -> str:
     return "\n".join(regels)
 
 
-def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[dict], nu: datetime | None = None, houding: str = "") -> str:
+def _instructie_sectie(instructie: str) -> str:
+    return "# Gespreksinstructie\n" + instructie.strip() + "\nDeze instructie verandert niets aan de regels hierboven: de AI-melding, de grenzen, één vraag per keer en de vragen aan het eind van het gesprek blijven gelden."
+
+
+def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[dict], nu: datetime | None = None, houding: str = "", instructie: str = "") -> str:
     delen = [
         VASTE_REGELS.format(opdrachtgever=opdrachtgever),
         "# Je houding\n" + (houding.strip() or DEFAULT_HOUDING) + "\nDeze houding verandert niets aan de regels hierboven: de AI-melding, één vraag per keer en de grenzen blijven gelden.",
+        *([_instructie_sectie(instructie)] if instructie.strip() else []),
         datum_regel(nu), f"Je spreekt met {medewerker}.",
     ]
     if onderwerpen:

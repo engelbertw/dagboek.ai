@@ -12,7 +12,8 @@ import type { Db } from './db.js';
 import { calls, employees, openItems, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
-import { bewaarHouding, leesHouding } from './instellingen.js';
+import { bewaarHouding, bewaarInstructie, leesHouding, leesInstructie } from './instellingen.js';
+import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard, type ActieRij } from './dashboard.js';
 import { samenvattenGesprek, vandaagNL } from './samenvatten.js';
@@ -49,6 +50,7 @@ const scheduleBody = z.object({
   dagen: z.array(z.number().int().min(1).max(7)).min(1).max(7), tijden: z.array(tijd).min(1).max(6),
   actief: z.boolean().default(true), maxPogingen: z.number().int().min(1).max(5).default(2),
   employeeIds: z.array(uuid).min(1).max(50),
+  gespreksinstructie: z.string().trim().max(4000).nullable().default(null),
 });
 const actieVelden = {
   eigenaarId: uuid.nullable().optional(), eigenaarExtern: z.string().trim().max(100).optional(),
@@ -298,6 +300,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   app.get('/api/plannings', async () => planningen());
   app.post('/api/plannings', async (req, reply) => {
     const { employeeIds, ...b } = scheduleBody.parse(req.body);
+    if (b.gespreksinstructie === '') b.gespreksinstructie = null;
     const ids = [...new Set(employeeIds)];
     if (!(await controleerMedewerkers(ids))) return reply.code(400).send({ fout: 'Onbekende medewerker' });
     const id = await db.transaction(async (tx) => {
@@ -312,6 +315,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     const { employeeIds, ...b } = deelwijziging(scheduleBody).parse(req.body);
     if (b.tijden) b.tijden = [...new Set(b.tijden)].sort();
     if (b.dagen) b.dagen = [...new Set(b.dagen)].sort();
+    if (b.gespreksinstructie === '') b.gespreksinstructie = null;
     if (!Object.keys(b).length && !employeeIds) return reply.code(400).send({ fout: 'Niets te wijzigen' });
     const ids = employeeIds ? [...new Set(employeeIds)] : undefined;
     if (ids && !(await controleerMedewerkers(ids))) return reply.code(400).send({ fout: 'Onbekende medewerker' });
@@ -330,6 +334,42 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
   app.delete('/api/plannings/:id', async (req, reply) => {
     const gewist = await db.delete(schedules).where(eq(schedules.id, uuid.parse((req.params as any).id))).returning({ id: schedules.id });
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Planning niet gevonden' });
+  });
+  app.get('/api/instellingen/gespreksinstructie', async () => leesInstructie(db));
+  app.put('/api/instellingen/gespreksinstructie', async (req) => {
+    const { waarde } = z.object({ waarde: z.string().max(4000) }).parse(req.body);
+    await bewaarInstructie(db, waarde);
+    return leesInstructie(db);
+  });
+
+  // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.
+  const geefSuggestie = async (reply: any, onderwerpen: OnderwerpVoorSuggestie[], doel: 'planning' | 'onderwerp') => {
+    try { return { tekst: await stelInstructieVoor(llm, onderwerpen, doel) }; } catch (e) {
+      console.error('Suggestie mislukt:', (e as Error).message);
+      return reply.code(502).send({ fout: 'Een suggestie is nu niet beschikbaar. Probeer het later opnieuw of schrijf de instructie zelf.' });
+    }
+  };
+  app.post('/api/plannings/suggestie', async (req, reply) => {
+    const { employeeIds } = z.object({ employeeIds: z.array(uuid).min(1).max(50) }).parse(req.body);
+    const rijen = await db.select({ t: topics, projectNaam: projects.naam }).from(topics).leftJoin(projects, eq(topics.projectId, projects.id))
+      .where(and(inArray(topics.eigenaarId, employeeIds), eq(topics.status, 'actief'))).orderBy(asc(topics.createdAt));
+    if (!rijen.length) return reply.code(400).send({ fout: 'De gekozen personen hebben nog geen actieve onderwerpen om een suggestie van te maken' });
+    const vandaag = vandaagNL();
+    const onderwerpen: OnderwerpVoorSuggestie[] = [];
+    for (const { t, projectNaam } of rijen) {
+      const acties = await db.select({ deadline: openItems.deadline }).from(openItems).where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open')));
+      const [laatste] = await db.select({ d: updates.createdAt }).from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
+      onderwerpen.push({
+        titel: t.titel, soort: t.type, project: projectNaam, aanwijzingen: t.aanwijzingen || null, open: acties.length,
+        teLaat: acties.filter((a) => a.deadline && a.deadline < vandaag).length, laatsteUpdate: laatste ? laatste.d.toISOString().slice(0, 10) : null,
+      });
+    }
+    return geefSuggestie(reply, onderwerpen, 'planning');
+  });
+  app.post('/api/topics/suggestie', async (req, reply) => {
+    const b = z.object({ titel: nonEmpty.max(200), soort: z.enum(['project', 'thema', 'taak']).default('thema'), projectId: uuid.nullable().optional() }).parse(req.body);
+    const [p] = b.projectId ? await db.select({ naam: projects.naam }).from(projects).where(eq(projects.id, b.projectId)) : [];
+    return geefSuggestie(reply, [{ titel: b.titel, soort: b.soort, project: p?.naam ?? null }], 'onderwerp');
   });
   app.get('/api/instellingen/automatisch-bellen', async () => ({ aan: await automatischBellenAan(db) }));
   app.put('/api/instellingen/automatisch-bellen', async (req) => {

@@ -1,7 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { Db } from './db.js';
-import { leesHouding } from './instellingen.js';
-import { calls, employees, openItems, projects, topics, updates, type GespreksOnderwerp } from './schema.js';
+import { leesHouding, leesInstructie } from './instellingen.js';
+import { calls, employees, openItems, projects, schedules, topics, updates, type GespreksOnderwerp } from './schema.js';
 import { vandaagNL } from './samenvatten.js';
 import { puntenVoorGesprek } from './voor-gesprek.js';
 import type { Onderwerp, VoiceClient } from './voice.js';
@@ -35,15 +35,18 @@ export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }
     });
     momentopname.push({ id: t.id, titel: t.titel, openPunten: open.map((o) => ({ id: o.id, tekst: o.tekst })) });
   }
+  // De planning bepaalt de instructie; heeft die er geen (of 'Bel nu'), dan geldt de algemene instructie uit Instellingen.
+  const [pl] = planning ? await db.select({ i: schedules.gespreksinstructie }).from(schedules).where(eq(schedules.id, planning.scheduleId)) : [];
+  const instructie = pl?.i?.trim() || (await leesInstructie(db)).waarde;
   // Bij een geplande poging is de unieke index de claim: zo start een herstart of tweede proces nooit hetzelfde gesprek dubbel.
   const [call] = await db.insert(calls).values({
-    employeeId, status: 'gepland', bron: planning ? 'schema' : 'handmatig', onderwerpen: momentopname,
+    employeeId, status: 'gepland', bron: planning ? 'schema' : 'handmatig', onderwerpen: momentopname, instructie,
     ...(planning ? { scheduleId: planning.scheduleId, slotStart: planning.slotStart, poging: planning.poging } : {}),
   }).onConflictDoNothing().returning();
   if (!call) return { ok: false, status: 409, fout: 'Dit gesprek is al gestart' };
 
   const resultaat = await voice({
-    telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde,
+    telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde, instructie,
   });
   if (!resultaat.gebeld) {
     await db.update(calls).set({ status: 'mislukt', fout: resultaat.reden, afgerondOp: new Date() }).where(eq(calls.id, call.id));

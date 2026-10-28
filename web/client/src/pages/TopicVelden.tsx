@@ -1,5 +1,6 @@
-import type { Medewerker, Project, TopicStatus, TopicType } from '../api';
-import { Veld } from '../ui';
+import { useState } from 'react';
+import { api, type Medewerker, type Project, type TopicStatus, type TopicType } from '../api';
+import { Melding, Veld, foutTekst } from '../ui';
 
 export interface TopicWaarden {
   titel: string; type: TopicType; status: TopicStatus; projectId: string | null; eigenaarId: string | null; aanwijzingen: string;
@@ -10,6 +11,14 @@ export function TopicVelden({ waarden, zet, medewerkers, projecten }: {
   waarden: TopicWaarden; zet: (w: TopicWaarden) => void; medewerkers: Medewerker[]; projecten: Project[];
 }) {
   const wijzig = <K extends keyof TopicWaarden>(k: K, v: TopicWaarden[K]) => zet({ ...waarden, [k]: v });
+  const [suggestie, setSuggestie] = useState<string | null>(null);
+  const [fout, setFout] = useState<string | null>(null);
+  const [bezig, setBezig] = useState(false);
+  async function vraag() {
+    setBezig(true); setSuggestie(null);
+    try { setSuggestie((await api<{ tekst: string }>('POST', '/topics/suggestie', { titel: waarden.titel, soort: waarden.type, projectId: waarden.projectId })).tekst); setFout(null); }
+    catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
+  }
   return (
     <div className="stapel">
       <Veld label="Titel"><input value={waarden.titel} onChange={(e) => wijzig('titel', e.target.value)} maxLength={200} required /></Veld>
@@ -40,6 +49,21 @@ export function TopicVelden({ waarden, zet, medewerkers, projecten }: {
       <Veld label="Wat willen we weten? (bijvoorbeeld: status van offertes, afstemming met klanten en intern)">
         <textarea value={waarden.aanwijzingen} onChange={(e) => wijzig('aanwijzingen', e.target.value)} maxLength={4000} />
       </Veld>
+      <div className="rij">
+        <button type="button" onClick={vraag} disabled={bezig || !waarden.titel.trim()} title={waarden.titel.trim() ? '' : 'Vul eerst een titel in'}>{bezig ? 'Bezig…' : 'Suggestie vragen'}</button>
+        <span className="zacht klein">Een voorstel op basis van de titel en de soort.</span>
+      </div>
+      <Melding tekst={fout} />
+      {suggestie && (
+        <div className="paneel stapel" role="region" aria-label="Suggestie">
+          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{suggestie}</p>
+          <div className="rij">
+            <button type="button" className="primair" onClick={() => { wijzig('aanwijzingen', waarden.aanwijzingen.trim() ? `${waarden.aanwijzingen.trim()}\n${suggestie}` : suggestie); setSuggestie(null); }}>{waarden.aanwijzingen.trim() ? 'Toevoegen' : 'Overnemen'}</button>
+            <button type="button" onClick={vraag} disabled={bezig}>Opnieuw</button>
+            <button type="button" className="tekstknop" onClick={() => setSuggestie(null)}>Verwerpen</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

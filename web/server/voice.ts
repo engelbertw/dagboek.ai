@@ -7,6 +7,7 @@ export interface BelOpdracht {
   toestemming_nodig: boolean;
   web_call_id: string;
   houding?: string;
+  instructie?: string;
 }
 
 export interface Onderwerp {
