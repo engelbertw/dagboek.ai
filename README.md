@@ -95,7 +95,7 @@ Drie services op Railway (project `dagboek-ai`), gedeployed vanaf de branch `mai
 - **Postgres**: alle gegevens.
 
 ### Datamodel
-`employees`, `projects`, `topics`, `updates` met `update_historie`, `open_items` (de acties), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`. Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
+`employees`, `projects`, `topics`, `updates` met `update_historie`, `open_items` (de acties), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`, `toestemmingen` (register, alleen toevoegen), `call_log` (gespreksverloop), `opschoning_runs`. Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
 
 ### Beveiliging en privacy
 - Inloggen met e-mail en wachtwoord (scrypt), sessiecookie `HttpOnly`, `Secure`, `SameSite=Strict`, begrenzing van mislukte pogingen.
@@ -103,15 +103,19 @@ Drie services op Railway (project `dagboek-ai`), gedeployed vanaf de branch `mai
 - BSN en IBAN worden in transcripten gemaskeerd. Het model krijgt de opdracht geen persoonsgegevens op te schrijven.
 - **Bewaartermijn**: transcripten (in de database en op de schijf van *voice*) worden na `TRANSCRIPT_BEWAAR_DAGEN` (standaard 30) gewist; de samenvattingen blijven staan.
 - Limieten voor uitgaand bellen (per uur en per nummer) die een herstart overleven.
+- **Toestemming** staat in een register (wie, wanneer, bron, versie en doel van de vraag, citaat). Het oordeel van het taalmodel telt pas als de woorden van de collega letterlijk in het gesprek staan. Zonder bevestigde toestemming wordt een transcript hooguit `TRANSCRIPT_ONBEVESTIGD_UREN` (24) bewaard; bij weigering of intrekking meteen gewist. *voice* wist zijn eigen kopie zodra *web* het transcript heeft aangenomen.
+- **Gegevens uit gesprekken en van het model zijn onbetrouwbare invoer.** Ze gaan zonder `<`/`>` en op één regel in prompts (ook in de prompt van het volgende gesprek). Afgeronde acties, deadlines en eigenaars zonder aantoonbare bron komen onder *Controle nodig* bij Acties en tellen niet mee tot de beheerder besluit.
+- **Logs** bevatten geen gespreksinhoud, volledige telefoonnummers, BSN, IBAN of sleutels; een correlatie-id (het gesprek-id) loopt van planning tot samenvatting. Het verloop per gesprek staat onder Gesprekken. Het dashboard toont feiten over acties, geen score of ranglijst per persoon; monitoring van medewerkers kan instemming van de ondernemingsraad vereisen (juridisch punt, niet in de code opgelost).
+- **Gezondheid**: `/api/health` en `/health` zijn alleen liveness. `/api/ready` en `/ready` controleren wat de instantie zelf nodig heeft (database, migraties, configuratie, schijf, herstartstatus), nooit externe diensten. Zet een platform-healthcheck op `/health`; gebruik `/ready` alleen om verkeer te sturen.
 - Suggesties en samenvattingen zijn voorstellen die de beheerder controleert; een instructie in een onderwerptitel of transcript stuurt het gesprek niet.
 
 ## Instellingen (omgevingsvariabelen)
 
 Voorbeelden staan in `web/.env.example` en `voice/.env.example`. Geheimen horen nooit in git.
 
-**web**: `DATABASE_URL` (`memory` draait op een tijdelijke database om lokaal te proberen), `SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SERVICE_KEY`, `VOICE_URL`, `VOICE_ADMIN_TOKEN`, `TSYSTEMS_BASE_URL`, `TSYSTEMS_API_KEY`, `LLM_MODEL`, `TRANSCRIPT_BEWAAR_DAGEN`, `PORT`, `INSECURE_COOKIES` (alleen lokaal zonder https).
+**web**: `DATABASE_URL` (`memory` draait op een tijdelijke database om lokaal te proberen), `SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SERVICE_KEY`, `VOICE_URL`, `VOICE_ADMIN_TOKEN`, `TSYSTEMS_BASE_URL`, `TSYSTEMS_API_KEY`, `LLM_MODEL`, `TRANSCRIPT_BEWAAR_DAGEN`, `TRANSCRIPT_ONBEVESTIGD_UREN` (standaard 24), `PORT`, `INSECURE_COOKIES` (alleen lokaal zonder https).
 
-**voice**: `TSYSTEMS_BASE_URL`, `TSYSTEMS_API_KEY`, `LLM_MODEL`, `STT_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `PUBLIC_HOST`, `WS_TOKEN`, `ADMIN_TOKEN`, `DATA_DIR`, `OPDRACHTGEVER_NAAM`, `UITGAAND_MAX_PER_UUR`, `UITGAAND_MIN_SECS_PER_NUMMER`, `BEL_TIMEOUT_SECS`, `WEB_CALLBACK_URL`, `WEB_SERVICE_KEY`, `TRANSCRIPT_BEWAAR_DAGEN`.
+**voice**: `TSYSTEMS_BASE_URL`, `TSYSTEMS_API_KEY`, `LLM_MODEL`, `STT_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `PUBLIC_HOST`, `WS_TOKEN`, `ADMIN_TOKEN`, `DATA_DIR`, `OPDRACHTGEVER_NAAM`, `UITGAAND_MAX_PER_UUR`, `UITGAAND_MIN_SECS_PER_NUMMER`, `BEL_TIMEOUT_SECS`, `WEB_CALLBACK_URL`, `WEB_SERVICE_KEY`, `TRANSCRIPT_BEWAAR_DAGEN`, `LOG_LEVEL` (standaard INFO), `PIPECAT_LOG_LEVEL` (standaard WARNING; DEBUG zet gespreksinhoud in de logs), `ONDERBROKEN_NA_SECS` (standaard 1200).
 
 Een wachtwoordhash maak je met `cd web && npx tsx server/hash.ts 'jouw-wachtwoord-van-12-tekens'`.
 
@@ -123,6 +127,7 @@ cd web && npm ci
 DATABASE_URL=memory SESSION_SECRET=… ADMIN_EMAIL=ik@voorbeeld.nl ADMIN_PASSWORD_HASH=… SERVICE_KEY=… INSECURE_COOKIES=true npm run dev:server
 npm run dev:client          # in een tweede terminal
 npm run typecheck && npm test
+npm run test:pg             # tests tegen een echte Postgres (Docker, postgres:16-alpine): gelijktijdigheid, locks, migraties
 npm run build && npm start  # productiebuild
 
 # voice
@@ -134,6 +139,8 @@ De tests draaien zonder netwerk: *web* op PGlite (Postgres in het geheugen), *vo
 ## Deployen
 
 Railway bouwt `web` (rootmap `web`, healthcheck `/api/health`) en `voice` (rootmap `voice`, volume op `/data`, healthcheck `/health`) vanaf `main`. Migraties draaien bij het starten van *web*. Alleen de branch `main` wordt gebruikt.
+
+**Volgorde en gedrag bij een deploy.** Deploy eerst *voice*, dan *web*: *web* vraagt bij een onzekere uitkomst via `GET /bel/{id}` aan *voice* wat er is gebeurd, en een *voice* zonder die route zegt niets over een verzoek (*web* neemt dan aan dat het niet weet, niet dat er niet gebeld is). Een gesprek dat tijdens een deploy loopt, valt niet dubbel of verloren: *voice* herhaalt een niet aangekomen eindmelding elke minuut (de uitkomst en het transcript blijven op de schijf tot *web* ze heeft), meldt een afgebroken gesprek als `onderbroken` met het laatste tussentijdse transcript, en belt nooit automatisch opnieuw als onzeker is of er is gebeld. *web* hervat een samenvatting die nooit begon (maximaal drie keer) en zet gesprekken zonder uitkomst na 45 minuten op `onderbroken`. Zet in Railway de draining-tijd van *voice* op minstens 120 seconden zodat een lopend gesprek kan uitlopen (instelling op het platform, niet in de code).
 
 ## API (kort)
 

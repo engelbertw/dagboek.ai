@@ -53,7 +53,9 @@ export function maakVoiceOpzoeker(config: Config): VoiceOpzoeker {
       const r = await fetch(`${config.voiceUrl}/bel/${encodeURIComponent(webCallId)}`, {
         headers: { authorization: `Bearer ${config.voiceAdminToken}`, 'x-correlation-id': webCallId }, signal: AbortSignal.timeout(10_000),
       });
-      if (r.status === 404) return { bereikt: true, bekend: false };
+      // Alleen het eigen antwoord van de voice-service ("Onbekend") telt als "nooit ontvangen". Een gewone 404 komt van een oudere versie
+      // zonder deze route en zegt niets over het verzoek: dan weten we het niet en bellen we dus ook niet opnieuw.
+      if (r.status === 404) return ((await r.json().catch(() => null)) as { detail?: string } | null)?.detail === 'Onbekend' ? { bereikt: true, bekend: false } : { bereikt: false };
       if (!r.ok) return { bereikt: false };
       const d = (await r.json()) as { call_id: string; gebeld: boolean; onzeker?: boolean };
       return { bereikt: true, bekend: true, call_id: d.call_id, gebeld: d.gebeld, onzeker: !!d.onzeker };
