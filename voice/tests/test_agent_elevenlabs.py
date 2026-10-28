@@ -103,6 +103,32 @@ def test_webhook_levert_transcript_af_en_negeert_herhaling(gemeld):
     assert len(gemeld) == 1
 
 
+def test_gesprek_wordt_bij_elevenlabs_gewist_na_aanname_door_het_dagboek(monkeypatch, gemeld):
+    gewist = []
+    monkeypatch.setattr(agent, "verwijder_gesprek", lambda conv: gewist.append(conv))
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="belt")
+    agent.verwerk_webhook(webhook(cid))
+    assert gewist == ["conv_1"]
+    # Nam de web-service het transcript niet aan (outbox), dan blijft de enige kopie staan.
+    monkeypatch.setattr(calls, "_verstuur", lambda web_id, body: False)
+    gewist.clear()
+    cid2 = opdracht()
+    calls.update_opdracht(cid2, agent_conversation_id="conv_2", status="belt")
+    agent.verwerk_webhook(webhook(cid2, conv="conv_2"))
+    assert gewist == []
+
+
+def test_verwijderen_meldt_alleen_succes_en_respecteert_de_schakelaar(monkeypatch):
+    monkeypatch.setattr(httpx, "delete", lambda *a, **k: httpx.Response(200))
+    assert agent.verwijder_gesprek("conv_1") is True
+    monkeypatch.setattr(httpx, "delete", lambda *a, **k: httpx.Response(401))
+    assert agent.verwijder_gesprek("conv_1") is False
+    monkeypatch.setenv("ELEVENLABS_VERWIJDER_GESPREK", "false")
+    monkeypatch.setattr(httpx, "delete", lambda *a, **k: pytest.fail("mag niet wissen"))
+    assert agent.verwijder_gesprek("conv_1") is False
+
+
 def test_webhook_zonder_woorden_van_de_collega_is_niet_bereikt(gemeld):
     cid = opdracht()
     calls.update_opdracht(cid, agent_conversation_id="conv_1", status="belt")

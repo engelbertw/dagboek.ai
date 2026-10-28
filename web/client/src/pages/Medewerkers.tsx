@@ -8,7 +8,9 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
   const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [bezig, setBezig] = useState(false);
-  const [motor, setMotor] = useState<'' | Motor>('');
+  const sleutel = `motor-${m.id}`;
+  const [motor, setMotorState] = useState<'' | Motor>(() => { try { return (localStorage.getItem(sleutel) as '' | Motor | null) ?? ''; } catch { return ''; } });
+  const setMotor = (k: '' | Motor) => { setMotorState(k); try { k ? localStorage.setItem(sleutel, k) : localStorage.removeItem(sleutel); } catch { /* alleen een gemak */ } };
 
   const wijzig = async (body: object) => { try { await api('PATCH', `/employees/${m.id}`, body); setMelding(null); ververs(); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); } };
 
@@ -31,7 +33,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
         <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
         <div className="rij">
           <select aria-label="Gespreksmotor voor dit gesprek" value={motor} onChange={(e) => setMotor(e.target.value as '' | Motor)}>
-            <option value="">Motor: standaard</option>
+            <option value="">Motor: standaard (zie Instellingen)</option>
             {(Object.keys(MOTOR_LABEL) as Motor[]).map((k) => <option key={k} value={k}>{MOTOR_LABEL[k]}</option>)}
           </select>
           <button className="primair" onClick={bel} disabled={bezig || !m.actief}>{bezig ? 'Bezig…' : 'Bel nu'}</button>

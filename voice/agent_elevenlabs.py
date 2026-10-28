@@ -123,6 +123,22 @@ def _spec_bij(data: dict) -> dict | None:
     return calls.lees_opdracht(cid)
 
 
+def verwijder_gesprek(conversation_id: str) -> bool:
+    """Wist het gesprek bij ElevenLabs zodra het transcript in het dagboek staat, zodat de gespreksinhoud niet bij hen blijft staan.
+    Mislukt dat (bijvoorbeeld door ontbrekende schrijfrechten van de sleutel), dan blijft het gesprek daar staan en loggen we alleen de statuscode."""
+    if os.getenv("ELEVENLABS_VERWIJDER_GESPREK", "true").lower() != "true" or not conversation_id:
+        return False
+    try:
+        r = httpx.delete(f"{API}/v1/convai/conversations/{conversation_id}", headers={"xi-api-key": _sleutel()}, timeout=15)
+    except httpx.HTTPError as e:
+        logger.warning(f"Gesprek wissen bij ElevenLabs mislukt: {type(e).__name__}")
+        return False
+    if r.status_code >= 400:
+        logger.warning(f"Gesprek wissen bij ElevenLabs mislukt: {r.status_code}")
+        return False
+    return True
+
+
 def verwerk_webhook(gebeurtenis: dict) -> str:
     """Verwerkt een post-call-webhook. Geeft een korte uitkomst terug voor de log: 'afgerond', 'mislukt', 'onbekend' of 'genegeerd'."""
     soort, data = gebeurtenis.get("type"), gebeurtenis.get("data") or {}
@@ -145,7 +161,9 @@ def verwerk_webhook(gebeurtenis: dict) -> str:
         calls.rapporteer(call_id, "niet_bereikt")
         return "mislukt"
     calls.update_opdracht(call_id, status="gesproken", afgerond_om=time.time(), agent_gesprek_afgerond=True)
-    calls.rapporteer(call_id, "gesproken", transcript=transcript)
+    if calls.rapporteer(call_id, "gesproken", transcript=transcript):
+        # Pas wissen als de web-service het transcript heeft aangenomen: dan is het dagboek de enige kopie.
+        verwijder_gesprek(data.get("conversation_id", ""))
     return "afgerond"
 
 
