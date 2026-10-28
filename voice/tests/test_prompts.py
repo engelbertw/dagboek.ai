@@ -125,3 +125,10 @@ def test_lange_gegevens_worden_begrensd():
     t = {"titel": "T" * 5000, "open_punten": ["p" * 5000] * 50}
     deel = prompts.onderwerp_sectie(1, t)
     assert len(deel) < 8000
+
+
+def test_afspraak_taken_vragen_door_zonder_iets_te_beloven():
+    prompt = prompts.build_system_prompt("Engelbert", "Rombout", [{"titel": "Lunch"}])
+    assert "contactpersoon" in prompt and "doel" in prompt
+    assert "beloof nooit een mail" in prompt
+    assert "één vraag per keer" in prompt.lower() and "einde_gesprek" in prompt
