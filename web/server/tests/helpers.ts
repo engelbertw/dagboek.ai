@@ -12,7 +12,7 @@ export async function maakTestApp(voiceAntwoord: BelResultaat = { gebeld: true, 
   const handle = await connectMemory();
   await migrate(handle);
   const config: Config = {
-    port: 0, databaseUrl: '', sessionSecret: 'geheim-voor-tests', adminEmail: 'beheer@test.nl',
+    port: 0, databaseUrl: 'memory', sessionSecret: 'geheim-voor-tests', adminEmail: 'beheer@test.nl',
     adminPasswordHash: hashWachtwoord(WACHTWOORD), secureCookies: false, voiceUrl: '', voiceAdminToken: '', serviceKey: SERVICE_KEY,
     llmBaseUrl: '', llmApiKey: '', llmModel: 'test', transcriptBewaarDagen: 30, transcriptOnbevestigdUren: 24,
   };
@@ -26,5 +26,5 @@ export async function maakTestApp(voiceAntwoord: BelResultaat = { gebeld: true, 
   const sessie = String(login.cookies[0].value);
   const api = (method: string, url: string, payload?: unknown) =>
     app.inject({ method: method as any, url, payload: payload as any, cookies: { dagboek_sessie: sessie } });
-  return { app, api, opdrachten, db: handle.db, klaarMetAchtergrond, close: async () => { await app.close(); await handle.close(); } };
+  return { app, api, opdrachten, db: handle.db, config, klaarMetAchtergrond, close: async () => { await app.close(); await handle.close(); } };
 }

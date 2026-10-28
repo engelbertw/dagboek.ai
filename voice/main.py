@@ -103,7 +103,37 @@ def _hang_op(twilio_sid: str) -> None:
 
 @app.get("/health")
 async def health() -> dict:
+    """Liveness: het proces draait. Bewust zonder controles, zodat een storing elders het proces niet laat herstarten."""
     return {"ok": True}
+
+
+# Wat deze instantie zelf nodig heeft om een gesprek te kunnen voeren. Externe diensten zelf worden niet aangeroepen.
+_VERPLICHTE_INSTELLINGEN = (
+    "ADMIN_TOKEN", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "PUBLIC_HOST",
+    "WEB_CALLBACK_URL", "WEB_SERVICE_KEY", "TSYSTEMS_API_KEY", "TSYSTEMS_BASE_URL", "ELEVENLABS_API_KEY",
+)
+
+
+def _data_schijf_schrijfbaar() -> bool:
+    try:
+        pad = calls._map() / f".ready-{os.getpid()}"
+        pad.write_text("ok")
+        pad.unlink()
+        return True
+    except OSError:
+        return False
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness: kan deze instantie nieuwe gesprekken aannemen? Alleen de opslag, de configuratie en de herstartstatus; geen externe diensten."""
+    checks = {
+        "data_schijf": "ok" if _data_schijf_schrijfbaar() else "fout",
+        "configuratie": "ok" if all(os.getenv(k) for k in _VERPLICHTE_INSTELLINGEN) else "fout",
+        "herstart": "fout" if DRAINING else "ok",
+    }
+    klaar = all(v == "ok" for v in checks.values())
+    return Response(content=__import__("json").dumps({"ok": klaar, "checks": checks}), media_type="application/json", status_code=200 if klaar else 503)
 
 
 @app.api_route("/incoming-call", methods=["GET", "POST"])

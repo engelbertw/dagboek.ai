@@ -7,8 +7,8 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { InlogBeperking, controleerWachtwoord, leesSessie, maakSessie } from './auth.js';
-import type { Config } from './config.js';
-import type { Db } from './db.js';
+import { ontbrekendeInstellingen, type Config } from './config.js';
+import { migratieNamen, type Db } from './db.js';
 import { callLog, calls, employees, instellingen, openItems, opschoningRuns, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
@@ -88,7 +88,7 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
 
   app.addHook('onRequest', async (req, reply) => {
     const pad = req.url.split('?')[0];
-    if (!pad.startsWith('/api/') || pad === '/api/login' || pad === '/api/health' || pad === '/api/me') return;
+    if (!pad.startsWith('/api/') || pad === '/api/login' || pad === '/api/health' || pad === '/api/ready' || pad === '/api/me') return;
     if (pad.startsWith('/api/intern/')) {
       const sleutel = String(req.headers['x-service-key'] ?? '');
       if (!config.serviceKey || !gelijk(sleutel, config.serviceKey)) return reply.code(401).send({ fout: 'Niet toegestaan' });
@@ -97,7 +97,24 @@ export function buildApp({ db, config, voice, llm, clientDir, achtergrond = (t) 
     if (!leesSessie(req.cookies[COOKIE], config.sessionSecret)) return reply.code(401).send({ fout: 'Niet ingelogd' });
   });
 
+  // Liveness: het proces draait. Bewust zonder controles, zodat een storing elders het proces niet laat herstarten.
   app.get('/api/health', async () => ({ ok: true }));
+  // Readiness: kan deze instantie werk aannemen? Alleen wat de instantie zelf nodig heeft (database, migraties, configuratie).
+  // Externe diensten (taalmodel, spraak, Twilio) horen hier niet bij: een storing daar maakt een instantie niet beter door hem te vervangen.
+  app.get('/api/ready', async (_req, reply) => {
+    const checks: Record<string, 'ok' | 'fout'> = { database: 'fout', migraties: 'fout', configuratie: ontbrekendeInstellingen(config).length ? 'fout' : 'ok' };
+    try {
+      const gedaan = await Promise.race([
+        db.execute(sql`select naam from migraties`) as Promise<unknown>,
+        new Promise<never>((_, nee) => setTimeout(() => nee(new Error('time-out')), 2000).unref()),
+      ]);
+      checks.database = 'ok';
+      const namen = new Set(((gedaan as { rows?: { naam: string }[] }).rows ?? []).map((r) => r.naam));
+      checks.migraties = migratieNamen().every((n) => namen.has(n)) ? 'ok' : 'fout';
+    } catch { /* database of migratietabel niet bereikbaar: blijft 'fout' */ }
+    const klaar = Object.values(checks).every((c) => c === 'ok');
+    return reply.code(klaar ? 200 : 503).send({ ok: klaar, checks });
+  });
 
   // ── Inloggen ────────────────────────────────────────────────────────────
   app.post('/api/login', async (req, reply) => {

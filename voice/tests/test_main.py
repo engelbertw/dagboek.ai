@@ -138,3 +138,47 @@ def test_late_status_draait_een_lopend_gesprek_niet_terug(client):
     calls.update_opdracht(cid, status="gesprek")
     client.post(f"/status?call_id={cid}", data={"CallStatus": "no-answer"})
     assert calls.lees_opdracht(cid)["status"] == "gesprek"
+
+
+# ── liveness en readiness ────────────────────────────────────────────────────
+
+ENV = ("ADMIN_TOKEN", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "PUBLIC_HOST", "WEB_CALLBACK_URL", "WEB_SERVICE_KEY",
+       "TSYSTEMS_API_KEY", "TSYSTEMS_BASE_URL", "ELEVENLABS_API_KEY")
+
+
+def test_health_is_altijd_ok_ook_bij_herstart_en_zonder_configuratie(client, monkeypatch):
+    for k in ENV:
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(main, "DRAINING", True)
+    assert client.get("/health").json() == {"ok": True}
+
+
+def test_ready_is_ok_met_schijf_en_configuratie(client, monkeypatch):
+    for k in ENV:
+        monkeypatch.setenv(k, "x")
+    r = client.get("/ready")
+    assert r.status_code == 200 and r.json() == {"ok": True, "checks": {"data_schijf": "ok", "configuratie": "ok", "herstart": "ok"}}
+
+
+def test_ready_geeft_503_bij_ontbrekende_configuratie_herstart_of_onbeschrijfbare_schijf(client, monkeypatch):
+    for k in ENV:
+        monkeypatch.setenv(k, "x")
+    monkeypatch.delenv("TWILIO_AUTH_TOKEN")
+    r = client.get("/ready")
+    assert r.status_code == 503 and r.json()["checks"]["configuratie"] == "fout"
+    assert "x" not in {v for v in r.json()["checks"].values() if v not in ("ok", "fout")}  # geen waarden of namen van geheimen
+    monkeypatch.setenv("TWILIO_AUTH_TOKEN", "x")
+    monkeypatch.setattr(main, "DRAINING", True)
+    assert client.get("/ready").json()["checks"]["herstart"] == "fout"
+    monkeypatch.setattr(main, "DRAINING", False)
+    monkeypatch.setattr(main, "_data_schijf_schrijfbaar", lambda: False)
+    assert client.get("/ready").status_code == 503
+
+
+def test_ready_belt_geen_externe_diensten(client, monkeypatch):
+    for k in ENV:
+        monkeypatch.setenv(k, "x")
+    import httpx
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: (_ for _ in ()).throw(AssertionError("extern netwerk")))
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: (_ for _ in ()).throw(AssertionError("extern netwerk")))
+    assert client.get("/ready").status_code == 200

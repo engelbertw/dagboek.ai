@@ -53,7 +53,7 @@ describe('dashboard', () => {
       rij({ status: 'afgerond', deadline: '2026-10-20', afgerondOp: new Date('2026-10-25T10:00:00Z') }),                     // te laat afgerond
     ], VANDAAG);
     expect(d.totaal).toMatchObject({ open: 5, teLaat: 1, binnenkort: 2, zonderDeadline: 1, opTijd: 1, laatAfgerond: 1 });
-    expect(d.totaal.nakoming).toBe(33); // 1 op tijd van 3 (1 op tijd, 1 te laat afgerond, 1 nog open en verlopen)
+    expect(d.team).toMatchObject({ basis: 3, nakoming: null, onvoldoendeGegevens: true }); // 3 acties zijn te weinig voor een percentage
     expect(d.teLaat).toHaveLength(1);
     expect(d.binnenkort.map((r) => r.deadline)).toEqual(['2026-11-02', '2026-11-09']);
   });
@@ -62,22 +62,41 @@ describe('dashboard', () => {
     const laat = berekenDashboard([rij({ status: 'afgerond', deadline: '2026-10-28', afgerondOp: new Date('2026-10-28T23:30:00Z') })], VANDAAG); // 00:30 op 29 oktober in NL
     expect(laat.totaal).toMatchObject({ opTijd: 0, laatAfgerond: 1 });
     const tijdig = berekenDashboard([rij({ status: 'afgerond', deadline: '2026-10-28', afgerondOp: new Date('2026-10-28T22:30:00Z') })], VANDAAG); // 23:30 op 28 oktober
-    expect(tijdig.totaal).toMatchObject({ opTijd: 1, laatAfgerond: 0, nakoming: 100 });
+    expect(tijdig.totaal).toMatchObject({ opTijd: 1, laatAfgerond: 0 });
   });
 
   it('geeft geen percentage zonder acties met een deadline, en negeert zeer oude deadlines', () => {
-    expect(berekenDashboard([rij({})], VANDAAG).totaal.nakoming).toBeNull();
-    expect(berekenDashboard([rij({ deadline: '2026-01-01' })], VANDAAG).totaal.nakoming).toBeNull(); // ouder dan 90 dagen
+    expect(berekenDashboard([rij({})], VANDAAG).team).toMatchObject({ nakoming: null, basis: 0 });
+    expect(berekenDashboard([rij({ deadline: '2026-01-01' })], VANDAAG).team.basis).toBe(0); // ouder dan 90 dagen
   });
 
-  it('groepeert per eigenaar, ook voor mensen buiten het team, en zet de meeste achterstand bovenaan', () => {
+  it('groepeert per eigenaar, ook voor mensen buiten het team, alfabetisch en dus niet naar prestatie', () => {
     const d = berekenDashboard([
       rij({ deadline: '2026-10-30' }),
       rij({ eigenaarId: 'b', eigenaarNaam: 'Jarich', deadline: '2026-10-29' }),
       rij({ eigenaarId: 'b', eigenaarNaam: 'Jarich', deadline: '2026-10-28' }),
       rij({ eigenaarId: null, eigenaarNaam: null, eigenaarExtern: 'Hans van Holstein' }),
     ], VANDAAG);
-    expect(d.perEigenaar.map((e) => [e.naam, e.teLaat])).toEqual([['Jarich', 2], ['Daan', 1], ['Hans van Holstein (buiten het team)', 0]]);
+    expect(d.perEigenaar.map((e) => [e.naam, e.teLaat])).toEqual([['Daan', 1], ['Hans van Holstein (buiten het team)', 0], ['Jarich', 2]]);
+  });
+
+  it('geeft per persoon alleen tellingen: geen percentage, score of volgorde naar achterstand', () => {
+    const d = berekenDashboard([
+      rij({ eigenaarNaam: 'Zoë', eigenaarId: 'z', deadline: '2026-10-01' }), rij({ eigenaarNaam: 'Zoë', eigenaarId: 'z', deadline: '2026-10-02' }),
+      rij({ eigenaarNaam: 'Aad', eigenaarId: 'a', status: 'afgerond', deadline: '2026-10-20', afgerondOp: new Date('2026-10-19T10:00:00Z') }),
+    ], VANDAAG);
+    expect(d.perEigenaar.map((e) => e.naam)).toEqual(['Aad', 'Zoë']); // Zoë heeft de meeste achterstand maar staat niet bovenaan
+    for (const e of d.perEigenaar) expect(Object.keys(e).sort()).toEqual(['binnenkort', 'deadlineVerschoven', 'id', 'laatAfgerond', 'naam', 'opTijd', 'open', 'teLaat', 'zonderDeadline'].sort());
+    expect(JSON.stringify(d.perEigenaar)).not.toMatch(/nakoming|score|procent/i);
+  });
+
+  it('toont een teampercentage pas bij voldoende gegevens, en benoemt verschoven deadlines apart', () => {
+    const op = (n: number) => Array.from({ length: n }, (_, i) => rij({ status: 'afgerond', deadline: '2026-10-20', afgerondOp: new Date(`2026-10-${10 + i}T10:00:00Z`) }));
+    expect(berekenDashboard(op(9), VANDAAG).team).toMatchObject({ nakoming: null, onvoldoendeGegevens: true, basis: 9 });
+    const genoeg = berekenDashboard([...op(9), rij({ status: 'afgerond', deadline: '2026-10-10', afgerondOp: new Date('2026-10-12T10:00:00Z') })], VANDAAG);
+    expect(genoeg.team).toMatchObject({ nakoming: 90, onvoldoendeGegevens: false, basis: 10 });
+    const verschoven = berekenDashboard([rij({ deadline: '2026-11-20', deadlineGewijzigdAantal: 2 }), rij({ deadline: '2026-11-21' })], VANDAAG);
+    expect(verschoven.totaal.deadlineVerschoven).toBe(1);
   });
 });
 

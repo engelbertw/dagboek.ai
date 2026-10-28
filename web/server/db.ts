@@ -28,6 +28,11 @@ export async function connectMemory(): Promise<DbHandle> {
   return { db: drizzle(client, { schema }) as unknown as Db, exec: async (s) => { await client.exec(s); }, close: () => client.close() };
 }
 
+/** De namen van alle migraties die bij deze versie van de app horen. */
+export function migratieNamen(map = migratieMap): string[] {
+  return readdirSync(map).filter((f) => f.endsWith('.sql')).sort();
+}
+
 export async function migrate(handle: DbHandle, map = migratieMap): Promise<string[]> {
   await handle.exec('CREATE TABLE IF NOT EXISTS migraties (naam text PRIMARY KEY, toegepast_op timestamptz NOT NULL DEFAULT now())');
   const { sql } = await import('drizzle-orm');
