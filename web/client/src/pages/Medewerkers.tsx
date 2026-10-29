@@ -6,24 +6,24 @@ import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 function Overzichtsrol({ m, heeft, ververs }: { m: Medewerker; heeft: boolean; ververs: () => void }) {
   const [codewoord, setCodewoord] = useState('');
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
-  async function bewaar(e: FormEvent) {
-    e.preventDefault();
+  // Geen eigen <form>: dit blok staat binnen het formulier met de gegevens van de medewerker en formulieren mogen niet genest worden.
+  async function bewaar() {
     try { await api('PUT', `/employees/${m.id}/overzicht`, { codewoord }); setCodewoord(''); setMelding({ tekst: 'Codewoord opgeslagen.', soort: 'ok' }); ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
   }
   async function intrekken() {
     try { await api('DELETE', `/employees/${m.id}/overzicht`); setMelding(null); ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
   }
   return (
-    <form className="stapel" onSubmit={bewaar}>
+    <div className="stapel">
       <h4>Overzicht via de telefoon {heeft && <Badge>aan</Badge>}</h4>
       <p className="zacht klein">Een medewerker met overzichtsrol mag bij inbellen de punten van collega’s opvragen en een aandachtspunt toevoegen, na het noemen van dit codewoord (3 pogingen per gesprek). Het codewoord wordt alleen als hash bewaard; kies een woord of zin van minstens 6 letters of cijfers. Een toegevoegd aandachtspunt komt eerst bij Acties ter controle.</p>
       <div className="rij">
-        <input type="password" autoComplete="new-password" placeholder={heeft ? 'Nieuw codewoord' : 'Codewoord'} value={codewoord} onChange={(e) => setCodewoord(e.target.value)} />
-        <button type="submit" disabled={codewoord.trim().length < 6}>{heeft ? 'Codewoord wijzigen' : 'Overzichtsrol aanzetten'}</button>
+        <input type="password" autoComplete="new-password" placeholder={heeft ? 'Nieuw codewoord' : 'Codewoord'} value={codewoord} onChange={(e) => setCodewoord(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (codewoord.trim().length >= 6) void bewaar(); } }} />
+        <button type="button" onClick={() => void bewaar()} disabled={codewoord.trim().length < 6}>{heeft ? 'Codewoord wijzigen' : 'Overzichtsrol aanzetten'}</button>
         {heeft && <button type="button" onClick={intrekken}>Rol intrekken</button>}
       </div>
       {melding && <Melding tekst={melding.tekst} soort={melding.soort} />}
-    </form>
+    </div>
   );
 }
 
