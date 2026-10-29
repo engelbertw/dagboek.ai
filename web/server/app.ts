@@ -24,7 +24,8 @@ import { berekenDashboard, type ActieRij } from './dashboard.js';
 import { samenvattenGesprek, vandaagNL } from './samenvatten.js';
 import { bepaalBewaartermijn, leggToestemmingVast } from './toestemming.js';
 import type { GespreksOnderwerp } from './schema.js';
-import type { Onderwerp, VoiceClient } from './voice.js';
+import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
+import { vraagHerstel } from './gesprek-herstel.js';
 
 const COOKIE = 'dagboek_sessie';
 const uuid = z.string().uuid();
@@ -73,11 +74,13 @@ export interface AppDeps {
   db: Db; config: Config; voice: VoiceClient; llm: LlmClient; clientDir?: string;
   /** Zonder client kan er niets naar Jira. */
   jira?: JiraClient;
+  /** Laat voice een agent-gesprek alsnog bij ElevenLabs ophalen. */
+  herstel?: VoiceHerstel;
   /** Start werk dat na het antwoord doorloopt. Standaard fire-and-forget; tests wachten erop. */
   achtergrond?: (taak: Promise<unknown>) => void;
 }
 
-export function buildApp({ db, config, voice, llm, clientDir, jira, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
+export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const beperking = new InlogBeperking();
   app.register(cookie);
@@ -522,6 +525,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, achtergrond 
       createdAt: calls.createdAt, employeeId: calls.employeeId, employeeNaam: employees.naam,
       samenvattingStatus: calls.samenvattingStatus, samenvattingFout: calls.samenvattingFout,
       engine: calls.engine, beoordeling: calls.beoordeling, beoordelingOpmerking: calls.beoordelingOpmerking,
+      heeftTranscript: sql<boolean>`${calls.transcript} is not null`, transcriptGewist: sql<boolean>`${calls.transcriptGewistOp} is not null`,
     }).from(calls).innerJoin(employees, eq(calls.employeeId, employees.id))
       .where(employeeId ? eq(calls.employeeId, employeeId) : undefined).orderBy(desc(calls.createdAt)).limit(100);
   });
@@ -543,6 +547,19 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, achtergrond 
     if (rij.status !== 'gesproken') return reply.code(409).send({ fout: 'Alleen een afgerond gesprek kan worden samengevat' });
     if (!['geen', 'mislukt', 'onduidelijk'].includes(rij.samenvattingStatus)) return reply.code(409).send({ fout: `De samenvatting staat op '${rij.samenvattingStatus}' en wordt niet opnieuw gemaakt` });
     return reply.code(202).send(await samenvattenGesprek({ db, llm }, id));
+  });
+
+  // Handmatig een agent-gesprek opnieuw bij ElevenLabs laten ophalen; het resultaat komt via de gewone callback (en start de samenvatting).
+  app.post('/api/calls/:id/herstel', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const [rij] = await db.select({ engine: calls.engine, status: calls.status, heeftTranscript: sql<boolean>`${calls.transcript} is not null` }).from(calls).where(eq(calls.id, id));
+    if (!rij) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
+    if (rij.engine !== 'elevenlabs_agent') return reply.code(409).send({ fout: 'Alleen een gesprek van de ElevenLabs-agent kan opnieuw worden opgehaald' });
+    if (rij.heeftTranscript) return reply.code(409).send({ fout: 'Dit gesprek heeft al een transcript' });
+    if (!herstel) return reply.code(503).send({ fout: 'De voice-service is niet geconfigureerd' });
+    const uitkomst = await vraagHerstel(db, herstel, id);
+    if (uitkomst === 'voice_onbereikbaar') return reply.code(502).send({ fout: 'De voice-service is niet bereikbaar' });
+    return { uitkomst };
   });
 
   app.post('/api/employees/:id/bel', async (req, reply) => {

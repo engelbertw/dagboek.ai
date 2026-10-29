@@ -255,6 +255,20 @@ async def elevenlabs_webhook(request: Request):
     return Response(status_code=200)
 
 
+@app.post("/herstel/{web_call_id}")
+async def herstel(web_call_id: str, authorization: str = Header(default="")):
+    """Laat de web-service een agent-gesprek alsnog bij ElevenLabs ophalen en afleveren (vangnet of handmatig). Start nooit een gesprek."""
+    if not ADMIN_TOKEN or not hmac.compare_digest(authorization, f"Bearer {ADMIN_TOKEN}"):
+        raise HTTPException(status_code=401, detail="Niet toegestaan")
+    import agent_elevenlabs
+    gevonden = calls.opzoeken(web_call_id)
+    if gevonden is None:
+        raise HTTPException(status_code=404, detail="Onbekend")
+    uitkomst = await asyncio.to_thread(agent_elevenlabs.herstel_gesprek, gevonden["call_id"])
+    logger.info(f"Herstel van agent-gesprek: {uitkomst}")
+    return {"uitkomst": uitkomst}
+
+
 @app.get("/bel/{web_call_id}")
 async def bel_opzoeken(web_call_id: str, authorization: str = Header(default="")):
     """Laat de web-service navragen wat er met een eerder verzoek is gebeurd (na een time-out of crash), zonder iets te starten."""

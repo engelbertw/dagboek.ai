@@ -74,3 +74,22 @@ export function maakVoiceOpzoeker(config: Config): VoiceOpzoeker {
     } catch { return { bereikt: false }; }
   };
 }
+
+/** Uitkomst van een verzoek aan voice om een agent-gesprek alsnog bij ElevenLabs op te halen. `uitkomst` is een korte code van voice. */
+export type HerstelResultaat = { bereikt: true; uitkomst: string } | { bereikt: false };
+export type VoiceHerstel = (webCallId: string) => Promise<HerstelResultaat>;
+
+export function maakVoiceHerstel(config: Config): VoiceHerstel {
+  return async (webCallId) => {
+    if (!config.voiceUrl || !config.voiceAdminToken) return { bereikt: false };
+    try {
+      const r = await fetch(`${config.voiceUrl}/herstel/${encodeURIComponent(webCallId)}`, {
+        method: 'POST', headers: { authorization: `Bearer ${config.voiceAdminToken}`, 'x-correlation-id': webCallId }, signal: AbortSignal.timeout(45_000),
+      });
+      if (r.status === 404) return { bereikt: true, uitkomst: 'onbekend' };
+      if (!r.ok) return { bereikt: false };
+      const d = (await r.json().catch(() => null)) as { uitkomst?: unknown } | null;
+      return { bereikt: true, uitkomst: typeof d?.uitkomst === 'string' ? d.uitkomst.slice(0, 40) : 'onbekend' };
+    } catch { return { bereikt: false }; }
+  };
+}

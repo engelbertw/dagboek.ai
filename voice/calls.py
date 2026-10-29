@@ -298,6 +298,8 @@ def herstel_opdrachten(nu: float | None = None) -> int:
         spec = lees_opdracht(pad.stem)
         if not spec or spec.get("status") not in ("belt", "gesprek", "gesproken") or spec.get("eind_gemeld") or not spec.get("web_call_id"):
             continue
+        if spec.get("engine") == "elevenlabs_agent":
+            continue  # Een agent-gesprek loopt bij ElevenLabs (mogelijk lang); `agent_elevenlabs.herstel_agentgesprekken` haalt het op.
         if nu - spec.get("bijgewerkt", spec.get("aangemaakt", nu)) < ONDERBROKEN_NA_SECS:
             continue
         if spec["status"] == "gesproken":

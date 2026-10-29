@@ -10,7 +10,7 @@ import { voerOpschoningUit } from './opschoning.js';
 import { herstelVastgelopen } from './samenvatten.js';
 import { herstelGesprekken } from './gesprek-herstel.js';
 import { foutcode, log } from './log.js';
-import { maakVoiceClient, maakVoiceOpzoeker } from './voice.js';
+import { maakVoiceClient, maakVoiceHerstel, maakVoiceOpzoeker } from './voice.js';
 
 const config = loadConfig();
 const ontbreekt = ontbrekendeInstellingen(config);
@@ -27,12 +27,13 @@ if (nieuw.length) log('info', 'start.migraties', { toegepast: nieuw.join(',') })
 const hier = dirname(fileURLToPath(import.meta.url));
 const voice = maakVoiceClient(config);
 const llm = maakLlmClient(config);
-const app = buildApp({ db: handle.db, config, voice, llm, jira: maakJiraClient(config), clientDir: join(hier, '..', 'dist', 'client') });
+const herstelVoice = maakVoiceHerstel(config);
+const app = buildApp({ db: handle.db, config, voice, llm, jira: maakJiraClient(config), herstel: herstelVoice, clientDir: join(hier, '..', 'dist', 'client') });
 const opzoeken = maakVoiceOpzoeker(config);
 const herstel = async () => {
   await herstelVastgelopen(handle.db);
-  const r = await herstelGesprekken({ db: handle.db, llm, opzoeken, achtergrond: (t) => t.catch((e) => log('error', 'samenvatten.mislukt', { foutcode: foutcode(e) })) });
-  if (r.opgelost || r.onderbroken || r.samenvattingen) log('info', 'herstel', { ...r });
+  const r = await herstelGesprekken({ db: handle.db, llm, opzoeken, herstel: herstelVoice, achtergrond: (t) => t.catch((e) => log('error', 'samenvatten.mislukt', { foutcode: foutcode(e) })) });
+  if (r.opgelost || r.onderbroken || r.samenvattingen || r.opgevraagd) log('info', 'herstel', { ...r });
 };
 await herstel().catch((e) => log('error', 'herstel.mislukt', { foutcode: foutcode(e) }));
 const sweeper = setInterval(() => void herstel().catch((e) => log('error', 'herstel.mislukt', { foutcode: foutcode(e) })), 60_000);

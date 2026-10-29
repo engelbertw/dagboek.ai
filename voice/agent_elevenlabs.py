@@ -146,9 +146,13 @@ def verwerk_webhook(gebeurtenis: dict) -> str:
     if spec is None:
         return "onbekend"
     call_id = spec["call_id"]
-    if spec.get("eind_gemeld"):
-        return "genegeerd"  # herhaalde webhook
+    gemeld = spec.get("eind_gemeld")
+    # Een herhaling is overbodig; alleen een gesprek met echte tekst mag een eerdere mislukte of afgebroken uitkomst nog vervangen.
+    if gemeld == "gesproken":
+        return "genegeerd"
     if soort == "call_initiation_failure":
+        if gemeld:
+            return "genegeerd"
         calls.update_opdracht(call_id, status="niet_bereikt", fout="agent_geen_verbinding")
         calls.rapporteer(call_id, "niet_bereikt", fout="Geen verbinding gekregen")
         return "mislukt"
@@ -157,6 +161,8 @@ def verwerk_webhook(gebeurtenis: dict) -> str:
     transcript = naar_transcript(data.get("transcript"))
     if not any(m["role"] == "user" for m in transcript):
         # Niemand heeft iets gezegd: opgenomen zonder gesprek (niet opgenomen, voicemail of meteen opgehangen).
+        if gemeld:
+            return "genegeerd"
         calls.update_opdracht(call_id, status="niet_bereikt")
         calls.rapporteer(call_id, "niet_bereikt")
         return "mislukt"
@@ -176,20 +182,45 @@ def haal_gesprek_op(conversation_id: str) -> dict | None:
         return None
 
 
+def herstel_gesprek(call_id: str) -> str:
+    """Haalt een agent-gesprek bij ElevenLabs op en verwerkt het als de webhook. Geeft 'afgerond', 'mislukt', 'genegeerd', 'nog_bezig',
+    'geen_gesprek' of 'onbekend' terug."""
+    spec = calls.lees_opdracht(call_id)
+    if not spec or spec.get("engine") != "elevenlabs_agent" or not spec.get("agent_conversation_id"):
+        return "onbekend"
+    conv = spec["agent_conversation_id"]
+    gesprek = haal_gesprek_op(conv)
+    if gesprek is None:
+        return "geen_gesprek"
+    if gesprek.get("status") not in ("done", "failed"):
+        return "nog_bezig"
+    return verwerk_webhook({"type": "post_call_transcription", "data": {"conversation_id": conv, "transcript": gesprek.get("transcript")}})
+
+
+# Een gesprek dat voice al als niet-gesproken heeft gemeld, vragen we nog een paar keer na: de webhook kan te vroeg, leeg of nooit zijn aangekomen.
+NAVRAAG_STATUSSEN = ("onderbroken", "niet_bereikt", "mislukt", "voicemail")
+NAVRAAG_MAX = 3
+NAVRAAG_INTERVAL_SECS = 600
+NAVRAAG_TOT_SECS = 48 * 3600
+
+
 def herstel_agentgesprekken(nu: float | None = None, minimaal_secs: float = 900) -> int:
     """Een agent-gesprek dat lang in 'belt' of 'gesprek' blijft staat zonder webhook: vraag het gesprek bij ElevenLabs op en rond het af.
-    Geeft het aantal afgeronde gesprekken terug."""
+    Hetzelfde geldt voor een gesprek dat als niet gesproken is gemeld, maar bij ElevenLabs wel woorden bevat. Geeft het aantal afgeronde gesprekken terug."""
     nu = time.time() if nu is None else nu
     n = 0
     for pad in list(calls._map().glob("*.json")):
         spec = calls.lees_opdracht(pad.stem)
-        if not spec or spec.get("engine") != "elevenlabs_agent" or spec.get("eind_gemeld") or not spec.get("agent_conversation_id"):
+        if not spec or spec.get("engine") != "elevenlabs_agent" or not spec.get("agent_conversation_id") or spec.get("eind_gemeld") == "gesproken":
             continue
-        if spec.get("status") not in ("belt", "gesprek") or nu - spec.get("bijgewerkt", nu) < minimaal_secs:
+        if spec.get("eind_gemeld"):
+            if (spec["eind_gemeld"] not in NAVRAAG_STATUSSEN or spec.get("herstel_pogingen", 0) >= NAVRAAG_MAX
+                    or nu - spec.get("herstel_laatst", 0) < NAVRAAG_INTERVAL_SECS
+                    or nu - spec.get("gebeld_om", spec.get("aangemaakt", nu)) > NAVRAAG_TOT_SECS):
+                continue
+            calls.update_opdracht(pad.stem, herstel_pogingen=spec.get("herstel_pogingen", 0) + 1, herstel_laatst=nu)
+        elif spec.get("status") not in ("belt", "gesprek") or nu - spec.get("bijgewerkt", nu) < minimaal_secs:
             continue
-        gesprek = haal_gesprek_op(spec["agent_conversation_id"])
-        if not gesprek or gesprek.get("status") not in ("done", "failed"):
-            continue
-        verwerk_webhook({"type": "post_call_transcription", "data": {"conversation_id": spec["agent_conversation_id"], "transcript": gesprek.get("transcript")}})
-        n += 1
+        if herstel_gesprek(pad.stem) == "afgerond":
+            n += 1
     return n

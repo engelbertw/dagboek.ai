@@ -73,6 +73,8 @@ export const calls = pgTable('calls', {
   samenvattingGestartOp: timestamp('samenvatting_gestart_op', { withTimezone: true }),
   statusGewijzigdOp: timestamp('status_gewijzigd_op', { withTimezone: true }).notNull().defaultNow(),
   samenvattingPogingen: integer('samenvatting_pogingen').notNull().default(0),
+  herstelPogingen: integer('herstel_pogingen').notNull().default(0),
+  herstelLaatst: timestamp('herstel_laatst', { withTimezone: true }),
   engine: text('engine', { enum: ['pipecat', 'elevenlabs_agent'] }),
   beoordeling: integer('beoordeling'),
   beoordelingOpmerking: text('beoordeling_opmerking'),

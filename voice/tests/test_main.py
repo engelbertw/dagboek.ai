@@ -205,3 +205,16 @@ def test_bel_accepteert_twintig_onderwerpen_en_weigert_eenentwintig():
         assert False, "21 onderwerpen hadden geweigerd moeten worden"
     except ValidationError:
         pass
+
+
+def test_herstel_vereist_admin_token_en_kent_de_opdracht(client, monkeypatch):
+    import agent_elevenlabs
+    monkeypatch.setattr(main, "ADMIN_TOKEN", "admin")
+    assert client.post("/herstel/web123456").status_code == 401
+    assert client.post("/herstel/web123456", headers={"Authorization": "Bearer admin"}).status_code == 404
+    nieuw, cid = calls.claim_web_call("web123456")
+    calls.maak_opdracht("+31612345678", "X", [], True, "web123456", call_id=cid, engine="elevenlabs_agent")
+    calls.update_opdracht(cid, agent_conversation_id="conv_1")
+    monkeypatch.setattr(agent_elevenlabs, "herstel_gesprek", lambda c: "afgerond" if c == cid else "onbekend")
+    r = client.post("/herstel/web123456", headers={"Authorization": "Bearer admin"})
+    assert r.status_code == 200 and r.json() == {"uitkomst": "afgerond"}

@@ -161,3 +161,60 @@ def test_motor_wordt_per_opdracht_gekozen(monkeypatch):
     monkeypatch.setattr(calls, "_start_gesprek_pipecat", lambda c: {"gebeld": True, "call_id": "pipecat"})
     assert calls.start_gesprek(cid)["call_id"] == "pipecat" and not gebruikt
     assert calls.start_gesprek(opdracht())["gebeld"] and len(gebruikt) == 1
+
+
+def test_lang_agentgesprek_wordt_niet_als_onderbroken_gemeld(gemeld):
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="belt")
+    assert calls.herstel_opdrachten(nu=time.time() + 3 * calls.ONDERBROKEN_NA_SECS) == 0
+    assert gemeld == []
+
+
+def test_webhook_na_onderbroken_of_niet_bereikt_levert_het_gesprek_alsnog_af(gemeld):
+    for eerder in ("onderbroken", "niet_bereikt"):
+        cid = opdracht()
+        calls.update_opdracht(cid, agent_conversation_id=f"conv_{eerder}", status="belt", eind_gemeld=eerder)
+        assert agent.verwerk_webhook(webhook(cid, conv=f"conv_{eerder}")) == "afgerond"
+        assert gemeld[-1][1]["status"] == "gesproken"
+        assert agent.verwerk_webhook(webhook(cid, conv=f"conv_{eerder}")) == "genegeerd"
+
+
+def test_lege_webhook_na_een_eerdere_uitkomst_meldt_niet_opnieuw(gemeld):
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="niet_bereikt", eind_gemeld="niet_bereikt")
+    assert agent.verwerk_webhook(webhook(cid, beurten=[{"role": "agent", "message": "Hallo?"}])) == "genegeerd"
+    assert gemeld == []
+
+
+def test_herstel_gesprek_wacht_op_een_lopend_gesprek_en_kent_geen_pipecat_opdracht(monkeypatch, gemeld):
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="belt")
+    monkeypatch.setattr(agent, "haal_gesprek_op", lambda conv: {"status": "in-progress", "transcript": []})
+    assert agent.herstel_gesprek(cid) == "nog_bezig"
+    monkeypatch.setattr(agent, "haal_gesprek_op", lambda conv: None)
+    assert agent.herstel_gesprek(cid) == "geen_gesprek"
+    pipecat = calls.maak_opdracht("+31612345678", "X", [])
+    assert agent.herstel_gesprek(pipecat) == "onbekend"
+    assert gemeld == []
+
+
+def test_vangnet_vraagt_een_als_niet_gesproken_gemeld_gesprek_nog_na_maar_beperkt(monkeypatch, gemeld):
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="onderbroken", eind_gemeld="onderbroken", gebeld_om=time.time())
+    opgevraagd = []
+    monkeypatch.setattr(agent, "haal_gesprek_op", lambda conv: opgevraagd.append(conv) or {"status": "done", "transcript": [{"role": "agent", "message": "Hallo?"}]})
+    nu = time.time()
+    assert agent.herstel_agentgesprekken(nu=nu) == 0 and len(opgevraagd) == 1
+    assert agent.herstel_agentgesprekken(nu=nu + 60) == 0 and len(opgevraagd) == 1  # te snel na de vorige poging
+    for i in range(1, 6):
+        agent.herstel_agentgesprekken(nu=nu + i * 700)
+    assert len(opgevraagd) == agent.NAVRAAG_MAX
+    # Bevat het gesprek bij ElevenLabs wel woorden, dan wordt het afgeleverd.
+    cid2 = opdracht()
+    calls.update_opdracht(cid2, agent_conversation_id="conv_2", status="onderbroken", eind_gemeld="onderbroken", gebeld_om=time.time())
+    monkeypatch.setattr(agent, "haal_gesprek_op", lambda conv: {"status": "done", "transcript": [{"role": "user", "message": "Hoi"}]})
+    assert agent.herstel_agentgesprekken(nu=time.time() + 700) == 1
+    assert gemeld[-1][1]["status"] == "gesproken"
+    # Een gesprek dat al gesproken is gemeld wordt niet meer opgevraagd.
+    monkeypatch.setattr(agent, "haal_gesprek_op", lambda conv: pytest.fail("mag niet opvragen"))
+    agent.herstel_agentgesprekken(nu=time.time() + 5000)
