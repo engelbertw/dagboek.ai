@@ -8,7 +8,7 @@ import { calls, employees } from './schema.js';
 import type { Onderwerp } from './voice.js';
 
 /** Zoveel inkomende gesprekken per medewerker per uur; daarboven weigeren we, tegen misbruik van een vervalst nummer en tegen kosten. */
-export const INKOMEND_MAX_PER_UUR = 5;
+export const INKOMEND_MAX_PER_UUR = Number(process.env.INKOMEND_MAX_PER_UUR ?? 5) || 5;
 
 /** Nederlands nummer naar +31…, dezelfde regels als de voice-service. Onbekende vormen blijven leeg, zodat ze nooit met een medewerker overeenkomen. */
 export function normaliseerNummer(ruw: string): string {

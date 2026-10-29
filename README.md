@@ -193,7 +193,7 @@ Een medewerker kan het nummer van de ElevenLabs-agent bellen en de update geven.
 
 1. Bij ElevenLabs: agent → Security → *conversation initiation webhook* naar `https://<voice>/elevenlabs/init`, met een secret als header `x-init-secret`. Sta overrides voor prompt en eerste bericht toe.
 2. Op `voice`: zet `ELEVENLABS_INIT_SECRET` op dezelfde waarde. Zonder dit geheim antwoordt de route met 401.
-3. De beller wordt herkend aan het telefoonnummer bij Medewerkers (precies één actieve medewerker per nummer). Onbekend, uitgeschakeld of meer dan 5 gesprekken per uur: de agent zegt een korte melding zonder gegevens en hangt op.
+3. De beller wordt herkend aan het telefoonnummer bij Medewerkers (precies één actieve medewerker per nummer). Onbekend, uitgeschakeld of meer dan 5 gesprekken per uur (instelbaar met `INKOMEND_MAX_PER_UUR` op web): de agent zegt een korte melding zonder gegevens en hangt op.
 4. Het gesprek krijgt bron `inkomend` en loopt daarna via dezelfde post-call-webhook, samenvatting en acties als een uitgaand gesprek.
 
 Het nummer van een beller kan vervalst zijn; de assistent noemt daarom alleen de eigen onderwerpen van die medewerker.
