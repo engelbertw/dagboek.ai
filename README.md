@@ -197,3 +197,11 @@ Een medewerker kan het nummer van de ElevenLabs-agent bellen en de update geven.
 4. Het gesprek krijgt bron `inkomend` en loopt daarna via dezelfde post-call-webhook, samenvatting en acties als een uitgaand gesprek.
 
 Het nummer van een beller kan vervalst zijn; de assistent noemt daarom alleen de eigen onderwerpen van die medewerker.
+
+### Collega's opvragen tijdens het inbellen (MCP)
+Een medewerker met **overzichtsrol** (Medewerkers → Instellingen → Overzicht via de telefoon, met een codewoord) kan tijdens een inkomend gesprek de punten van een collega opvragen en een aandachtspunt of actie toevoegen. Zonder rol of codewoord noemt de agent alleen de eigen onderwerpen van de beller.
+
+- Hulpmiddelen (MCP, streamable HTTP, `POST /mcp` op de web-service, header `Authorization: Bearer <MCP_KEY>`): `bevestig_codewoord`, `zoek_punten_van_collega`, `voeg_aandachtspunt_toe`. Zonder `MCP_KEY` op web bestaat de route niet.
+- Het codewoord wordt als hash bewaard, een beller heeft 3 pogingen per gesprek en de verificatie geldt 60 minuten. Alle aanroepen komen zonder inhoud in het verloop van het gesprek.
+- Een toegevoegd aandachtspunt is een open punt met bron `gesprek` dat eerst bij Acties gecontroleerd moet worden; het komt daarna pas in een volgend gesprek.
+- Instellen: zet `MCP_KEY` op `web` en `INKOMEND_TOOLS=true` op `voice`; voeg bij ElevenLabs een custom MCP-server toe met URL `https://<web>/mcp` en een secret-header `Authorization` met `Bearer <MCP_KEY>`, en koppel die aan de agent (tool approval: altijd vragen bij `voeg_aandachtspunt_toe`).

@@ -23,6 +23,12 @@ export const employees = pgTable('employees', {
   createdAt: createdAt(),
 });
 
+export const overzichtToegang = pgTable('overzicht_toegang', {
+  employeeId: uuid('employee_id').primaryKey().references(() => employees.id, { onDelete: 'cascade' }),
+  codewoordHash: text('codewoord_hash').notNull(),
+  ingesteldOp: timestamp('ingesteld_op', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const projects = pgTable('projects', {
   id: id(),
   naam: text('naam').notNull(),
@@ -75,6 +81,8 @@ export const calls = pgTable('calls', {
   samenvattingPogingen: integer('samenvatting_pogingen').notNull().default(0),
   herstelPogingen: integer('herstel_pogingen').notNull().default(0),
   herstelLaatst: timestamp('herstel_laatst', { withTimezone: true }),
+  overzichtGeverifieerdOp: timestamp('overzicht_geverifieerd_op', { withTimezone: true }),
+  overzichtPogingen: integer('overzicht_pogingen').notNull().default(0),
   engine: text('engine', { enum: ['pipecat', 'elevenlabs_agent'] }),
   beoordeling: integer('beoordeling'),
   beoordelingOpmerking: text('beoordeling_opmerking'),

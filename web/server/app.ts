@@ -6,10 +6,10 @@ import fastifyStatic from '@fastify/static';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { InlogBeperking, controleerWachtwoord, leesSessie, maakSessie } from './auth.js';
+import { InlogBeperking, controleerWachtwoord, hashWachtwoord, leesSessie, maakSessie } from './auth.js';
 import { ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
-import { callLog, calls, employees, instellingen, openItems, opschoningRuns, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, employees, instellingen, openItems, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
 import { foutcode, log } from './log.js';
@@ -18,6 +18,8 @@ import { logGebeurtenis } from './call-log.js';
 import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
 import { JiraFout, geldigProject, geldigTeamId, schoneSite, type JiraClient, type JiraPunt } from './jira.js';
 import { startInkomendGesprek } from './inkomend.js';
+import { registreerMcp } from './mcp.js';
+import { normaliseerCodewoord } from './gesprek-tools.js';
 import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
@@ -359,6 +361,24 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
     await bewaarInkomend(db, aan);
     return { aan: await leesInkomend(db) };
   });
+  // ── Overzicht via de telefoon: beheerrol met codewoord ──────────────────
+  app.get('/api/overzicht-toegang', async () => (await db.select({ employeeId: overzichtToegang.employeeId }).from(overzichtToegang)).map((r) => r.employeeId));
+  app.put('/api/employees/:id/overzicht', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const { codewoord } = z.object({ codewoord: z.string().min(1).max(60) }).parse(req.body);
+    const norm = normaliseerCodewoord(codewoord);
+    if (norm.length < 6) return reply.code(400).send({ fout: 'Kies een codewoord van minstens 6 letters of cijfers' });
+    const [m] = await db.select({ id: employees.id }).from(employees).where(eq(employees.id, id));
+    if (!m) return reply.code(404).send({ fout: 'Medewerker niet gevonden' });
+    await db.insert(overzichtToegang).values({ employeeId: id, codewoordHash: hashWachtwoord(norm) })
+      .onConflictDoUpdate({ target: overzichtToegang.employeeId, set: { codewoordHash: hashWachtwoord(norm), ingesteldOp: new Date() } });
+    return { ok: true };
+  });
+  app.delete('/api/employees/:id/overzicht', async (req) => {
+    await db.delete(overzichtToegang).where(eq(overzichtToegang.employeeId, uuid.parse((req.params as any).id)));
+    return { ok: true };
+  });
+  registreerMcp(app, { db, config });
   // ── Jira: open punten als ticket ────────────────────────────────────────
   const jiraStatus = async () => {
     const i = await leesJira(db);

@@ -292,3 +292,12 @@ def test_inkomend_negeert_een_ander_agent_en_een_herhaald_verzoek_maakt_geen_twe
     a = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_x"})
     b = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_x"})
     assert a["dynamic_variables"]["call_id"] == b["dynamic_variables"]["call_id"]
+
+
+def test_inkomend_noemt_het_gesprek_id_voor_de_hulpmiddelen_alleen_als_die_aanstaan(monkeypatch):
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, WEB_ANTWOORD))
+    uit = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_a"})["conversation_config_override"]["agent"]["prompt"]["prompt"]
+    assert WEB_ANTWOORD["callId"] not in uit and "bevestig_codewoord" not in uit
+    monkeypatch.setenv("INKOMEND_TOOLS", "true")
+    aan = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_b"})["conversation_config_override"]["agent"]["prompt"]["prompt"]
+    assert WEB_ANTWOORD["callId"] in aan and "bevestig_codewoord" in aan and "Zal ik dit noteren?" in aan

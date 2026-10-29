@@ -19,6 +19,8 @@ export interface Config {
   jiraApiToken: string;
   /** Publieke URL van deze app, voor de link vanuit een Jira-ticket terug naar het dagboek. */
   publiekeUrl: string;
+  /** Sleutel waarmee de gespreksmotor de hulpmiddelen (MCP) aanroept. Leeg = hulpmiddelen staan uit. */
+  mcpKey: string;
 }
 
 export function loadConfig(env = process.env): Config {
@@ -40,6 +42,7 @@ export function loadConfig(env = process.env): Config {
     jiraEmail: env.JIRA_EMAIL ?? '',
     jiraApiToken: env.JIRA_API_TOKEN ?? '',
     publiekeUrl: (env.PUBLIC_URL ?? '').replace(/\/$/, ''),
+    mcpKey: env.MCP_KEY ?? '',
   };
 }
 

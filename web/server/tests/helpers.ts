@@ -16,7 +16,7 @@ export async function maakTestApp(voiceAntwoord: BelResultaat = { gebeld: true, 
     port: 0, databaseUrl: 'memory', sessionSecret: 'geheim-voor-tests', adminEmail: 'beheer@test.nl',
     adminPasswordHash: hashWachtwoord(WACHTWOORD), secureCookies: false, voiceUrl: '', voiceAdminToken: '', serviceKey: SERVICE_KEY,
     llmBaseUrl: '', llmApiKey: '', llmModel: 'test', transcriptBewaarDagen: 30, transcriptOnbevestigdUren: 24,
-    jiraEmail: '', jiraApiToken: '', publiekeUrl: 'https://dagboek.test',
+    jiraEmail: '', jiraApiToken: '', publiekeUrl: 'https://dagboek.test', mcpKey: 'mcp-sleutel-voor-tests',
   };
   const opdrachten: BelOpdracht[] = [];
   const taken: Promise<unknown>[] = [];

@@ -3,7 +3,31 @@ import { Link } from 'react-router-dom';
 import { api, datum, MOTOR_LABEL, type Medewerker, type Motor } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
-function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void }) {
+function Overzichtsrol({ m, heeft, ververs }: { m: Medewerker; heeft: boolean; ververs: () => void }) {
+  const [codewoord, setCodewoord] = useState('');
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  async function bewaar(e: FormEvent) {
+    e.preventDefault();
+    try { await api('PUT', `/employees/${m.id}/overzicht`, { codewoord }); setCodewoord(''); setMelding({ tekst: 'Codewoord opgeslagen.', soort: 'ok' }); ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
+  }
+  async function intrekken() {
+    try { await api('DELETE', `/employees/${m.id}/overzicht`); setMelding(null); ververs(); } catch (er) { setMelding({ tekst: foutTekst(er), soort: 'fout' }); }
+  }
+  return (
+    <form className="stapel" onSubmit={bewaar}>
+      <h4>Overzicht via de telefoon {heeft && <Badge>aan</Badge>}</h4>
+      <p className="zacht klein">Een medewerker met overzichtsrol mag bij inbellen de punten van collega’s opvragen en een aandachtspunt toevoegen, na het noemen van dit codewoord (3 pogingen per gesprek). Het codewoord wordt alleen als hash bewaard; kies een woord of zin van minstens 6 letters of cijfers. Een toegevoegd aandachtspunt komt eerst bij Acties ter controle.</p>
+      <div className="rij">
+        <input type="password" autoComplete="new-password" placeholder={heeft ? 'Nieuw codewoord' : 'Codewoord'} value={codewoord} onChange={(e) => setCodewoord(e.target.value)} />
+        <button type="submit" disabled={codewoord.trim().length < 6}>{heeft ? 'Codewoord wijzigen' : 'Overzichtsrol aanzetten'}</button>
+        {heeft && <button type="button" onClick={intrekken}>Rol intrekken</button>}
+      </div>
+      {melding && <Melding tekst={melding.tekst} soort={melding.soort} />}
+    </form>
+  );
+}
+
+function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: () => void; overzicht: { heeft: boolean; ververs: () => void } }) {
   const [open, setOpen] = useState(false);
   const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
@@ -58,6 +82,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
             <button type="button" onClick={() => wijzig({ actief: !m.actief })}>{m.actief ? 'Op niet actief zetten' : 'Weer actief maken'}</button>
             <button type="button" className="gevaar" onClick={wis}>Verwijderen</button>
           </div>
+          <Overzichtsrol m={m} heeft={overzicht.heeft} ververs={overzicht.ververs} />
           <p className="zacht klein">Wanneer deze collega wordt gebeld, stel je in onder <Link to="/planning">Planning</Link>.</p>
         </form>
       )}
@@ -68,6 +93,7 @@ function MedewerkerKaart({ m, ververs }: { m: Medewerker; ververs: () => void })
 
 export function Medewerkers() {
   const lijst = useLaden(() => api<Medewerker[]>('GET', '/employees'));
+  const rollen = useLaden(() => api<string[]>('GET', '/overzicht-toegang'));
   const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
 
@@ -94,7 +120,7 @@ export function Medewerkers() {
       )}
       <Melding tekst={lijst.fout} />
       {lijst.data?.length === 0 && <Leeg>Nog geen medewerkers.</Leeg>}
-      {lijst.data?.map((m) => <MedewerkerKaart key={m.id} m={m} ververs={lijst.ververs} />)}
+      {lijst.data?.map((m) => <MedewerkerKaart key={m.id} m={m} ververs={lijst.ververs} overzicht={{ heeft: !!rollen.data?.includes(m.id), ververs: rollen.ververs }} />)}
     </div>
   );
 }

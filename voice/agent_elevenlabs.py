@@ -92,6 +92,7 @@ def verwerk_init(verzoek: dict) -> dict:
     prompt = build_system_prompt(
         cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), spec.get("onderwerpen", []),
         houding=spec.get("houding", ""), instructie=spec.get("instructie", ""), einde_tool="end_call", inkomend=True,
+        hulp_id=data["callId"] if os.getenv("INKOMEND_TOOLS", "").lower() == "true" else "",
     )
     groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True)
     logger.info(f"Inkomend gesprek gestart (opdracht {call_id})")
