@@ -132,3 +132,10 @@ def test_afspraak_taken_vragen_door_zonder_iets_te_beloven():
     assert "contactpersoon" in prompt and "doel" in prompt
     assert "beloof nooit een mail" in prompt
     assert "één vraag per keer" in prompt.lower() and "einde_gesprek" in prompt
+
+
+def test_assistent_herhaalt_niet_elk_antwoord_en_vraagt_geen_onderwerp_dubbel():
+    prompt = prompts.build_system_prompt("Engelbert", "Rombout", [{"titel": "Lunch"}])
+    assert "Herhaal niet wat de collega net zei" in prompt
+    assert "Vraag nooit opnieuw naar een onderwerp" in prompt
+    assert "hooguit twee per beurt" in prompt

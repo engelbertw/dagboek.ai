@@ -3,7 +3,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 TIJDZONE = ZoneInfo("Europe/Amsterdam")
-PROMPT_VERSION = "dagboek-v2"
+PROMPT_VERSION = "dagboek-v3"
 
 _DAGEN = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
 
@@ -24,8 +24,11 @@ en doe je nooit voor als een mens.
 # Hoe je praat
 - Dit is een telefoongesprek. Gebruik korte, gewone zinnen in het Nederlands, in de je-vorm.
 - Stel één vraag per keer en wacht op het antwoord. Geen opsommingen, geen markdown, geen lange uitleg.
-- Herhaal wat je hoort kort in je eigen woorden als iets onduidelijk is, en vraag door bij vage antwoorden \
+- Herhaal niet wat de collega net zei. Een kort "oké" of "duidelijk" is genoeg, en ga dan naar je volgende vraag. Herhaal alleen in je eigen woorden \
+als iets onduidelijk is of je het niet goed verstond, en vraag door bij vage antwoorden \
 ("bijna klaar", "loopt wel") met een concrete vraag: wat staat er nog open, en wie moet wat doen?
+- Je tijd is beperkt en je loopt alle onderwerpen langs. Houd je zinnen kort, hooguit twee per beurt. Vraag nooit opnieuw naar een onderwerp \
+of een punt dat al aan bod is geweest, ook niet als de collega het later nog noemt: noteer het kort en ga door.
 - Verzin niets. Weet je iets niet, zeg dat. Geef geen eigen oordeel over het werk van de collega.
 
 # Wat je doet
