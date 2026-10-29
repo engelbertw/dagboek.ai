@@ -7,6 +7,7 @@ Veldnamen van de ElevenLabs-API zijn hier op één plek verzameld; controleer ze
 import hashlib
 import hmac
 import os
+import re
 import time
 
 import httpx
@@ -114,6 +115,22 @@ def naar_transcript(beurten: list[dict]) -> list[dict]:
     return uit
 
 
+# Zinnen die een antwoordapparaat zegt. Bewust alleen sterke signalen: "ik ben niet beschikbaar" zegt ook een collega.
+_VOICEMAIL = re.compile(
+    r"na de (?:toon|piep|beep)|laat (?:een|uw|je) (?:bericht|boodschap) (?:achter|na)|spreek (?:een|uw|je) (?:bericht|boodschap) in|toets 1|toets een"
+    r"|beëindig (?:dit|het) gesprek|voicemail|antwoordapparaat|(?:kan|kunnen) (?:de|uw|je) oproep niet beantwoorden|momenteel niet bereikbaar",
+    re.IGNORECASE,
+)
+# Een voicemailgroet is kort; wie zelf veel zegt, is een persoon.
+VOICEMAIL_MAX_WOORDEN = 60
+
+
+def lijkt_op_voicemail(transcript: list[dict]) -> bool:
+    """Het gesprek bestaat alleen uit wat een antwoordapparaat zegt (de agent-motor heeft geen eigen voicemailherkenning zoals Twilio bij Pipecat)."""
+    gebruiker = [m["content"] for m in transcript if m["role"] == "user"]
+    return bool(gebruiker) and sum(len(t.split()) for t in gebruiker) <= VOICEMAIL_MAX_WOORDEN and any(_VOICEMAIL.search(t) for t in gebruiker)
+
+
 def _spec_bij(data: dict) -> dict | None:
     spec = calls.vind_op_conversation(data.get("conversation_id", ""))
     if spec:
@@ -140,7 +157,7 @@ def verwijder_gesprek(conversation_id: str) -> bool:
 
 
 def verwerk_webhook(gebeurtenis: dict) -> str:
-    """Verwerkt een post-call-webhook. Geeft een korte uitkomst terug voor de log: 'afgerond', 'mislukt', 'onbekend' of 'genegeerd'."""
+    """Verwerkt een post-call-webhook. Geeft een korte uitkomst terug voor de log: 'afgerond', 'voicemail', 'mislukt', 'onbekend' of 'genegeerd'."""
     soort, data = gebeurtenis.get("type"), gebeurtenis.get("data") or {}
     spec = _spec_bij(data)
     if spec is None:
@@ -166,6 +183,14 @@ def verwerk_webhook(gebeurtenis: dict) -> str:
         calls.update_opdracht(call_id, status="niet_bereikt")
         calls.rapporteer(call_id, "niet_bereikt")
         return "mislukt"
+    if lijkt_op_voicemail(transcript):
+        # Geen persoon aan de lijn: het telt niet als gesproken, zodat de planning het later opnieuw kan proberen. Zonder transcript naar het web
+        # en zonder wissen bij ElevenLabs, voor het geval de herkenning zich vergist.
+        if gemeld:
+            return "genegeerd"
+        calls.update_opdracht(call_id, status="voicemail", afgerond_om=time.time(), agent_gesprek_afgerond=True)
+        calls.rapporteer(call_id, "voicemail")
+        return "voicemail"
     calls.update_opdracht(call_id, status="gesproken", afgerond_om=time.time(), agent_gesprek_afgerond=True)
     if calls.rapporteer(call_id, "gesproken", transcript=transcript):
         # Pas wissen als de web-service het transcript heeft aangenomen: dan is het dagboek de enige kopie.
@@ -198,7 +223,7 @@ def herstel_gesprek(call_id: str) -> str:
 
 
 # Een gesprek dat voice al als niet-gesproken heeft gemeld, vragen we nog een paar keer na: de webhook kan te vroeg, leeg of nooit zijn aangekomen.
-NAVRAAG_STATUSSEN = ("onderbroken", "niet_bereikt", "mislukt", "voicemail")
+NAVRAAG_STATUSSEN = ("onderbroken", "niet_bereikt", "mislukt")
 NAVRAAG_MAX = 3
 NAVRAAG_INTERVAL_SECS = 600
 NAVRAAG_TOT_SECS = 48 * 3600

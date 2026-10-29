@@ -218,3 +218,37 @@ def test_vangnet_vraagt_een_als_niet_gesproken_gemeld_gesprek_nog_na_maar_beperk
     # Een gesprek dat al gesproken is gemeld wordt niet meer opgevraagd.
     monkeypatch.setattr(agent, "haal_gesprek_op", lambda conv: pytest.fail("mag niet opvragen"))
     agent.herstel_agentgesprekken(nu=time.time() + 5000)
+
+
+VOICEMAIL = [
+    {"role": "agent", "message": "Goedemorgen Daan."},
+    {"role": "user", "message": "Is niet beschikbaar. Laat een bericht achter na de toon."},
+    {"role": "agent", "message": "Het lijkt erop dat je niet beschikbaar bent."},
+    {"role": "user", "message": "Als u klaar bent, beëindig dit gesprek of voor meer opties toets 1."},
+]
+
+
+def test_voicemailgroet_wordt_als_voicemail_gemeld_zonder_transcript_en_zonder_wissen(monkeypatch, gemeld):
+    gewist = []
+    monkeypatch.setattr(agent, "verwijder_gesprek", lambda conv: gewist.append(conv))
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="belt")
+    assert agent.verwerk_webhook(webhook(cid, beurten=VOICEMAIL)) == "voicemail"
+    assert gemeld[0][1] == {"status": "voicemail"} and calls.lees_opdracht(cid)["status"] == "voicemail"
+    assert gewist == []
+    assert agent.verwerk_webhook(webhook(cid, beurten=VOICEMAIL)) == "genegeerd" and len(gemeld) == 1
+
+
+def test_een_persoon_die_zegt_niet_beschikbaar_te_zijn_of_veel_praat_is_geen_voicemail(gemeld):
+    assert agent.lijkt_op_voicemail(agent.naar_transcript(VOICEMAIL)) is True
+    assert agent.lijkt_op_voicemail(agent.naar_transcript([{"role": "user", "message": "Ik ben even niet beschikbaar, bel over een uur terug."}])) is False
+    lang = "Ik zat net te denken aan het project. " * 20 + "Je kunt me bereiken, toets 1 op de telefoon is niet nodig."
+    assert agent.lijkt_op_voicemail(agent.naar_transcript([{"role": "user", "message": lang}])) is False
+    assert agent.lijkt_op_voicemail([]) is False
+
+
+def test_een_eerder_als_gesproken_gemeld_gesprek_wordt_niet_alsnog_voicemail(gemeld):
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="gesproken", eind_gemeld="gesproken")
+    assert agent.verwerk_webhook(webhook(cid, beurten=VOICEMAIL)) == "genegeerd"
+    assert gemeld == []
