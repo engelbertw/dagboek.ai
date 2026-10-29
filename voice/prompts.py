@@ -120,7 +120,7 @@ def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, 
     uur = (nu or datetime.now(TIJDZONE)).astimezone(TIJDZONE).hour
     groet = "Goedemorgen" if 6 <= uur < 12 else "Goedemiddag" if 12 <= uur < 18 else "Goedenavond"
     tekst = (
-        f"{groet} {medewerker}. Je spreekt met de digitale assistent van {opdrachtgever}, met de stem van {opdrachtgever}. "
+        f"{groet} {medewerker}. Je spreekt met de digitale assistent van {opdrachtgever}. "
         "Dit gesprek wordt gevoerd door een AI-systeem. "
     )
     if inkomend:
