@@ -50,6 +50,22 @@ function Gespreksmotor() {
   );
 }
 
+function Inkomend() {
+  const huidig = useLaden(() => api<{ aan: boolean }>('GET', '/instellingen/inkomend'));
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  async function zet(aan: boolean) {
+    try { await api('PUT', '/instellingen/inkomend', { aan }); setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); huidig.ververs(); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  return (
+    <section className="paneel stapel">
+      <h2>Inbellen</h2>
+      <p className="zacht klein">Een medewerker kan zelf het nummer van de ElevenLabs-agent bellen en de update geven. De beller wordt herkend aan het telefoonnummer bij Medewerkers; een onbekend nummer krijgt een korte melding en het gesprek eindigt. Per medewerker maximaal 5 inkomende gesprekken per uur. Het nummer van de beller kan vervalst zijn, dus de assistent noemt alleen de eigen onderwerpen van die medewerker.</p>
+      <label className="rij"><input type="checkbox" checked={huidig.data?.aan ?? false} onChange={(e) => void zet(e.target.checked)} /> Inbellen toestaan</label>
+      <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
+    </section>
+  );
+}
+
 function Jira() {
   const huidig = useLaden(() => api<JiraInstelling>('GET', '/instellingen/jira'));
   const [site, setSite] = useState('');
@@ -87,6 +103,7 @@ export function Instellingen() {
       <Systeemstatus />
       <div><h1>Instellingen</h1><p className="zacht">Algemene instellingen voor alle gesprekken. Een planning kan een eigen gespreksinstructie krijgen; zonder eigen instructie geldt de algemene.</p></div>
       <Gespreksmotor />
+      <Inkomend />
       <Jira />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />

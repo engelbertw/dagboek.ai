@@ -54,3 +54,9 @@ export async function leesJira(db: Db): Promise<JiraInstellingen | null> {
   } catch { return null; }
 }
 export const bewaarJira = (db: Db, i: JiraInstellingen | null) => bewaar(db, 'jira', i ? JSON.stringify(i) : '');
+
+/** Of medewerkers zelf mogen bellen. Standaard uit: een nummer dat gebeld kan worden is een voordeur. */
+export async function leesInkomend(db: Db): Promise<boolean> {
+  return (await lees(db, 'inkomend', '')).waarde === 'aan';
+}
+export const bewaarInkomend = (db: Db, aan: boolean) => bewaar(db, 'inkomend', aan ? 'aan' : '');

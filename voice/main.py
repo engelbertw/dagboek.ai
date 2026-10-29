@@ -255,6 +255,23 @@ async def elevenlabs_webhook(request: Request):
     return Response(status_code=200)
 
 
+@app.post("/elevenlabs/init")
+async def elevenlabs_init(request: Request):
+    """Conversation-initiation-webhook van ElevenLabs voor een inkomend gesprek. Beveiligd met een gedeeld geheim in een header (zet bij ElevenLabs
+    als secret op de webhook). Zonder geheim of bij een onjuist geheim doen we niets."""
+    import agent_elevenlabs
+    geheim = os.getenv("ELEVENLABS_INIT_SECRET", "")
+    if not geheim or not hmac.compare_digest(request.headers.get("x-init-secret", ""), geheim):
+        return Response(status_code=401)
+    try:
+        verzoek = await request.json()
+    except ValueError:
+        return Response(status_code=400)
+    if not isinstance(verzoek, dict):
+        return Response(status_code=400)
+    return await asyncio.to_thread(agent_elevenlabs.verwerk_init, verzoek)
+
+
 @app.post("/herstel/{web_call_id}")
 async def herstel(web_call_id: str, authorization: str = Header(default="")):
     """Laat de web-service een agent-gesprek alsnog bij ElevenLabs ophalen en afleveren (vangnet of handmatig). Start nooit een gesprek."""

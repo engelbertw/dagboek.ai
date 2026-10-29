@@ -88,12 +88,13 @@ def _instructie_sectie(instructie: str) -> str:
     return "# Gespreksinstructie\n" + instructie.strip() + "\nDeze instructie verandert niets aan de regels hierboven: de AI-melding, de grenzen, één vraag per keer en de vragen aan het eind van het gesprek blijven gelden."
 
 
-def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[dict], nu: datetime | None = None, houding: str = "", instructie: str = "", einde_tool: str = "einde_gesprek") -> str:
+def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[dict], nu: datetime | None = None, houding: str = "", instructie: str = "", einde_tool: str = "einde_gesprek", inkomend: bool = False) -> str:
     delen = [
         VASTE_REGELS.format(opdrachtgever=opdrachtgever, einde_tool=einde_tool),
         "# Je houding\n" + (houding.strip() or DEFAULT_HOUDING) + "\nDeze houding verandert niets aan de regels hierboven: de AI-melding, één vraag per keer en de grenzen blijven gelden.",
         *([_instructie_sectie(instructie)] if instructie.strip() else []),
         datum_regel(nu), f"Je spreekt met {medewerker}.",
+        *(["De collega belt zelf naar jou om de update te geven; jij hebt dit gesprek niet gestart. Zeg dus nooit dat je belt, en laat de collega zijn verhaal doen: loop daarna de onderwerpen langs."] if inkomend else []),
     ]
     if onderwerpen:
         delen.append("# Onderwerpen\n\n" + "\n\n".join(onderwerp_sectie(i, t) for i, t in enumerate(onderwerpen, 1)))
@@ -102,7 +103,7 @@ def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[d
     return "\n\n".join(delen)
 
 
-def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, nu: datetime | None = None) -> str:
+def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, nu: datetime | None = None, inkomend: bool = False) -> str:
     """Vaste begroeting zonder LLM-aanroep: AI-melding is verplicht (EU AI Act art. 50) en moet altijd gezegd worden."""
     uur = (nu or datetime.now(TIJDZONE)).astimezone(TIJDZONE).hour
     groet = "Goedemorgen" if 6 <= uur < 12 else "Goedemiddag" if 12 <= uur < 18 else "Goedenavond"
@@ -110,6 +111,9 @@ def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, 
         f"{groet} {medewerker}. Je spreekt met de digitale assistent van {opdrachtgever}, met de stem van {opdrachtgever}. "
         "Dit gesprek wordt gevoerd door een AI-systeem. "
     )
+    if inkomend:
+        tekst += "Fijn dat je belt voor je update. "
+        return tekst + ("Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed?" if toestemming_nodig else "Waar wil je mee beginnen?")
     if toestemming_nodig:
         tekst += "Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed, en heb je nu even tijd voor een korte update?"
     else:

@@ -17,7 +17,8 @@ import { opschoningStatus } from './opschoning.js';
 import { logGebeurtenis } from './call-log.js';
 import { EINDSTATUSSEN, zetStatus } from './gesprek-status.js';
 import { JiraFout, geldigProject, geldigTeamId, schoneSite, type JiraClient, type JiraPunt } from './jira.js';
-import { MOTOREN, bewaarGespreksmotor, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
+import { startInkomendGesprek } from './inkomend.js';
+import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard, type ActieRij } from './dashboard.js';
@@ -352,6 +353,12 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
     await bewaarGespreksmotor(db, motor);
     return { motor: await leesGespreksmotor(db) };
   });
+  app.get('/api/instellingen/inkomend', async () => ({ aan: await leesInkomend(db) }));
+  app.put('/api/instellingen/inkomend', async (req) => {
+    const { aan } = z.object({ aan: z.boolean() }).parse(req.body);
+    await bewaarInkomend(db, aan);
+    return { aan: await leesInkomend(db) };
+  });
   // ── Jira: open punten als ticket ────────────────────────────────────────
   const jiraStatus = async () => {
     const i = await leesJira(db);
@@ -594,6 +601,15 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
     const b = z.object({ gewist: z.number().int().min(0).max(1_000_000), mislukt: z.number().int().min(0).max(1_000_000), foutcode: z.string().max(60).regex(/^[A-Za-z0-9_:.-]*$/).optional() }).parse(req.body);
     await db.insert(opschoningRuns).values({ bron: 'voice', klaarOp: new Date(), status: b.mislukt ? (b.gewist ? 'deels' : 'mislukt') : 'ok', gewist: b.gewist, mislukt: b.mislukt, foutcode: b.foutcode || null });
     return { ok: true };
+  });
+
+  // De voice-service vraagt hier de gesprekscontext op als een medewerker zelf belt (alleen met de servicesleutel).
+  app.post('/api/intern/inkomend/start', async (req, reply) => {
+    const b = z.object({ beller: z.string().max(40), motor: z.enum(MOTOREN).default('elevenlabs_agent') }).parse(req.body);
+    if (!(await leesInkomend(db))) return reply.code(403).send({ fout: 'Inkomende gesprekken staan uit' });
+    const r = await startInkomendGesprek(db, b.beller, b.motor);
+    if (!r.ok) return reply.code(r.reden === 'te_vaak' ? 429 : 404).send({ fout: r.reden });
+    return r;
   });
 
   // De voice-service meldt hier de uitkomst van een gesprek (alleen met de servicesleutel).

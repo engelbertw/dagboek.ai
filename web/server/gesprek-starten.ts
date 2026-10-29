@@ -14,11 +14,8 @@ export type StartUitkomst =
   | { ok: true; callId: string; onderwerpen: number }
   | { ok: false; status: 404 | 409 | 502; fout: string; callId?: string };
 
-/** Stelt de onderwerpen van een medewerker samen en start het gesprek. Gebruikt door 'Bel nu' en door de scheduler. */
-export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }, employeeId: string, planning?: PlanningInfo, gekozenMotor?: Motor): Promise<StartUitkomst> {
-  const [m] = await db.select().from(employees).where(eq(employees.id, employeeId));
-  if (!m) return { ok: false, status: 404, fout: 'Medewerker niet gevonden' };
-  if (!m.actief) return { ok: false, status: 409, fout: 'Deze medewerker is niet actief' };
+/** De onderwerpen van een medewerker voor een gesprek, in de vorm voor de prompt en als momentopname voor de gespreksrij. Gedeeld door uitgaande en inkomende gesprekken. */
+export async function stelOnderwerpenSamen(db: Db, employeeId: string): Promise<{ onderwerpen: Onderwerp[]; momentopname: GespreksOnderwerp[] }> {
   const mijnTopics = await db.select({ t: topics, projectNaam: projects.naam }).from(topics)
     .leftJoin(projects, eq(topics.projectId, projects.id)).where(and(eq(topics.eigenaarId, employeeId), eq(topics.status, 'actief'))).orderBy(asc(topics.createdAt));
   const onderwerpen: Onderwerp[] = [];
@@ -39,6 +36,15 @@ export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }
     });
     momentopname.push({ id: t.id, titel: t.titel, openPunten: open.map((o) => ({ id: o.id, tekst: o.tekst })) });
   }
+  return { onderwerpen, momentopname };
+}
+
+/** Stelt de onderwerpen van een medewerker samen en start het gesprek. Gebruikt door 'Bel nu' en door de scheduler. */
+export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }, employeeId: string, planning?: PlanningInfo, gekozenMotor?: Motor): Promise<StartUitkomst> {
+  const [m] = await db.select().from(employees).where(eq(employees.id, employeeId));
+  if (!m) return { ok: false, status: 404, fout: 'Medewerker niet gevonden' };
+  if (!m.actief) return { ok: false, status: 409, fout: 'Deze medewerker is niet actief' };
+  const { onderwerpen, momentopname } = await stelOnderwerpenSamen(db, employeeId);
   // De planning bepaalt de instructie; heeft die er geen (of 'Bel nu'), dan geldt de algemene instructie uit Instellingen.
   const [pl] = planning ? await db.select({ i: schedules.gespreksinstructie }).from(schedules).where(eq(schedules.id, planning.scheduleId)) : [];
   const motor = gekozenMotor ?? (await leesGespreksmotor(db));

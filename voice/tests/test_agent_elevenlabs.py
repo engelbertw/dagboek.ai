@@ -252,3 +252,43 @@ def test_een_eerder_als_gesproken_gemeld_gesprek_wordt_niet_alsnog_voicemail(gem
     calls.update_opdracht(cid, agent_conversation_id="conv_1", status="gesproken", eind_gemeld="gesproken")
     assert agent.verwerk_webhook(webhook(cid, beurten=VOICEMAIL)) == "genegeerd"
     assert gemeld == []
+
+
+# ── Inkomend bellen ──────────────────────────────────────────────────────────
+
+WEB_ANTWOORD = {
+    "ok": True, "callId": "c0ffee00-0000-4000-8000-000000000001", "medewerker": "Daan", "toestemmingNodig": True,
+    "onderwerpen": [{"titel": "Goes"}], "houding": "", "instructie": "",
+}
+
+
+def test_inkomend_geeft_prompt_en_begroeting_en_koppelt_het_gesprek(monkeypatch, gemeld):
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, WEB_ANTWOORD))
+    antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_in"})
+    call_id = antw["dynamic_variables"]["call_id"]
+    assert call_id
+    override = antw["conversation_config_override"]["agent"]
+    assert "Daan" in override["first_message"] and "AI-systeem" in override["first_message"] and "Fijn dat je belt" in override["first_message"]
+    assert "Goes" in override["prompt"]["prompt"] and "belt zelf naar jou" in override["prompt"]["prompt"]
+    # Het gesprek wordt later via de gewone post-call-webhook afgeleverd, op het eigen gespreks-id.
+    assert agent.verwerk_webhook(webhook(call_id, conv="conv_in", beurten=[{"role": "agent", "message": "Hoi"}, {"role": "user", "message": "Het gaat goed met Goes, we zijn bijna klaar."}])) == "afgerond"
+    assert gemeld[-1][0] == WEB_ANTWOORD["callId"] and gemeld[-1][1]["status"] == "gesproken"
+
+
+def test_inkomend_onbekend_of_uitgeschakeld_geeft_een_korte_afwijzing_zonder_gegevens(monkeypatch):
+    for status, tekst in ((404, "herken dit telefoonnummer niet"), (403, "nog niet mogelijk"), (429, "vaker gebeld"), (0, "herken dit telefoonnummer niet")):
+        monkeypatch.setattr(calls, "vraag_inkomend", lambda beller, s=status: (s, {}))
+        antw = agent.verwerk_init({"caller_id": "+31600000000", "agent_id": "agent_1"})
+        assert antw["dynamic_variables"]["call_id"] == ""
+        assert tekst in antw["conversation_config_override"]["agent"]["first_message"]
+        assert "Goes" not in antw["conversation_config_override"]["agent"]["prompt"]["prompt"]
+
+
+def test_inkomend_negeert_een_ander_agent_en_een_herhaald_verzoek_maakt_geen_tweede_opdracht(monkeypatch):
+    aangeroepen = []
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: aangeroepen.append(beller) or (200, WEB_ANTWOORD))
+    assert agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "andere"})["dynamic_variables"]["call_id"] == ""
+    assert aangeroepen == []
+    a = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_x"})
+    b = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_x"})
+    assert a["dynamic_variables"]["call_id"] == b["dynamic_variables"]["call_id"]

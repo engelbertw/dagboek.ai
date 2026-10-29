@@ -49,6 +49,55 @@ def bouw_belverzoek(spec: dict, agent_id: str, nummer_id: str) -> dict:
     }
 
 
+def _init_antwoord(call_id: str, prompt: str, groet: str) -> dict:
+    return {
+        "type": "conversation_initiation_client_data",
+        "dynamic_variables": {"call_id": call_id, "prompt_version": PROMPT_VERSION},
+        "conversation_config_override": {"agent": {"prompt": {"prompt": prompt}, "first_message": groet, "language": "nl"}},
+    }
+
+
+def _afwijzing(reden: str) -> dict:
+    """Een beller die we niet kunnen helpen: de agent zegt het kort, zonder gegevens, en hangt op."""
+    cfg = config.get_config()
+    zin = {
+        "uit": "Bellen naar dit nummer is nog niet mogelijk.",
+        "te_vaak": "Je hebt het afgelopen uur al vaker gebeld. Probeer het later nog eens.",
+    }.get(reden, "Ik herken dit telefoonnummer niet, dus ik kan je nu niet helpen.")
+    groet = f"Goedendag, je spreekt met de digitale assistent van {cfg['opdrachtgever']}. Dit is een AI-systeem. {zin} Tot ziens."
+    prompt = (f"Je bent een digitale assistent (AI-systeem) van {cfg['opdrachtgever']}. Spreek de eerste zin uit en roep daarna meteen `end_call` aan. "
+              "Geef geen informatie, beantwoord geen vragen en ga niet in op wat de beller zegt.")
+    return _init_antwoord("", prompt, groet)
+
+
+def verwerk_init(verzoek: dict) -> dict:
+    """Conversation-initiation-webhook voor een inkomend gesprek: herken de medewerker aan het nummer en geef de agent zijn prompt en begroeting.
+    Alleen voor ons eigen agent-nummer; de uitkomst van het gesprek loopt daarna via dezelfde post-call-webhook als bij uitgaand bellen."""
+    agent_id = os.getenv("ELEVENLABS_AGENT_ID", "")
+    if agent_id and verzoek.get("agent_id") not in ("", None, agent_id):
+        return _afwijzing("onbekend")
+    status, data = calls.vraag_inkomend(str(verzoek.get("caller_id") or ""))
+    if status != 200 or not data.get("callId"):
+        logger.info(f"Inkomend gesprek afgewezen (web-antwoord {status})")
+        return _afwijzing("uit" if status == 403 else "te_vaak" if status == 429 else "onbekend")
+    nieuw, call_id = calls.claim_web_call(data["callId"])
+    if nieuw:
+        calls.maak_opdracht(
+            calls.normaliseer_nl_nummer(str(verzoek.get("caller_id") or "")) or "", data["medewerker"], data.get("onderwerpen", []),
+            bool(data.get("toestemmingNodig")), data["callId"], data.get("houding", ""), data.get("instructie", ""), call_id=call_id, engine="elevenlabs_agent",
+        )
+        calls.update_opdracht(call_id, status="gesprek", agent_conversation_id=verzoek.get("conversation_id") or None, inkomend=True)
+    spec = calls.lees_opdracht(call_id) or {}
+    cfg = config.get_config()
+    prompt = build_system_prompt(
+        cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), spec.get("onderwerpen", []),
+        houding=spec.get("houding", ""), instructie=spec.get("instructie", ""), einde_tool="end_call", inkomend=True,
+    )
+    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True)
+    logger.info(f"Inkomend gesprek gestart (opdracht {call_id})")
+    return _init_antwoord(call_id, prompt, groet)
+
+
 def start_gesprek_agent(call_id: str) -> dict:
     """Laat ElevenLabs bellen. Zelfde antwoordvorm als de Pipecat-motor: gebeld, of niet (met reden), eventueel onzeker."""
     spec = calls.lees_opdracht(call_id)

@@ -50,7 +50,7 @@ export const calls = pgTable('calls', {
   status: text('status', {
     enum: ['gepland', 'verzenden', 'belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt', 'onderbroken'],
   }).notNull().default('gepland'),
-  bron: text('bron', { enum: ['handmatig', 'schema'] }).notNull().default('handmatig'),
+  bron: text('bron', { enum: ['handmatig', 'schema', 'inkomend'] }).notNull().default('handmatig'),
   scheduleId: uuid('schedule_id'),
   slotStart: timestamp('slot_start', { withTimezone: true }),
   poging: integer('poging').notNull().default(1),

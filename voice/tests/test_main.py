@@ -218,3 +218,14 @@ def test_herstel_vereist_admin_token_en_kent_de_opdracht(client, monkeypatch):
     monkeypatch.setattr(agent_elevenlabs, "herstel_gesprek", lambda c: "afgerond" if c == cid else "onbekend")
     r = client.post("/herstel/web123456", headers={"Authorization": "Bearer admin"})
     assert r.status_code == 200 and r.json() == {"uitkomst": "afgerond"}
+
+
+def test_elevenlabs_init_vereist_het_geheim(client, monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_INIT_SECRET", "geheim")
+    assert client.post("/elevenlabs/init", json={"caller_id": "+31612345678"}).status_code == 401
+    assert client.post("/elevenlabs/init", json={}, headers={"x-init-secret": "fout"}).status_code == 401
+    monkeypatch.setattr("calls.vraag_inkomend", lambda beller: (404, {}))
+    r = client.post("/elevenlabs/init", json={"caller_id": "+31600000000"}, headers={"x-init-secret": "geheim"})
+    assert r.status_code == 200 and r.json()["dynamic_variables"]["call_id"] == ""
+    monkeypatch.delenv("ELEVENLABS_INIT_SECRET")
+    assert client.post("/elevenlabs/init", json={}, headers={"x-init-secret": ""}).status_code == 401

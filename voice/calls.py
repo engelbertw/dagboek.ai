@@ -218,6 +218,19 @@ def _verstuur(web_id: str, body: dict) -> bool:
         return False
 
 
+def vraag_inkomend(beller: str) -> tuple[int, dict]:
+    """Vraagt de web-service wie er belt en wat die medewerker op de agenda heeft. Geeft (statuscode, antwoord); 0 bij een netwerkfout."""
+    import httpx
+
+    url, sleutel = os.getenv("WEB_CALLBACK_URL", "").rstrip("/"), os.getenv("WEB_SERVICE_KEY", "")
+    try:
+        r = httpx.post(f"{url}/api/intern/inkomend/start", json={"beller": beller, "motor": "elevenlabs_agent"}, headers={"x-service-key": sleutel}, timeout=8)
+        return r.status_code, (r.json() if r.status_code == 200 else {})
+    except Exception as e:
+        logger.warning(f"Inkomend gesprek: web-service niet bereikbaar: {type(e).__name__}")
+        return 0, {}
+
+
 def rapporteer(call_id: str, status: str, **extra) -> bool:
     """Meldt de uitkomst van een gesprek aan de web-service (dagboek). Een definitieve uitkomst die niet aankomt (web-service in deploy)
     gaat in de outbox van de opdracht en wordt herhaald door `herhaal_rapporten`; de web-service negeert herhalingen.
