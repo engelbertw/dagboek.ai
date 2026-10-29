@@ -193,3 +193,15 @@ def test_elevenlabs_webhook_vereist_geldige_handtekening(client, monkeypatch):
     t = int(time.time())
     sig = hmac.new(b"geheim", f"{t}.".encode() + body, hashlib.sha256).hexdigest()
     assert client.post("/elevenlabs/webhook", content=body, headers={"elevenlabs-signature": f"t={t},v0={sig}"}).status_code == 200
+
+
+def test_bel_accepteert_twintig_onderwerpen_en_weigert_eenentwintig():
+    from main import BelVerzoek
+    from pydantic import ValidationError
+    basis = {"telefoonnummer": "+31612345678", "medewerker": "Daan"}
+    assert len(BelVerzoek(**basis, onderwerpen=[{"titel": f"t{i}"} for i in range(20)]).onderwerpen) == 20
+    try:
+        BelVerzoek(**basis, onderwerpen=[{"titel": f"t{i}"} for i in range(21)])
+        assert False, "21 onderwerpen hadden geweigerd moeten worden"
+    except ValidationError:
+        pass

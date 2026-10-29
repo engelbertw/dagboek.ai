@@ -198,7 +198,7 @@ async def amd_callback(request: Request):
 class BelVerzoek(BaseModel):
     telefoonnummer: str = Field(min_length=6, max_length=20)
     medewerker: str = Field(min_length=1, max_length=100)
-    onderwerpen: list[dict] = Field(default_factory=list, max_length=10)
+    onderwerpen: list[dict] = Field(default_factory=list, max_length=20)
     toestemming_nodig: bool = True
     web_call_id: str = Field(default="", max_length=64)
     houding: str = Field(default="", max_length=4000)
