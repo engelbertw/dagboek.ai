@@ -40,16 +40,21 @@ export const bewaarInstructie = (db: Db, waarde: string) => bewaar(db, 'gespreks
  * gespreksinhoud als gegeven) en de samenvatting met bevestiging aan het eind staan vast in de voice-service (voice/prompts.py).
  */
 export const STANDAARD_DEBRIEF_VRAGEN = [
-  'Stel de vragen één tegelijk, in deze volgorde, en vraag alleen door als een antwoord vaag is. Houd het gesprek kort: ongeveer acht tot tien minuten.',
-  '1. Bezoek: bij welke klant was je, met wie heb je gesproken (naam en functie), was het een evaluatie, een kennismaking of een vervolgafspraak, en wanneer was het?',
-  '2. Doelen van de klant: wat wil de klant het komende jaar bereiken en wat is voor de klant het belangrijkst? Is er iets veranderd sinds het vorige gesprek?',
-  '3. Resultaten: wat is er bereikt sinds de vorige evaluatie, wat ging goed en wat niet? Hoe tevreden is de klant, met een cijfer van 1 tot 10, en waarom? Zijn er cijfers of voorbeelden genoemd?',
-  '4. Dienstverlening en SLA: noemde de klant problemen, incidenten of trage reactietijden? Zijn er afspraken uit de SLA niet gehaald, of ervaart de klant dat zo?',
-  '5. Afspraken met de klant: wat heb je toegezegd, aan wie en voor wanneer? Heeft de klant zelf iets toegezegd?',
-  '6. Commerciële kansen: is er een behoefte of kans? Vraag wat de klant wil, ongeveer welke omvang, in welke fase het zit (signaal, gesprek, offerte, onderhandeling), wie beslist, wanneer een besluit of start wordt verwacht, of er een concurrent is, of er budget is en of er een contractverlenging of einddatum speelt. Raad niets: wat de accountmanager niet weet, blijft leeg.',
-  '7. Risico\'s en escalaties: is er een risico dat de klant ontevreden wordt, opzegt of escaleert? Wie moet daar iets van weten?',
-  '8. Vervolgacties: wat moet er nog gebeuren, wie doet dat en voor wanneer? Heeft de accountmanager hulp van een collega nodig?',
-  '9. Contactpersonen: zijn er nieuwe contactpersonen of beslissers? Vraag alleen naam, functie en rol.',
+  'Stel altijd één korte vraag tegelijk en wacht op het antwoord. Een vraag per beurt, nooit twee in één zin. Vraag alleen door als een antwoord vaag is, en dan ook met één concrete vraag. Houd het gesprek kort: ongeveer acht tot tien minuten. Elke regel hieronder is één aparte vraag; sla een vraag over als het antwoord al is gegeven of als er niets over te melden is.',
+  '1. Bezoek: Bij welke klant was je?',
+  '1. Bezoek: Met wie heb je gesproken, en wat is diens functie?',
+  '1. Bezoek: Was het een evaluatie, een kennismaking of een vervolgafspraak?',
+  '2. Doelen: Wat wil de klant het komende jaar bereiken?',
+  '2. Doelen: Is er iets veranderd sinds het vorige gesprek?',
+  '3. Resultaten: Wat ging er goed sinds de vorige keer, en wat niet?',
+  '3. Resultaten: Hoe tevreden is de klant, met een cijfer van 1 tot 10?',
+  '4. Dienstverlening: Noemde de klant problemen of trage reactietijden? Alleen doorvragen naar de SLA als de klant dat zelf noemt.',
+  '5. Afspraken: Wat heb je de klant toegezegd, en voor wanneer?',
+  '5. Afspraken: Heeft de klant zelf iets toegezegd?',
+  '6. Kansen: Zag je een kans of een nieuwe behoefte bij de klant? Zo ja: vraag daarna los van elkaar wat de klant wil, ongeveer hoe groot dat is, hoe ver het is (een signaal, een gesprek, een offerte of onderhandeling) en wanneer een besluit wordt verwacht. Vraag naar beslisser, concurrent, budget en contractdatum alleen als het gesprek daar vanzelf naartoe gaat. Raad niets: wat de accountmanager niet weet, blijft leeg.',
+  '7. Risico: Is er een risico dat de klant ontevreden wordt of opzegt?',
+  '8. Vervolg: Wat moet er nog gebeuren, wie doet het, en voor wanneer? Eén actie per keer; vraag daarna of er nog een is.',
+  '9. Contactpersonen: Zijn er nieuwe contactpersonen of beslissers? Vraag alleen naam, functie en rol.',
 ].join('\n');
 
 export const leesDebriefVragen = (db: Db) => lees(db, 'debrief_vragen', STANDAARD_DEBRIEF_VRAGEN);
