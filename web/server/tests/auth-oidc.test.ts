@@ -63,6 +63,16 @@ describe('maakOidc', () => {
     expect(await oidc.afronden({ code: 'c', verifier: s.verifier, nonce: s.nonce, redirectUri: 'https://x/cb' })).toEqual({ email: 'ruben@test.nl', naam: 'Ruben Test', rol: 'beheerder' });
   });
 
+  it('geeft een accountmanager de rol accountmanager, en wie beide heeft is beheerder', async () => {
+    for (const [rollen, verwacht] of [[['accountmanager'], 'accountmanager'], [['accountmanager', 'beheerder'], 'beheerder']] as const) {
+      const kc = await nepKeycloak({ rollen: [...rollen] });
+      const oidc = maakOidc(KC, kc.haal);
+      const s = await oidc.start('https://x/cb');
+      kc.zetNonce(s.nonce);
+      expect((await oidc.afronden({ code: 'c', verifier: s.verifier, nonce: s.nonce, redirectUri: 'https://x/cb' })).rol).toBe(verwacht);
+    }
+  });
+
   it('weigert zonder beheerdersrol', async () => {
     const kc = await nepKeycloak({ rollen: ['uma_authorization'] });
     const oidc = maakOidc(KC, kc.haal);

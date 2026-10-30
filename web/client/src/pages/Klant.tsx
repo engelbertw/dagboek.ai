@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, SOORT_LABEL, api, datum, deadlineTekst, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
+import { KLANT_STATUS_LABEL, api, datum, type Activiteit, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
-import { Details } from './Verkoopregister';
+import { ControleBanner, PuntToevoegen, Secties, useActies } from './ActiviteitenLijst';
 
 export function Klant() {
   const { id } = useParams();
@@ -10,6 +10,8 @@ export function Klant() {
   const kaart = useLaden(() => api<KlantDetail>('GET', `/klanten/${id}`), [id]);
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
+  const punten = useLaden(() => api<Activiteit[]>('GET', `/activiteiten?klantId=${id}`), [id]);
+  const acties = useActies(() => { void punten.ververs(); void kaart.ververs(); }, punten.data ?? []);
   const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '' });
   const [samenvoegMet, setSamenvoegMet] = useState('');
   const [contact, setContact] = useState({ naam: '', functie: '', rol: '' });
@@ -45,13 +47,9 @@ export function Klant() {
   async function wisContact(cid: string) {
     try { await api('DELETE', `/klant-contacten/${cid}`); kaart.ververs(); } catch (er) { fout(er); }
   }
-  async function zet(aid: string, status: 'open' | 'afgerond') {
-    try { await api('PATCH', `/activiteiten/${aid}`, { status: status === 'open' ? 'afgerond' : 'open' }); kaart.ververs(); } catch (er) { fout(er); }
-  }
 
   if (kaart.fout) return <div className="stapel"><Melding tekst={kaart.fout} /><Link to="/klanten">Terug naar klanten</Link></div>;
   if (!kaart.data || !k) return null;
-  const naamVan = (aid: string | null) => medewerkers.data?.find((m) => m.id === aid)?.naam;
   const andere = (klanten.data ?? []).filter((x) => x.id !== id);
 
   return (
@@ -76,27 +74,31 @@ export function Klant() {
       )}
       <Melding tekst={melding?.tekst ?? null} soort={melding?.soort} />
 
-      <section className="paneel stapel" aria-label="Activiteiten">
-        <h2>Tijdlijn</h2>
-        {kaart.data.bezoeken.length === 0 && kaart.data.activiteiten.length === 0 && <Leeg>Nog geen bezoeken.</Leeg>}
-        {kaart.data.bezoeken.map((b) => {
-          const acts = kaart.data!.activiteiten.filter((a) => a.bezoekId === b.id);
-          return (
-            <div key={b.id} className="stapel">
-              <h3>{b.datum ? datum(b.datum) : datum(b.createdAt)} · {b.soort || 'bezoek'}{b.tevredenheid !== null && <> · tevredenheid <Badge>{b.tevredenheid}/10</Badge></>}</h3>
-              <span className="zacht klein">{b.accountmanagerNaam ? `Gemeld door ${b.accountmanagerNaam}` : 'Gemeld door een accountmanager'}</span>
-              {b.samenvatting && <p>{b.samenvatting}</p>}
-              {acts.map((a) => (
-                <div key={a.id} className={`punt ${a.status === 'afgerond' ? 'klaar' : ''}`}>
-                  <input type="checkbox" checked={a.status === 'afgerond'} onChange={() => void zet(a.id, a.status)} aria-label={`Afgerond: ${a.omschrijving}`} />
-                  <span style={{ flex: 1, minWidth: 180 }}><Badge>{SOORT_LABEL[a.soort]}</Badge> {a.omschrijving}<Details a={a} />{a.controleNodig && <><br /><span className="zacht klein">Wacht op controle bij het Verkoopregister.</span></>}</span>
-                  {(a.eigenaarId || a.eigenaarExtern) && <span className="zacht klein">{naamVan(a.eigenaarId) ?? `${a.eigenaarExtern} (extern)`}</span>}
-                  {a.deadline && <Badge>{deadlineTekst(a.deadline)}</Badge>}
-                </div>
-              ))}
-            </div>
-          );
-        })}
+      <section className="paneel stapel" aria-label="Werk">
+        <h2>Werk</h2>
+        <Melding tekst={acties.fout ?? punten.fout} />
+        {acties.jiraPaneel}
+        <ControleBanner punten={(punten.data ?? []).filter((p) => p.controleNodig)} acties={acties} />
+        {(punten.data ?? []).filter((p) => !p.controleNodig && p.status === 'open').length === 0 && <Leeg>Geen open punten.</Leeg>}
+        <Secties punten={(punten.data ?? []).filter((p) => !p.controleNodig && p.status === 'open')} acties={acties} medewerkers={medewerkers.data ?? []} />
+        {(punten.data ?? []).some((p) => p.status === 'afgerond') && (
+          <details className="werk-sectie"><summary>Afgerond <span className="zacht">({(punten.data ?? []).filter((p) => p.status === 'afgerond').length})</span></summary>
+            <Secties punten={(punten.data ?? []).filter((p) => p.status === 'afgerond')} acties={acties} medewerkers={medewerkers.data ?? []} />
+          </details>
+        )}
+        <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} vast={{ klantId: id }} />
+      </section>
+
+      <section className="paneel stapel" aria-label="Bezoeken">
+        <h2>Bezoeken</h2>
+        {kaart.data.bezoeken.length === 0 && <Leeg>Nog geen bezoeken.</Leeg>}
+        {kaart.data.bezoeken.map((b) => (
+          <div key={b.id} className="stapel">
+            <h3>{b.datum ? datum(b.datum) : datum(b.createdAt)} · {b.soort || 'bezoek'}{b.tevredenheid !== null && <> · tevredenheid <Badge>{b.tevredenheid}/10</Badge></>}</h3>
+            <span className="zacht klein">{b.accountmanagerNaam ? `Gemeld door ${b.accountmanagerNaam}` : 'Gemeld door een accountmanager'}</span>
+            {b.samenvatting && <p>{b.samenvatting}</p>}
+          </div>
+        ))}
       </section>
 
       <section className="paneel stapel" aria-label="Contactpersonen">

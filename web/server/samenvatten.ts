@@ -2,7 +2,7 @@ import { and, eq, inArray, lt } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db } from './db.js';
 import type { LlmClient } from './llm.js';
-import { calls, employees, openItems, suggesties, topics, updates, type GespreksOnderwerp } from './schema.js';
+import { activiteiten, calls, employees, suggesties, topics, updates, type GespreksOnderwerp } from './schema.js';
 import { logGebeurtenis } from './call-log.js';
 import { leggToestemmingVast } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, schoonVoorPrompt } from './vertrouwen.js';
@@ -253,19 +253,19 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
             if (!punt || gezienPunt.has(afgerond.nr)) continue;
             gezienPunt.add(afgerond.nr);
             if (citaatKomtVoor(afgerond.citaat, transcript)) {
-              const klaar = await tx.update(openItems).set({ status: 'afgerond', afgerondOp: new Date() })
-                .where(and(eq(openItems.id, punt.id), eq(openItems.status, 'open'))).returning({ id: openItems.id });
+              const klaar = await tx.update(activiteiten).set({ status: 'afgerond', afgerondOp: new Date() })
+                .where(and(eq(activiteiten.id, punt.id), eq(activiteiten.status, 'open'))).returning({ id: activiteiten.id });
               tellers.afgerondePunten += klaar.length;
             } else {
               // Het model zegt dat het klaar is, maar de collega heeft dat niet aantoonbaar gezegd: niet sluiten, wel laten controleren.
-              const gemarkeerd = await tx.update(openItems).set({ controleNodig: true, controleReden: 'mogelijk_afgerond' })
-                .where(and(eq(openItems.id, punt.id), eq(openItems.status, 'open'), eq(openItems.controleNodig, false))).returning({ id: openItems.id });
+              const gemarkeerd = await tx.update(activiteiten).set({ controleNodig: true, controleReden: 'mogelijk_afgerond' })
+                .where(and(eq(activiteiten.id, punt.id), eq(activiteiten.status, 'open'), eq(activiteiten.controleNodig, false))).returning({ id: activiteiten.id });
               tellers.teControleren += gemarkeerd.length;
             }
           }
 
-          const bestaand = (await tx.select({ tekst: openItems.tekst }).from(openItems)
-            .where(and(eq(openItems.topicId, onderwerp.id), eq(openItems.status, 'open')))).map((p) => p.tekst);
+          const bestaand = (await tx.select({ tekst: activiteiten.omschrijving }).from(activiteiten)
+            .where(and(eq(activiteiten.topicId, onderwerp.id), eq(activiteiten.status, 'open')))).map((p) => p.tekst);
           let nieuwBijOnderwerp = 0;
           for (const actie of o.nieuwe_open_punten) {
             const tekst = actie.tekst.trim();
@@ -278,8 +278,8 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
             // Een deadline is alleen zo betrouwbaar als de actie zelf: zonder aantoonbare bron laten we hem weg.
             const deadline = onderbouwd ? geldigeDeadline(actie.deadline, vandaag) : null;
             const reden = !onderbouwd ? 'bron_niet_te_verifieren' : eigenaar.eigenaarExtern && !komtVoorInGesprek(eigenaar.eigenaarExtern, transcript) ? 'eigenaar_onzeker' : null;
-            await tx.insert(openItems).values({
-              topicId: onderwerp.id, callId, tekst, deadline, deadlineOorspronkelijk: deadline, bron: 'gesprek', controleNodig: !!reden, controleReden: reden, ...eigenaar,
+            await tx.insert(activiteiten).values({
+              topicId: onderwerp.id, soort: 'intern', callId, omschrijving: tekst, deadline, deadlineOorspronkelijk: deadline, bron: 'gesprek', controleNodig: !!reden, controleReden: reden, ...eigenaar,
             });
             tellers.nieuweOpenPunten++;
             if (reden) tellers.teControleren++;

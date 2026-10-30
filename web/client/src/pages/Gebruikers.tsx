@@ -2,7 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
-interface Gebruiker { id: string; email: string; naam: string; actief: boolean; mfa: boolean; aangemaakt: string | null }
+type GebruikersRol = 'beheerder' | 'accountmanager';
+const ROL_LABEL: Record<GebruikersRol, string> = { beheerder: 'Beheerder', accountmanager: 'Accountmanager' };
+
+interface Gebruiker { id: string; email: string; naam: string; rol: GebruikersRol; actief: boolean; mfa: boolean; aangemaakt: string | null }
 
 export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   const lijst = useLaden(() => api<Gebruiker[]>('GET', '/gebruikers'));
@@ -10,6 +13,7 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   const [ok, setOk] = useState<string | null>(null);
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
+  const [rol, setRol] = useState<GebruikersRol>('beheerder');
   const [wachtwoord, setWachtwoord] = useState<{ voor: string; waarde: string } | null>(null);
 
   async function doe(taak: () => Promise<unknown>, melding?: string) {
@@ -19,7 +23,7 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   async function voegToe(e: FormEvent) {
     e.preventDefault();
     try {
-      const r = await api<{ tijdelijkWachtwoord: string }>('POST', '/gebruikers', { naam, email });
+      const r = await api<{ tijdelijkWachtwoord: string }>('POST', '/gebruikers', { naam, email, rol });
       setWachtwoord({ voor: email, waarde: r.tijdelijkWachtwoord });
       setNaam(''); setEmail(''); setFout(null); setOk(null); lijst.ververs();
     } catch (err) { setFout(foutTekst(err)); }
@@ -36,7 +40,7 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   return (
     <div className="stapel">
       <h1>Gebruikers</h1>
-      <p className="zacht">Iedereen hieronder kan inloggen als beheerder en ziet alle gegevens. Bij de eerste keer inloggen kiest iemand een eigen wachtwoord en koppelt een authenticator-app (MFA).</p>
+      <p className="zacht">Een beheerder ziet alle gegevens en beheert gebruikers. Een accountmanager ziet alleen het werk en de klanten. Bij de eerste keer inloggen kiest iemand een eigen wachtwoord en koppelt een authenticator-app (MFA).</p>
       <Melding tekst={fout} />
       <Melding tekst={ok} soort="ok" />
 
@@ -58,7 +62,7 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
         {lijst.data && lijst.data.length > 0 && (
           <div className="tabelrand">
             <table>
-              <thead><tr><th>Naam</th><th>E-mail</th><th>Status</th><th>MFA</th><th /></tr></thead>
+              <thead><tr><th>Naam</th><th>E-mail</th><th>Rol</th><th>Status</th><th>MFA</th><th /></tr></thead>
               <tbody>
                 {lijst.data.map((g) => {
                   const ik = g.email.toLowerCase() === ikEmail.toLowerCase();
@@ -66,6 +70,14 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
                     <tr key={g.id}>
                       <td>{g.naam}{ik && <> <Badge>jij</Badge></>}</td>
                       <td>{g.email}</td>
+                      <td>
+                        {ik ? ROL_LABEL[g.rol] : (
+                          <select aria-label={`Rol van ${g.naam}`} value={g.rol}
+                            onChange={(e) => { if (window.confirm(`${g.naam} wordt ${ROL_LABEL[e.target.value as GebruikersRol].toLowerCase()}. Doorgaan?`)) void doe(() => api('POST', `/gebruikers/${g.id}/rol`, { rol: e.target.value }), 'Rol gewijzigd'); }}>
+                            {(Object.keys(ROL_LABEL) as GebruikersRol[]).map((r) => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
+                          </select>
+                        )}
+                      </td>
                       <td><Badge soort={g.actief ? 'afgerond' : 'mislukt'}>{g.actief ? 'actief' : 'uitgezet'}</Badge></td>
                       <td><Badge soort={g.mfa ? 'afgerond' : 'wacht'}>{g.mfa ? 'actief' : 'nog niet ingesteld'}</Badge></td>
                       <td>
@@ -90,6 +102,11 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
         <div className="raster">
           <Veld label="Naam"><input value={naam} onChange={(e) => setNaam(e.target.value)} autoComplete="off" required maxLength={150} /></Veld>
           <Veld label="E-mailadres"><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" required maxLength={200} /></Veld>
+          <Veld label="Rol">
+            <select value={rol} onChange={(e) => setRol(e.target.value as GebruikersRol)}>
+              {(Object.keys(ROL_LABEL) as GebruikersRol[]).map((r) => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
+            </select>
+          </Veld>
         </div>
         <div><button className="primair" type="submit">Toevoegen</button></div>
       </form>

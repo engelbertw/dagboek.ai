@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { calls, employees, openItems, updates } from '../schema.js';
+import { calls, employees, activiteiten, updates } from '../schema.js';
 import { herstelVastgelopen, leesAntwoord, lijktOpBestaand } from '../samenvatten.js';
 import { SERVICE_KEY, maakTestApp } from './helpers.js';
 
@@ -25,8 +25,8 @@ async function scenario(llmAntwoord: string | ((s: string, g: string) => string)
   const m = (await t.api('POST', '/api/employees', { naam: 'Daan', telefoon: '0612345678', toestemming: opties.toestemming ?? false })).json();
   const t1 = (await t.api('POST', '/api/topics', { titel: 'Offertes', eigenaarId: m.id })).json();
   const t2 = (await t.api('POST', '/api/topics', { titel: 'Architectuur', eigenaarId: m.id })).json();
-  const p1 = (await t.api('POST', `/api/topics/${t1.id}/open-items`, { tekst: 'Akkoord klant' })).json();
-  const p2 = (await t.api('POST', `/api/topics/${t1.id}/open-items`, { tekst: 'Intern overleg' })).json();
+  const p1 = (await t.api('POST', '/api/activiteiten', { topicId: t1.id, omschrijving: 'Akkoord klant' })).json();
+  const p2 = (await t.api('POST', '/api/activiteiten', { topicId: t1.id, omschrijving: 'Intern overleg' })).json();
   const { callId } = (await t.api('POST', `/api/employees/${m.id}/bel`)).json();
   const meld = async (status = 'gesproken') => {
     const r = await t.app.inject({
@@ -38,7 +38,7 @@ async function scenario(llmAntwoord: string | ((s: string, g: string) => string)
   };
   const call = async () => (await t.api('GET', `/api/calls/${callId}`)).json();
   const alleUpdates = () => t.db.select().from(updates);
-  const alleOpenPunten = () => t.db.select().from(openItems);
+  const alleOpenPunten = () => t.db.select().from(activiteiten);
   const medewerker = async () => (await t.db.select().from(employees).where(eq(employees.id, m.id)))[0];
   return { t, m, t1, t2, p1, p2, callId, meld, call, alleUpdates, alleOpenPunten, medewerker, vragen };
 }
@@ -68,7 +68,7 @@ describe('samenvatting na een gesprek', () => {
     const punten = await s.alleOpenPunten();
     expect(punten.find((p) => p.id === s.p2.id)).toMatchObject({ status: 'afgerond' });
     expect(punten.find((p) => p.id === s.p1.id)).toMatchObject({ status: 'open' });
-    expect(punten.find((p) => p.tekst === 'Planning voor november maken')).toMatchObject({ callId: s.callId, status: 'open' });
+    expect(punten.find((p) => p.omschrijving === 'Planning voor november maken')).toMatchObject({ callId: s.callId, status: 'open' });
     expect((await s.medewerker()).toestemmingOp).toBeTruthy();
     expect((await s.t.api('GET', '/api/topics')).json().find((t: any) => t.id === s.t1.id).laatsteUpdate.samenvatting).toContain('akkoord');
   });
@@ -186,7 +186,7 @@ describe('samenvatting na een gesprek', () => {
       onderwerpen: [{ nr: 1, besproken: true, samenvatting: 'Besproken', nieuwe_open_punten: ['  AKKOORD  klant', 'Nieuw ding', 'nieuw ding'] }],
     }));
     await s.meld();
-    const punten = (await s.alleOpenPunten()).map((p) => p.tekst).sort();
+    const punten = (await s.alleOpenPunten()).map((p) => p.omschrijving).sort();
     expect(punten).toEqual(['Akkoord klant', 'Intern overleg', 'Nieuw ding']);
   });
 

@@ -2,7 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ruimTranscriptenOp } from '../opschoning.js';
 import { bouwGebruikersBericht, leesAntwoord } from '../samenvatten.js';
-import { calls, employees, openItems, toestemmingen, updates } from '../schema.js';
+import { calls, employees, activiteiten, toestemmingen, updates } from '../schema.js';
 import { citaatKomtVoor, normaliseer, schoonVoorPrompt } from '../vertrouwen.js';
 import { SERVICE_KEY, maakTestApp } from './helpers.js';
 
@@ -24,7 +24,7 @@ async function scenario(llm: (s: string, g: string) => string | Promise<string>,
   open.push(t);
   const m = (await t.api('POST', '/api/employees', { naam: opties.naam ?? 'Daan', telefoon: '0612345678', toestemming: opties.toestemming ?? false })).json();
   const t1 = (await t.api('POST', '/api/topics', { titel: opties.titel ?? 'Offertes', eigenaarId: m.id })).json();
-  const p1 = (await t.api('POST', `/api/topics/${t1.id}/open-items`, { tekst: 'Akkoord klant' })).json();
+  const p1 = (await t.api('POST', '/api/activiteiten', { topicId: t1.id, omschrijving: 'Akkoord klant' })).json();
   const bel = async () => (await t.api('POST', `/api/employees/${m.id}/bel`)).json().callId as string;
   const callId = await bel();
   const meld = async (status = 'gesproken', id = callId) => {
@@ -35,7 +35,7 @@ async function scenario(llm: (s: string, g: string) => string | Promise<string>,
   const call = async (id = callId) => (await t.db.select().from(calls).where(eq(calls.id, id)))[0];
   const medewerker = async () => (await t.db.select().from(employees).where(eq(employees.id, m.id)))[0];
   const register = () => t.db.select().from(toestemmingen).where(eq(toestemmingen.employeeId, m.id));
-  const punten = () => t.db.select().from(openItems);
+  const punten = () => t.db.select().from(activiteiten);
   return { t, m, t1, p1, callId, bel, meld, call, medewerker, register, punten, vragen };
 }
 
@@ -170,22 +170,22 @@ describe('model-uitvoer is onbetrouwbaar', () => {
     const p = (await s.punten()).find((x) => x.id === s.p1.id)!;
     expect(p).toMatchObject({ status: 'open', controleNodig: true, controleReden: 'mogelijk_afgerond' });
     expect((await s.t.api('GET', '/api/dashboard')).json().totaal.open).toBe(0); // telt niet mee zolang het wacht op controle
-    expect((await s.t.api('POST', `/api/open-items/${p.id}/controle`, { besluit: 'goedkeuren' })).json()).toMatchObject({ status: 'afgerond', controleNodig: false });
+    expect((await s.t.api('POST', `/api/activiteiten/${p.id}/controle`, { besluit: 'goedkeuren' })).json()).toMatchObject({ status: 'afgerond', controleNodig: false });
   });
 
   it('afwijzen van een voorgestelde afronding laat het punt open staan', async () => {
     const s = await scenario(() => ant({ ...metCitaat, onderwerpen: [{ nr: 1, besproken: true, samenvatting: 'x', afgeronde_open_punten: [1] }] }));
     await s.meld();
-    expect((await s.t.api('POST', `/api/open-items/${s.p1.id}/controle`, { besluit: 'afwijzen' })).json()).toMatchObject({ status: 'open', controleNodig: false });
+    expect((await s.t.api('POST', `/api/activiteiten/${s.p1.id}/controle`, { besluit: 'afwijzen' })).json()).toMatchObject({ status: 'open', controleNodig: false });
   });
 
   it('een nieuwe actie zonder bron krijgt geen deadline en wacht op controle; daarna kan de beheerder hem verwijderen', async () => {
     const s = await scenario(() => ant({ ...metCitaat, onderwerpen: [{ nr: 1, besproken: true, samenvatting: 'x', nieuwe_open_punten: [{ tekst: 'Verzonnen actie', eigenaar: 'collega', deadline: '2099-01-01', citaat: '' }] }] }));
     await s.meld();
-    const p = (await s.punten()).find((x) => x.tekst === 'Verzonnen actie')!;
+    const p = (await s.punten()).find((x) => x.omschrijving === 'Verzonnen actie')!;
     expect(p).toMatchObject({ controleNodig: true, controleReden: 'bron_niet_te_verifieren', deadline: null, bron: 'gesprek' });
-    expect((await s.t.api('POST', `/api/open-items/${p.id}/controle`, { besluit: 'afwijzen' })).json()).toMatchObject({ verwijderd: true });
-    expect((await s.punten()).find((x) => x.tekst === 'Verzonnen actie')).toBeUndefined();
+    expect((await s.t.api('POST', `/api/activiteiten/${p.id}/controle`, { besluit: 'afwijzen' })).json()).toMatchObject({ verwijderd: true });
+    expect((await s.punten()).find((x) => x.omschrijving === 'Verzonnen actie')).toBeUndefined();
   });
 
   it('een onderbouwde actie met deadline is gewoon een feit; een onbekende eigenaar die niet in het gesprek voorkomt wordt gemarkeerd', async () => {
@@ -195,8 +195,8 @@ describe('model-uitvoer is onbetrouwbaar', () => {
     ] }] }));
     await s.meld();
     const alle = await s.punten();
-    expect(alle.find((x) => x.tekst === 'Planning maken')).toMatchObject({ controleNodig: false, deadline: expect.any(String) });
-    expect(alle.find((x) => x.tekst === 'Contract tekenen')).toMatchObject({ controleNodig: true, controleReden: 'eigenaar_onzeker', eigenaarExtern: 'Piet Spook' });
+    expect(alle.find((x) => x.omschrijving === 'Planning maken')).toMatchObject({ controleNodig: false, deadline: expect.any(String) });
+    expect(alle.find((x) => x.omschrijving === 'Contract tekenen')).toMatchObject({ controleNodig: true, controleReden: 'eigenaar_onzeker', eigenaarExtern: 'Piet Spook' });
   });
 
   it('een actie die op controle wacht komt niet in de prompt van het volgende gesprek', async () => {
@@ -275,13 +275,13 @@ describe('deadlinewijzigingen worden bijgehouden', () => {
     const t = await maakTestApp(); open.push(t);
     const m = (await t.api('POST', '/api/employees', { naam: 'A', telefoon: '0612345678' })).json();
     const topic = (await t.api('POST', '/api/topics', { titel: 'X', eigenaarId: m.id })).json();
-    const a = (await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Doe iets' })).json();
-    const lees = async () => (await t.db.select().from(openItems).where(eq(openItems.id, a.id)))[0];
-    await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-11-01' });
+    const a = (await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Doe iets' })).json();
+    const lees = async () => (await t.db.select().from(activiteiten).where(eq(activiteiten.id, a.id)))[0];
+    await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-11-01' });
     expect(await lees()).toMatchObject({ deadline: '2026-11-01', deadlineOorspronkelijk: '2026-11-01', deadlineGewijzigdAantal: 0 });
-    await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-11-08' });
-    await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-11-08' }); // zelfde waarde: geen wijziging
-    await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-11-15' });
+    await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-11-08' });
+    await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-11-08' }); // zelfde waarde: geen wijziging
+    await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-11-15' });
     expect(await lees()).toMatchObject({ deadline: '2026-11-15', deadlineOorspronkelijk: '2026-11-01', deadlineGewijzigdAantal: 2 });
   });
 });

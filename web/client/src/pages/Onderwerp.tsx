@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, datumTijd, vandaagIso, type Historie, type Medewerker, type OpenPunt, type Project, type TopicDetail, type Update } from '../api';
+import { api, datumTijd, type Activiteit, type Historie, type Medewerker, type Project, type TopicDetail, type Update } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+import { Punten, PuntToevoegen, useActies } from './ActiviteitenLijst';
 import { TopicVelden, type TopicWaarden } from './TopicVelden';
 
 function UpdateRegel({ u, ververs }: { u: Update; ververs: () => void }) {
@@ -47,40 +48,16 @@ function UpdateRegel({ u, ververs }: { u: Update; ververs: () => void }) {
   );
 }
 
-function OpenPunten({ topicId, punten, medewerkers, ververs }: { topicId: string; punten: OpenPunt[]; medewerkers: Medewerker[]; ververs: () => void }) {
-  const [tekst, setTekst] = useState('');
-  const [deadline, setDeadline] = useState('');
-  const [fout, setFout] = useState<string | null>(null);
-  const vandaag = vandaagIso();
-  const doe = async (f: () => Promise<unknown>) => { try { await f(); setFout(null); ververs(); } catch (err) { setFout(foutTekst(err)); } };
+function OpenPunten({ topicId, medewerkers }: { topicId: string; medewerkers: Medewerker[] }) {
+  const lijst = useLaden(() => api<Activiteit[]>('GET', `/activiteiten?topicId=${topicId}`), [topicId]);
+  const acties = useActies(() => void lijst.ververs(), lijst.data ?? []);
   return (
-    <section className="paneel">
+    <section className="paneel stapel">
       <h2>Acties</h2>
-      {punten.length === 0 && <Leeg>Nog geen acties.</Leeg>}
-      {punten.map((p) => {
-        const teLaat = p.status === 'open' && !!p.deadline && p.deadline < vandaag;
-        return (
-          <div key={p.id} className={`punt ${p.status === 'afgerond' ? 'klaar' : ''}`}>
-            <input type="checkbox" checked={p.status === 'afgerond'} aria-label={`Afgerond: ${p.tekst}`}
-              onChange={() => doe(() => api('PATCH', `/open-items/${p.id}`, { status: p.status === 'open' ? 'afgerond' : 'open' }))} />
-            <span style={{ flex: 1, minWidth: 160 }}>{p.tekst}{teLaat && <> <Badge soort="mislukt">te laat</Badge></>}</span>
-            <select aria-label={`Eigenaar van: ${p.tekst}`} value={p.eigenaarId ?? ''} style={{ width: 'auto' }}
-              onChange={(e) => doe(() => api('PATCH', `/open-items/${p.id}`, { eigenaarId: e.target.value || null }))}>
-              <option value="">{p.eigenaarExtern ? `${p.eigenaarExtern} (buiten het team)` : 'Geen eigenaar'}</option>
-              {medewerkers.map((m) => <option key={m.id} value={m.id}>{m.naam}</option>)}
-            </select>
-            <input type="date" aria-label={`Deadline van: ${p.tekst}`} value={p.deadline ?? ''} style={{ width: 'auto' }}
-              onChange={(e) => doe(() => api('PATCH', `/open-items/${p.id}`, { deadline: e.target.value || null }))} />
-            <button className="tekstknop gevaar" onClick={() => doe(() => api('DELETE', `/open-items/${p.id}`))} aria-label={`Verwijder: ${p.tekst}`}>✕</button>
-          </div>
-        );
-      })}
-      <form className="rij" onSubmit={(e) => { e.preventDefault(); void doe(async () => { await api('POST', `/topics/${topicId}/open-items`, { tekst, deadline: deadline || null }); setTekst(''); setDeadline(''); }); }}>
-        <input style={{ flex: 1, minWidth: 180 }} value={tekst} onChange={(e) => setTekst(e.target.value)} placeholder="Nieuwe actie" aria-label="Nieuwe actie" maxLength={500} required />
-        <input type="date" style={{ width: 'auto' }} value={deadline} onChange={(e) => setDeadline(e.target.value)} aria-label="Deadline nieuwe actie" />
-        <button type="submit">Toevoegen</button>
-      </form>
-      <Melding tekst={fout} />
+      <Melding tekst={acties.fout ?? lijst.fout} />
+      {acties.jiraPaneel}
+      <Punten punten={lijst.data ?? []} acties={acties} medewerkers={medewerkers} leeg="Nog geen acties." />
+      <PuntToevoegen acties={acties} medewerkers={medewerkers} vast={{ topicId }} />
     </section>
   );
 }
@@ -135,7 +112,7 @@ export function Onderwerp() {
 
       </section>
 
-      <OpenPunten topicId={id} punten={topic.data.openItems} medewerkers={medewerkers.data ?? []} ververs={topic.ververs} />
+      <OpenPunten topicId={id} medewerkers={medewerkers.data ?? []} />
 
       <form className="paneel stapel" onSubmit={bewaar}>
         <h2>Gegevens van dit onderwerp</h2>

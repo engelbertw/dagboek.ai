@@ -1,5 +1,5 @@
 export interface ActieRij {
-  id: string; tekst: string; topicId: string; topicTitel: string;
+  id: string; tekst: string; soort?: string; topicId: string | null; topicTitel: string | null; klantId?: string | null; klantNaam?: string | null;
   eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string;
   deadline: string | null; status: 'open' | 'afgerond'; createdAt: Date; afgerondOp: Date | null;
   controleNodig?: boolean; deadlineGewijzigdAantal?: number; jiraSleutel?: string | null; jiraUrl?: string | null;

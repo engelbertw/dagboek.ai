@@ -31,7 +31,7 @@ const VAGE_FRASEN = [
 /** Iets concreets: een getal, een bedrag of een eigennaam (hoofdletter midden in de zin). */
 const heeftConcreet = (t: string) => /\d|€|\beuro\b/i.test(t) || /(?:^|\s)\S+\s+[A-ZÀ-Ý][\p{L}]{2,}/u.test(t);
 
-export type Soortnaam = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'kans' | 'risico';
+export type Soortnaam = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'intern' | 'kans' | 'risico';
 
 /** Te kort, te algemeen, of (bij een doel of resultaat) zonder iets concreets: niet opnemen. */
 export function teVaag(tekst: string, soort: Soortnaam | 'dagboek'): boolean {
@@ -44,7 +44,7 @@ export function teVaag(tekst: string, soort: Soortnaam | 'dagboek'): boolean {
 }
 
 /** Als twee soorten over hetzelfde gaan, wint de soort waar het meest mee te doen valt. */
-const PRIORITEIT: Record<Soortnaam, number> = { actie: 0, afspraak: 1, kans: 2, risico: 3, doel: 4, resultaat: 5 };
+const PRIORITEIT: Record<Soortnaam, number> = { actie: 0, afspraak: 1, intern: 2, kans: 3, risico: 4, doel: 5, resultaat: 6 };
 
 /** Hoeveel er per gesprek hooguit wordt opgenomen; de actiegerichte soorten delen één maximum. */
 export const MAX_PER_GESPREK = { acties: 5, kans: 3, risico: 3, doel: 3, resultaat: 3 } as const;
@@ -52,7 +52,7 @@ export const MAX_DAGBOEK_PER_ONDERWERP = 4;
 
 export interface Kandidaat { soort: Soortnaam; omschrijving: string; citaat: string; eigenaar?: string; deadline?: string | null }
 
-const groep = (s: Soortnaam): keyof typeof MAX_PER_GESPREK => (s === 'actie' || s === 'afspraak' ? 'acties' : s);
+const groep = (s: Soortnaam): keyof typeof MAX_PER_GESPREK => (s === 'actie' || s === 'afspraak' || s === 'intern' ? 'acties' : s);
 
 /** Hoe goed is een punt onderbouwd? Met citaat, eigenaar en deadline gaat voor een punt zonder. */
 const gewicht = (k: Kandidaat) => (k.citaat.trim() ? 4 : 0) + (k.eigenaar?.trim() ? 1 : 0) + (k.deadline ? 1 : 0);

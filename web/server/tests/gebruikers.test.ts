@@ -13,14 +13,15 @@ const ID = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
 
 function geheugenBeheer(): KeycloakBeheer & { gebruikers: Gebruiker[]; wachtwoorden: string[] } {
   const gebruikers: Gebruiker[] = [
-    { id: ID(1), email: 'beheer@test.nl', naam: 'Beheer Test', actief: true, mfa: true, aangemaakt: null },
-    { id: ID(2), email: 'ruben@test.nl', naam: 'Ruben Test', actief: true, mfa: false, aangemaakt: null },
+    { id: ID(1), email: 'beheer@test.nl', naam: 'Beheer Test', rol: 'beheerder', actief: true, mfa: true, aangemaakt: null },
+    { id: ID(2), email: 'ruben@test.nl', naam: 'Ruben Test', rol: 'beheerder', actief: true, mfa: false, aangemaakt: null },
   ];
   const wachtwoorden: string[] = [];
   return {
     gebruikers, wachtwoorden,
     lijst: async () => gebruikers.map((g) => ({ ...g })),
-    maak: async ({ email, naam, wachtwoord }) => { wachtwoorden.push(wachtwoord); gebruikers.push({ id: ID(gebruikers.length + 1), email, naam, actief: true, mfa: false, aangemaakt: null }); return ID(gebruikers.length); },
+    maak: async ({ email, naam, wachtwoord, rol = 'beheerder' }) => { wachtwoorden.push(wachtwoord); gebruikers.push({ id: ID(gebruikers.length + 1), email, naam, rol, actief: true, mfa: false, aangemaakt: null }); return ID(gebruikers.length); },
+    zetRol: async (id, rol) => { gebruikers.find((g) => g.id === id)!.rol = rol; },
     zetActief: async (id, actief) => { gebruikers.find((g) => g.id === id)!.actief = actief; },
     resetWachtwoord: async (_id, w) => { wachtwoorden.push(w); },
     resetMfa: async (id) => { gebruikers.find((g) => g.id === id)!.mfa = false; },
@@ -97,6 +98,24 @@ describe('gebruikersbeheer (routes)', () => {
   });
 });
 
+describe('gebruikersbeheer: rollen', () => {
+  it('maakt een accountmanager aan en wijzigt de rol, maar niet bij jezelf of de laatste beheerder', async () => {
+    const beheer = geheugenBeheer();
+    const { api } = await metBeheer(beheer);
+    const r = await api('POST', '/api/gebruikers', { naam: 'Ana Account', email: 'ana@test.nl', rol: 'accountmanager' });
+    expect(r.statusCode).toBe(201);
+    expect(beheer.gebruikers.at(-1)).toMatchObject({ email: 'ana@test.nl', rol: 'accountmanager' });
+    expect((await api('POST', '/api/gebruikers', { naam: 'X', email: 'x@test.nl', rol: 'baas' })).statusCode).toBe(400);
+    expect((await api('POST', `/api/gebruikers/${ID(2)}/rol`, { rol: 'accountmanager' })).statusCode).toBe(200);
+    expect(beheer.gebruikers[1].rol).toBe('accountmanager');
+    // Jezelf (beheer@test.nl) blijft beheerder, en een ongeldige rol wordt geweigerd.
+    expect((await api('POST', `/api/gebruikers/${ID(1)}/rol`, { rol: 'accountmanager' })).statusCode).toBe(409);
+    expect((await api('POST', `/api/gebruikers/${ID(2)}/rol`, { rol: 'baas' })).statusCode).toBe(400);
+    // Een accountmanager telt niet mee als beheerder: de enige andere beheerder (jij) is al beschermd, en Ana uitzetten mag.
+    expect((await api('PATCH', `/api/gebruikers/${ID(3)}`, { actief: false })).statusCode).toBe(200);
+  });
+});
+
 describe('maakKeycloakBeheer (Admin API)', () => {
   const CFG = { issuer: 'https://kc.test/realms/dagboek', clientId: 'w', clientSecret: 's', beheerClientId: 'dagboek-beheer', beheerClientSecret: 'b' };
 
@@ -120,6 +139,26 @@ describe('maakKeycloakBeheer (Admin API)', () => {
       requiredActions: ['UPDATE_PASSWORD', 'CONFIGURE_TOTP'], credentials: [{ type: 'password', value: 'tijdelijk-wachtwoord-1', temporary: true }],
     });
     expect(verzoeken.find((v) => v.url.endsWith('/users/abc/role-mappings/realm'))!.body).toEqual([{ id: 'r1', name: 'beheerder' }]);
+  });
+
+  it('geeft een accountmanager de rol accountmanager en meldt een rol die nog niet bestaat', async () => {
+    const verzoeken: { url: string; method: string; body?: any }[] = [];
+    const haal: typeof fetch = async (input, init) => {
+      const url = String(input);
+      verzoeken.push({ url, method: init?.method ?? 'GET', body: init?.body && typeof init.body === 'string' && !url.endsWith('/token') ? JSON.parse(init.body) : undefined });
+      if (url.endsWith('/token')) return Response.json({ access_token: 'tok', expires_in: 300 });
+      if (url.endsWith('/users') && init?.method === 'POST') return new Response(null, { status: 201, headers: { location: 'https://kc.test/admin/realms/dagboek/users/abc' } });
+      if (url.endsWith('/roles/accountmanager')) return Response.json({ id: 'r2', name: 'accountmanager' });
+      if (url.endsWith('/roles/beheerder')) return new Response(null, { status: 404 });
+      return new Response(null, { status: 204 });
+    };
+    const kc = maakKeycloakBeheer(CFG, haal);
+    await kc.maak({ email: 'a@b.nl', naam: 'Anna', wachtwoord: 'tijdelijk-wachtwoord-1', rol: 'accountmanager' });
+    expect(verzoeken.find((v) => v.url.endsWith('/users/abc/role-mappings/realm'))!.body).toEqual([{ id: 'r2', name: 'accountmanager' }]);
+    // Zonder bestaande rol wordt er geen gebruiker aangemaakt.
+    const voor = verzoeken.length;
+    await expect(kc.maak({ email: 'c@d.nl', naam: 'Cor', wachtwoord: 'x', rol: 'beheerder' })).rejects.toMatchObject({ status: 409 });
+    expect(verzoeken.slice(voor).some((v) => v.url.endsWith('/users'))).toBe(false);
   });
 
   it('meldt een bestaand e-mailadres en een onbereikbare Keycloak', async () => {

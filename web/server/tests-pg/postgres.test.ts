@@ -6,7 +6,7 @@ import { startGesprek } from '../gesprek-starten.js';
 import { zetStatus } from '../gesprek-status.js';
 import { leggToestemmingVast } from '../toestemming.js';
 import { tik } from '../scheduler.js';
-import { calls, employees, openItems, scheduleEmployees, schedules, toestemmingen } from '../schema.js';
+import { calls, employees, activiteiten, scheduleEmployees, schedules, toestemmingen } from '../schema.js';
 import { maakDatabase, maakHandles, migratieMap, migratiesTot, pool } from './helpers.js';
 
 const rijen = (r: unknown) => ((r as { rows?: any[] }).rows ?? (r as any[]));
@@ -56,9 +56,9 @@ describe('migraties op een echte Postgres', () => {
     const reg = await db.select().from(toestemmingen);
     expect(reg).toHaveLength(1);
     expect(reg[0]).toMatchObject({ employeeId: m1.id, besluit: 'gegeven', bron: 'migratie' });
-    const punten = await db.select().from(openItems);
-    expect(punten.find((p) => p.tekst === 'Uit gesprek')).toMatchObject({ bron: 'gesprek', deadlineOorspronkelijk: '2026-11-06', controleNodig: false });
-    expect(punten.find((p) => p.tekst === 'Handmatig')).toMatchObject({ bron: 'handmatig', deadlineOorspronkelijk: null });
+    const punten = await db.select().from(activiteiten);
+    expect(punten.find((p) => p.omschrijving === 'Uit gesprek')).toMatchObject({ soort: 'intern', bron: 'gesprek', deadlineOorspronkelijk: '2026-11-06', controleNodig: false });
+    expect(punten.find((p) => p.omschrijving === 'Handmatig')).toMatchObject({ bron: 'handmatig', deadlineOorspronkelijk: null });
     expect((await db.select().from(calls))[0]).toMatchObject({ status: 'gesproken', toestemmingStatus: 'onbekend', transcriptBewarenTot: null });
     // de nieuwe status mag, de trigger bewaakt overgangen, het register is append-only
     const [lopend] = await db.insert(calls).values({ employeeId: m1.id, status: 'belt' }).returning();

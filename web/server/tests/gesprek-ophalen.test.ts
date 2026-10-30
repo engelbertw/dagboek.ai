@@ -80,7 +80,7 @@ describe('agent-gesprekken zonder transcript worden bij voice nagevraagd', () =>
     await melding({ status: 'gesproken', transcript: [{ role: 'user', content: 'Ja, dat is goed. Ik stuur de offerte.' }] });
     await s.t.klaarMetAchtergrond();
     expect((await s.rij(callId))).toMatchObject({ status: 'gesproken', samenvattingStatus: 'klaar' });
-    expect((await s.t.api('GET', '/api/acties')).json().map((a: { tekst: string }) => a.tekst)).toContain('Offerte versturen');
+    expect((await s.t.api('GET', '/api/activiteiten')).json().map((a: { omschrijving: string }) => a.omschrijving)).toContain('Offerte versturen');
   });
 });
 

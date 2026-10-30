@@ -1,7 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { leesGespreksmotor, leesHouding, leesInstructie, type Motor } from './instellingen.js';
-import { calls, employees, openItems, projects, schedules, topics, updates, type GespreksOnderwerp } from './schema.js';
+import { activiteiten, calls, employees, projects, schedules, topics, updates, type GespreksOnderwerp } from './schema.js';
 import { vandaagNL } from './samenvatten.js';
 import { puntenVoorGesprek } from './voor-gesprek.js';
 import { logGebeurtenis } from './call-log.js';
@@ -24,10 +24,10 @@ export async function stelOnderwerpenSamen(db: Db, employeeId: string): Promise<
     const [laatste] = await db.select().from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
     // Punten die nog gecontroleerd moeten worden (uit het taalmodel, niet onderbouwd) komen niet in de prompt van het volgende gesprek.
     const open = await db.select({
-      id: openItems.id, tekst: openItems.tekst, deadline: openItems.deadline, eigenaarId: openItems.eigenaarId,
-      eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
-    }).from(openItems).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
-      .where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open'), eq(openItems.controleNodig, false))).orderBy(asc(openItems.createdAt));
+      id: activiteiten.id, tekst: activiteiten.omschrijving, deadline: activiteiten.deadline, eigenaarId: activiteiten.eigenaarId,
+      eigenaarNaam: employees.naam, eigenaarExtern: activiteiten.eigenaarExtern,
+    }).from(activiteiten).leftJoin(employees, eq(activiteiten.eigenaarId, employees.id))
+      .where(and(eq(activiteiten.topicId, t.id), eq(activiteiten.status, 'open'), eq(activiteiten.controleNodig, false))).orderBy(asc(activiteiten.createdAt));
     const punten = puntenVoorGesprek(open, vandaagNL(), employeeId);
     onderwerpen.push({
       titel: t.titel, project: projectNaam ?? undefined, aanwijzingen: t.aanwijzingen || undefined,

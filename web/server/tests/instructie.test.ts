@@ -100,7 +100,7 @@ describe('suggestie voor een instructie', () => {
     const p = (await t.api('POST', '/api/projects', { naam: 'MijnServices' })).json();
     const o = (await t.api('POST', '/api/topics', { titel: 'Offertes', type: 'project', projectId: p.id, eigenaarId: daan.id, aanwijzingen: 'klantafstemming' })).json();
     await t.api('POST', '/api/topics', { titel: 'Architectuur', eigenaarId: jarich.id });
-    await t.api('POST', `/api/topics/${o.id}/open-items`, { tekst: 'Offerte versturen', deadline: '2020-01-01' });
+    await t.api('POST', '/api/activiteiten', { topicId: o.id, omschrijving: 'Offerte versturen', deadline: '2020-01-01' });
 
     const r = await t.api('POST', '/api/plannings/suggestie', { employeeIds: [daan.id] });
     expect(r.statusCode).toBe(200);

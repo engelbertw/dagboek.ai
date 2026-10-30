@@ -11,7 +11,7 @@ import { OidcFout, type Oidc } from './oidc.js';
 import { registreerGebruikers, type KeycloakBeheer } from './gebruikers.js';
 import { noodloginAan, ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
-import { callLog, calls, employees, instellingen, openItems, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, employees, activiteiten, instellingen, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
 import { foutcode, log } from './log.js';
@@ -25,13 +25,15 @@ import { normaliseerCodewoord } from './gesprek-tools.js';
 import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
-import { berekenDashboard, type ActieRij } from './dashboard.js';
+import { berekenDashboard } from './dashboard.js';
 import { samenvattenGesprek, vandaagNL } from './samenvatten.js';
 import { bepaalBewaartermijn, leggToestemmingVast } from './toestemming.js';
 import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
 import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
+import { actieRijen, registreerActiviteiten } from './activiteiten.js';
+import { ACCOUNTMANAGER_ROL, magDoen, normaleRol } from './rollen.js';
 import { beoordeelLijst } from './medewerkers-import.js';
 
 const COOKIE = 'dagboek_sessie';
@@ -113,7 +115,9 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
       if (!config.serviceKey || !gelijk(sleutel, config.serviceKey)) return reply.code(401).send({ fout: 'Niet toegestaan' });
       return;
     }
-    if (!leesSessie(req.cookies[COOKIE], config.sessionSecret)) return reply.code(401).send({ fout: 'Niet ingelogd' });
+    const sessie = leesSessie(req.cookies[COOKIE], config.sessionSecret);
+    if (!sessie) return reply.code(401).send({ fout: 'Niet ingelogd' });
+    if (pad !== '/api/logout' && !magDoen(sessie.rol, req.method, pad)) return reply.code(403).send({ fout: 'Geen toegang met deze rol' });
   });
 
   // Liveness: het proces draait. Bewust zonder controles, zodat een storing elders het proces niet laat herstarten.
@@ -194,13 +198,18 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   app.get('/api/me', async (req) => {
     const sessie = leesSessie(req.cookies[COOKIE], config.sessionSecret);
     const opties = { keycloak: !!oidc, noodlogin: noodloginAan(config), gebruikersbeheer: !!gebruikersbeheer };
-    return sessie ? { ingelogd: true, email: sessie.email, naam: sessie.naam ?? sessie.email, rol: sessie.rol ?? 'beheerder', ...opties } : { ingelogd: false, ...opties };
+    return sessie ? { ingelogd: true, email: sessie.email, naam: sessie.naam ?? sessie.email, rol: normaleRol(sessie.rol), ...opties } : { ingelogd: false, ...opties };
   });
 
   registreerGebruikers(app, gebruikersbeheer, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
 
   // ── Medewerkers ─────────────────────────────────────────────────────────
-  app.get('/api/employees', async () => db.select().from(employees).orderBy(asc(employees.naam)));
+  app.get('/api/employees', async (req) => {
+    const rijen = await db.select().from(employees).orderBy(asc(employees.naam));
+    // Een accountmanager heeft de namen nodig om een eigenaar te kiezen, geen telefoonnummers of notities.
+    if (leesSessie(req.cookies[COOKIE], config.sessionSecret)?.rol !== ACCOUNTMANAGER_ROL) return rijen;
+    return rijen.map((m) => ({ id: m.id, naam: m.naam, rol: m.rol, actief: m.actief }));
+  });
   // Een geplakte lijst in één keer toevoegen. Met `voorbeeld` gebeurt er niets; zonder worden alleen de nieuwe, geldige regels toegevoegd.
   app.post('/api/employees/import', async (req) => {
     const b = z.object({ tekst: z.string().max(20_000), rol: z.enum(['medewerker', 'accountmanager']), voorbeeld: z.boolean().default(false) }).parse(req.body);
@@ -276,8 +285,8 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const ids = lijst.map((t) => t.id);
     const laatste = await db.selectDistinctOn([updates.topicId], { topicId: updates.topicId, samenvatting: updates.samenvatting, createdAt: updates.createdAt })
       .from(updates).where(inArray(updates.topicId, ids)).orderBy(updates.topicId, desc(updates.createdAt));
-    const open = await db.select({ topicId: openItems.topicId, aantal: sql<number>`count(*)::int` }).from(openItems)
-      .where(and(inArray(openItems.topicId, ids), eq(openItems.status, 'open'))).groupBy(openItems.topicId);
+    const open = await db.select({ topicId: activiteiten.topicId, aantal: sql<number>`count(*)::int` }).from(activiteiten)
+      .where(and(inArray(activiteiten.topicId, ids), eq(activiteiten.status, 'open'))).groupBy(activiteiten.topicId);
     return lijst.map((t) => ({
       ...t,
       laatsteUpdate: laatste.find((l) => l.topicId === t.id) ?? null,
@@ -295,9 +304,9 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     if (!topic) return reply.code(404).send({ fout: 'Onderwerp niet gevonden' });
     const [lijstUpdates, items] = await Promise.all([
       db.select().from(updates).where(eq(updates.topicId, id)).orderBy(desc(updates.createdAt)),
-      db.select().from(openItems).where(eq(openItems.topicId, id)).orderBy(asc(openItems.status), asc(openItems.createdAt)),
+      db.select().from(activiteiten).where(eq(activiteiten.topicId, id)).orderBy(asc(activiteiten.status), asc(activiteiten.createdAt)),
     ]);
-    return { ...topic, updates: lijstUpdates, openItems: items };
+    return { ...topic, updates: lijstUpdates, openItems: items.map((p) => ({ ...p, tekst: p.omschrijving })) };
   });
   app.patch('/api/topics/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
@@ -338,57 +347,6 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Update niet gevonden' });
   });
 
-  // ── Open punten ─────────────────────────────────────────────────────────
-  app.post('/api/topics/:id/open-items', async (req, reply) => {
-    const topicId = uuid.parse((req.params as any).id);
-    const b = z.object({ tekst: nonEmpty.max(500), ...actieVelden }).parse(req.body);
-    const [topic] = await db.select({ id: topics.id, eigenaarId: topics.eigenaarId }).from(topics).where(eq(topics.id, topicId));
-    if (!topic) return reply.code(404).send({ fout: 'Onderwerp niet gevonden' });
-    const eigenaarId = b.eigenaarId === undefined ? topic.eigenaarId : b.eigenaarId;
-    return reply.code(201).send((await db.insert(openItems).values({ topicId, tekst: b.tekst, eigenaarId, eigenaarExtern: b.eigenaarExtern ?? '', deadline: b.deadline ?? null, deadlineOorspronkelijk: b.deadline ?? null }).returning())[0]);
-  });
-  app.patch('/api/open-items/:id', async (req, reply) => {
-    const id = uuid.parse((req.params as any).id);
-    const b = z.object({ tekst: nonEmpty.max(500), status: z.enum(['open', 'afgerond']), ...actieVelden }).partial().parse(req.body);
-    const waarden: Record<string, unknown> = { ...b };
-    if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
-    if (!Object.keys(waarden).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
-    const rij = await db.transaction(async (tx) => {
-      const [huidig] = await tx.select({ deadline: openItems.deadline, oorspronkelijk: openItems.deadlineOorspronkelijk }).from(openItems).where(eq(openItems.id, id)).for('update');
-      if (!huidig) return undefined;
-      // Een verschoven of verwijderde deadline wordt bijgehouden; het eerste instellen telt niet als wijziging.
-      if (b.deadline !== undefined && (b.deadline ?? null) !== huidig.deadline) {
-        if (huidig.deadline) waarden.deadlineGewijzigdAantal = sql`${openItems.deadlineGewijzigdAantal} + 1`;
-        if (!huidig.oorspronkelijk) waarden.deadlineOorspronkelijk = huidig.deadline ?? b.deadline ?? null;
-      }
-      return (await tx.update(openItems).set(waarden).where(eq(openItems.id, id)).returning())[0];
-    });
-    return rij ?? reply.code(404).send({ fout: 'Punt niet gevonden' });
-  });
-  // Een actie die het taalmodel heeft voorgesteld maar die niet te onderbouwen was, wacht op een besluit van de beheerder.
-  app.post('/api/open-items/:id/controle', async (req, reply) => {
-    const id = uuid.parse((req.params as any).id);
-    const { besluit } = z.object({ besluit: z.enum(['goedkeuren', 'afwijzen']) }).parse(req.body);
-    const [punt] = await db.select().from(openItems).where(eq(openItems.id, id));
-    if (!punt) return reply.code(404).send({ fout: 'Punt niet gevonden' });
-    if (!punt.controleNodig) return reply.code(409).send({ fout: 'Dit punt hoeft niet gecontroleerd te worden' });
-    const afrondingVoorgesteld = punt.controleReden === 'mogelijk_afgerond';
-    if (besluit === 'afwijzen' && !afrondingVoorgesteld) {
-      await db.delete(openItems).where(eq(openItems.id, id));
-      return { ok: true, verwijderd: true };
-    }
-    const sluit = besluit === 'goedkeuren' && afrondingVoorgesteld;
-    const [rij] = await db.update(openItems).set({ controleNodig: false, controleReden: null, ...(sluit ? { status: 'afgerond' as const, afgerondOp: new Date() } : {}) }).where(eq(openItems.id, id)).returning();
-    return rij;
-  });
-  const actieRijen = async (): Promise<ActieRij[]> => (await db.select({
-    id: openItems.id, tekst: openItems.tekst, topicId: openItems.topicId, topicTitel: topics.titel,
-    eigenaarId: openItems.eigenaarId, eigenaarNaam: employees.naam, eigenaarExtern: openItems.eigenaarExtern,
-    deadline: openItems.deadline, status: openItems.status, createdAt: openItems.createdAt, afgerondOp: openItems.afgerondOp,
-    jiraSleutel: openItems.jiraSleutel, jiraUrl: openItems.jiraUrl,
-    controleNodig: openItems.controleNodig, controleReden: openItems.controleReden, deadlineOorspronkelijk: openItems.deadlineOorspronkelijk, deadlineGewijzigdAantal: openItems.deadlineGewijzigdAantal,
-  }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id))
-    .orderBy(asc(openItems.status), sql`${openItems.deadline} asc nulls last`, asc(openItems.createdAt)));
   // ── Suggesties uit gesprekken ───────────────────────────────────────────
   app.get('/api/suggesties', async () => db.select({
     id: suggesties.id, soort: suggesties.soort, tekst: suggesties.tekst, status: suggesties.status, createdAt: suggesties.createdAt,
@@ -476,14 +434,14 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     try { return { ok: true, ...(await jira.test(i)) }; } catch (e) { return jiraFoutAntwoord(e, reply); }
   });
   // Maakt van open punten tickets. `voorbeeld` laat zien wat er zou gaan zonder iets aan te maken.
-  app.post('/api/open-items/jira', async (req, reply) => {
+  app.post('/api/activiteiten/jira', async (req, reply) => {
     const b = z.object({ ids: z.array(uuid).min(1).max(50), voorbeeld: z.boolean().default(false), controleBevestigd: z.boolean().default(false) }).parse(req.body);
     const i = await leesJira(db);
     if (!i || !jira?.beschikbaar()) return reply.code(409).send({ fout: 'Jira is niet ingesteld (zie Instellingen)' });
     const ids = [...new Set(b.ids)];
     const rijen = await db.select({
-      p: openItems, topicTitel: topics.titel, eigenaarNaam: employees.naam, eigenaarEmail: employees.email,
-    }).from(openItems).innerJoin(topics, eq(openItems.topicId, topics.id)).leftJoin(employees, eq(openItems.eigenaarId, employees.id)).where(inArray(openItems.id, ids));
+      p: activiteiten, topicTitel: topics.titel, eigenaarNaam: employees.naam, eigenaarEmail: employees.email,
+    }).from(activiteiten).leftJoin(topics, eq(activiteiten.topicId, topics.id)).leftJoin(employees, eq(activiteiten.eigenaarId, employees.id)).where(inArray(activiteiten.id, ids));
     const perId = new Map(rijen.map((r) => [r.p.id, r]));
     const uitkomst: Record<string, unknown>[] = [];
     for (const id of ids) {
@@ -494,14 +452,14 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
       if (p.status === 'afgerond') { uitkomst.push({ id, status: 'overgeslagen', reden: 'afgerond' }); continue; }
       if (p.controleNodig && !b.controleBevestigd) { uitkomst.push({ id, status: 'overgeslagen', reden: 'controle_nodig' }); continue; }
       const punt: JiraPunt = {
-        id, tekst: p.tekst, onderwerp: r.topicTitel, eigenaar: r.eigenaarNaam ?? p.eigenaarExtern, eigenaarEmail: r.eigenaarEmail ?? '',
-        deadline: p.deadline, link: config.publiekeUrl ? `${config.publiekeUrl}/onderwerp/${p.topicId}` : null,
+        id, tekst: p.omschrijving, onderwerp: r.topicTitel ?? '', eigenaar: r.eigenaarNaam ?? p.eigenaarExtern, eigenaarEmail: r.eigenaarEmail ?? '',
+        deadline: p.deadline, link: config.publiekeUrl ? (p.topicId ? `${config.publiekeUrl}/onderwerp/${p.topicId}` : p.klantId ? `${config.publiekeUrl}/klanten/${p.klantId}` : null) : null,
       };
       if (b.voorbeeld) { uitkomst.push({ id, status: 'voorbeeld', samenvatting: punt.tekst.slice(0, 255), onderwerp: punt.onderwerp, eigenaar: punt.eigenaar || null, deadline: punt.deadline, project: i.project }); continue; }
       try {
         const t = await jira.maakAan(i, punt);
-        const [bijgewerkt] = await db.update(openItems).set({ jiraSleutel: t.sleutel, jiraUrl: t.url, jiraAangemaaktOp: new Date() })
-          .where(and(eq(openItems.id, id), sql`${openItems.jiraSleutel} is null`)).returning({ id: openItems.id });
+        const [bijgewerkt] = await db.update(activiteiten).set({ jiraSleutel: t.sleutel, jiraUrl: t.url, jiraAangemaaktOp: new Date() })
+          .where(and(eq(activiteiten.id, id), sql`${activiteiten.jiraSleutel} is null`)).returning({ id: activiteiten.id });
         log('info', 'jira.ticket', { punt: id, sleutel: t.sleutel, bestondAl: t.bestondAl });
         uitkomst.push({ id, status: bijgewerkt ? (t.bestondAl ? 'gekoppeld' : 'aangemaakt') : 'overgeslagen', sleutel: t.sleutel, url: t.url, ...(bijgewerkt ? {} : { reden: 'al_in_jira' }) });
       } catch (e) {
@@ -515,14 +473,8 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     return { resultaat: uitkomst };
   });
 
-  app.get('/api/acties', async () => actieRijen());
   // Punten die nog gecontroleerd moeten worden tellen niet mee: ze zijn (nog) geen vastgestelde feiten.
-  app.get('/api/dashboard', async () => berekenDashboard((await actieRijen()).filter((r) => !r.controleNodig), vandaagNL()));
-
-  app.delete('/api/open-items/:id', async (req, reply) => {
-    const gewist = await db.delete(openItems).where(eq(openItems.id, uuid.parse((req.params as any).id))).returning({ id: openItems.id });
-    return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Punt niet gevonden' });
-  });
+  app.get('/api/dashboard', async () => berekenDashboard((await actieRijen(db)).filter((r) => !r.controleNodig), vandaagNL()));
 
   // ── Planning (terugkerende gesprekken) ──────────────────────────────────
   const planningen = async (alleenId?: string) => {
@@ -579,6 +531,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     return leesInstructie(db);
   });
   registreerVerkoop(app, db);
+  registreerActiviteiten(app, db);
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.
   const geefSuggestie = async (reply: any, onderwerpen: OnderwerpVoorSuggestie[], doel: 'planning' | 'onderwerp') => {
@@ -595,7 +548,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const vandaag = vandaagNL();
     const onderwerpen: OnderwerpVoorSuggestie[] = [];
     for (const { t, projectNaam } of rijen) {
-      const acties = await db.select({ deadline: openItems.deadline }).from(openItems).where(and(eq(openItems.topicId, t.id), eq(openItems.status, 'open')));
+      const acties = await db.select({ deadline: activiteiten.deadline }).from(activiteiten).where(and(eq(activiteiten.topicId, t.id), eq(activiteiten.status, 'open')));
       const [laatste] = await db.select({ d: updates.createdAt }).from(updates).where(eq(updates.topicId, t.id)).orderBy(desc(updates.createdAt)).limit(1);
       onderwerpen.push({
         titel: t.titel, soort: t.type, project: projectNaam, aanwijzingen: t.aanwijzingen || null, open: acties.length,

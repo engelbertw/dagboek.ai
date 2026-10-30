@@ -103,10 +103,10 @@ describe('dagboek', () => {
   });
 
   it('beheert open punten en telt ze in het overzicht', async () => {
-    const p = (await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Akkoord klant' })).json();
-    await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Intern overleg' });
+    const p = (await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Akkoord klant' })).json();
+    await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Intern overleg' });
     expect((await t.api('GET', '/api/topics')).json()[0].openPunten).toBe(2);
-    const klaar = (await t.api('PATCH', `/api/open-items/${p.id}`, { status: 'afgerond' })).json();
+    const klaar = (await t.api('PATCH', `/api/activiteiten/${p.id}`, { status: 'afgerond' })).json();
     expect(klaar.afgerondOp).toBeTruthy();
     expect((await t.api('GET', '/api/topics')).json()[0].openPunten).toBe(1);
   });
@@ -136,7 +136,7 @@ describe('bellen', () => {
     const m = (await t.api('POST', '/api/employees', { naam: 'Jarich', telefoon: '0687654321' })).json();
     const tp = (await t.api('POST', '/api/topics', { titel: 'Architectuur Common Ground', eigenaarId: m.id, aanwijzingen: 'keuzes en afhankelijkheden' })).json();
     await t.api('POST', `/api/topics/${tp.id}/updates`, { samenvatting: 'Referentie-architectuur besproken' });
-    await t.api('POST', `/api/topics/${tp.id}/open-items`, { tekst: 'Besluit over API-gateway' });
+    await t.api('POST', '/api/activiteiten', { topicId: tp.id, omschrijving: 'Besluit over API-gateway' });
     await t.api('POST', '/api/topics', { titel: 'Afgerond ding', eigenaarId: m.id, status: 'afgerond' });
 
     const r = await t.api('POST', `/api/employees/${m.id}/bel`);

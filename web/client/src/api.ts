@@ -16,7 +16,7 @@ export interface TopicRegel {
 }
 export interface Update { id: string; topicId: string; bron: 'voice' | 'handmatig'; samenvatting: string; besluiten: string; createdAt: string; bewerktOp: string | null }
 export interface OpenPunt { id: string; tekst: string; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; eigenaarId: string | null; eigenaarExtern: string; deadline: string | null }
-export interface Actie { id: string; tekst: string; topicId: string; topicTitel: string; eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; controleNodig?: boolean; controleReden?: string | null; jiraSleutel?: string | null; jiraUrl?: string | null }
+export interface Actie { id: string; tekst: string; soort?: string; topicId: string | null; topicTitel: string | null; klantId?: string | null; klantNaam?: string | null; eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; status: 'open' | 'afgerond'; createdAt: string; afgerondOp: string | null; controleNodig?: boolean; controleReden?: string | null; jiraSleutel?: string | null; jiraUrl?: string | null }
 export interface Stand { open: number; teLaat: number; binnenkort: number; zonderDeadline: number; opTijd: number; laatAfgerond: number; deadlineVerschoven: number }
 export interface Team { nakoming: number | null; basis: number; onvoldoendeGegevens: boolean; minimum: number }
 export interface DashboardData { vandaag: string; totaal: Stand; team: Team; perEigenaar: (Stand & { id: string | null; naam: string })[]; teLaat: Actie[]; binnenkort: Actie[] }
@@ -62,8 +62,8 @@ export interface JiraUitkomst { id: string; status: 'voorbeeld' | 'aangemaakt' |
 
 export type KlantStatus = 'prospect' | 'klant' | 'voorgesteld' | 'inactief';
 export const KLANT_STATUS_LABEL: Record<KlantStatus, string> = { prospect: 'Prospect', klant: 'Klant', voorgesteld: 'Voorgesteld (controle)', inactief: 'Inactief' };
-export type ActiviteitSoort = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'kans' | 'risico';
-export const SOORT_LABEL: Record<ActiviteitSoort, string> = { doel: 'Doel', resultaat: 'Resultaat', afspraak: 'Afspraak', actie: 'Actie', kans: 'Kans', risico: 'Risico' };
+export type ActiviteitSoort = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'intern' | 'kans' | 'risico';
+export const SOORT_LABEL: Record<ActiviteitSoort, string> = { doel: 'Doel', resultaat: 'Resultaat', afspraak: 'Afspraak', actie: 'Actie', intern: 'Intern', kans: 'Kans', risico: 'Risico' };
 export interface KlantRegel { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; accountmanagerNaam: string | null; contractEinde: string | null; bijgewerktOp: string; openActiviteiten: number; laatsteBezoek: string | null }
 export interface Klant { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; omschrijving: string; contractEinde: string | null; afasId: string | null }
 export interface KlantContact { id: string; naam: string; functie: string; rol: string }
@@ -72,6 +72,7 @@ export interface Activiteit {
   id: string; soort: ActiviteitSoort; omschrijving: string; status: 'open' | 'afgerond'; klantId: string | null; klantNaam: string | null; klantStatus: KlantStatus | null;
   eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; details: Record<string, unknown>; citaat: string;
   controleNodig: boolean; controleReden: string | null; createdAt: string; afgerondOp: string | null;
+  topicId: string | null; topicTitel: string | null; bron: 'handmatig' | 'gesprek'; deadlineGewijzigdAantal: number; jiraSleutel: string | null; jiraUrl: string | null;
 }
-export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam'> & { bezoekId: string | null })[] }
+export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam' | 'topicTitel'> & { bezoekId: string | null })[] }
 export interface DebriefVragen extends Houding { vorige: string }

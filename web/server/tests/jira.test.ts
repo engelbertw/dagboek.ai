@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { loadConfig } from '../config.js';
 import { JiraFout, bouwTicket, maakJiraClient, schoneSite, type JiraClient, type JiraPunt } from '../jira.js';
-import { openItems } from '../schema.js';
+import { activiteiten } from '../schema.js';
 import { maakTestApp } from './helpers.js';
 
 const open: Awaited<ReturnType<typeof maakTestApp>>[] = [];
@@ -100,7 +100,7 @@ function nepJira(opties: { beschikbaar?: boolean; fout?: JiraFout } = {}) {
 async function met(jira: JiraClient) {
   const t = await maakTestApp(undefined, undefined, jira); open.push(t);
   const topic = (await t.api('POST', '/api/topics', { titel: 'Klant X' })).json();
-  const maak = async (tekst: string) => (await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst })).json();
+  const maak = async (tekst: string) => (await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: tekst })).json();
   return { t, topic, maak };
 }
 
@@ -125,7 +125,7 @@ describe('jira-koppeling in de app', () => {
   it('weigert tickets zolang Jira niet is ingesteld', async () => {
     const { t, maak } = await met(nepJira().client);
     const p = await maak('Iets');
-    expect((await t.api('POST', '/api/open-items/jira', { ids: [p.id] })).statusCode).toBe(409);
+    expect((await t.api('POST', '/api/activiteiten/jira', { ids: [p.id] })).statusCode).toBe(409);
   });
 
   it('toont een voorbeeld zonder iets aan te maken, en maakt daarna het ticket één keer aan', async () => {
@@ -133,18 +133,18 @@ describe('jira-koppeling in de app', () => {
     const { t, maak } = await met(jira.client);
     await t.api('PUT', '/api/instellingen/jira', { site: 'acme.atlassian.net', project: 'PROJ', issuetype: 'Task' });
     const p = await maak('Offerte sturen');
-    const voorbeeld = (await t.api('POST', '/api/open-items/jira', { ids: [p.id], voorbeeld: true })).json();
+    const voorbeeld = (await t.api('POST', '/api/activiteiten/jira', { ids: [p.id], voorbeeld: true })).json();
     expect(voorbeeld.resultaat[0]).toMatchObject({ status: 'voorbeeld', samenvatting: 'Offerte sturen', project: 'PROJ' });
     expect(jira.gemaakt).toHaveLength(0);
 
-    const r = (await t.api('POST', '/api/open-items/jira', { ids: [p.id] })).json();
+    const r = (await t.api('POST', '/api/activiteiten/jira', { ids: [p.id] })).json();
     expect(r.resultaat[0]).toMatchObject({ status: 'aangemaakt', sleutel: 'PROJ-1' });
     expect(jira.gemaakt[0].link).toBe(`https://dagboek.test/onderwerp/${p.topicId}`);
-    const rij = (await t.db.select().from(openItems).where(eq(openItems.id, p.id)))[0];
+    const rij = (await t.db.select().from(activiteiten).where(eq(activiteiten.id, p.id)))[0];
     expect(rij).toMatchObject({ jiraSleutel: 'PROJ-1', jiraUrl: 'https://acme.atlassian.net/browse/PROJ-1' });
-    expect((await t.api('GET', '/api/acties')).json()[0]).toMatchObject({ jiraSleutel: 'PROJ-1' });
+    expect((await t.api('GET', '/api/activiteiten')).json()[0]).toMatchObject({ jiraSleutel: 'PROJ-1' });
 
-    const opnieuw = (await t.api('POST', '/api/open-items/jira', { ids: [p.id] })).json();
+    const opnieuw = (await t.api('POST', '/api/activiteiten/jira', { ids: [p.id] })).json();
     expect(opnieuw.resultaat[0]).toMatchObject({ status: 'overgeslagen', reden: 'al_in_jira' });
     expect(jira.gemaakt).toHaveLength(1);
   });
@@ -154,12 +154,12 @@ describe('jira-koppeling in de app', () => {
     const { t, maak } = await met(jira.client);
     await t.api('PUT', '/api/instellingen/jira', { site: 'acme.atlassian.net', project: 'PROJ', issuetype: 'Task' });
     const klaar = await maak('Klaar'); const controle = await maak('Onzeker');
-    await t.api('PATCH', `/api/open-items/${klaar.id}`, { status: 'afgerond' });
-    await t.db.update(openItems).set({ controleNodig: true, controleReden: 'eigenaar_onzeker' }).where(eq(openItems.id, controle.id));
-    const r = (await t.api('POST', '/api/open-items/jira', { ids: [klaar.id, controle.id] })).json();
+    await t.api('PATCH', `/api/activiteiten/${klaar.id}`, { status: 'afgerond' });
+    await t.db.update(activiteiten).set({ controleNodig: true, controleReden: 'eigenaar_onzeker' }).where(eq(activiteiten.id, controle.id));
+    const r = (await t.api('POST', '/api/activiteiten/jira', { ids: [klaar.id, controle.id] })).json();
     expect(r.resultaat.map((x: any) => x.reden)).toEqual(['afgerond', 'controle_nodig']);
     expect(jira.gemaakt).toHaveLength(0);
-    const bevestigd = (await t.api('POST', '/api/open-items/jira', { ids: [controle.id], controleBevestigd: true })).json();
+    const bevestigd = (await t.api('POST', '/api/activiteiten/jira', { ids: [controle.id], controleBevestigd: true })).json();
     expect(bevestigd.resultaat[0].status).toBe('aangemaakt');
   });
 
@@ -168,10 +168,10 @@ describe('jira-koppeling in de app', () => {
     const { t, maak } = await met(jira.client);
     await t.api('PUT', '/api/instellingen/jira', { site: 'acme.atlassian.net', project: 'PROJ', issuetype: 'Task' });
     const a = await maak('A'); const b = await maak('B');
-    const r = (await t.api('POST', '/api/open-items/jira', { ids: [a.id, b.id] })).json();
+    const r = (await t.api('POST', '/api/activiteiten/jira', { ids: [a.id, b.id] })).json();
     expect(r.resultaat).toHaveLength(1);
     expect(r.resultaat[0]).toMatchObject({ status: 'fout' });
-    expect((await t.db.select().from(openItems).where(eq(openItems.id, a.id)))[0].jiraSleutel).toBeNull();
+    expect((await t.db.select().from(activiteiten).where(eq(activiteiten.id, a.id)))[0].jiraSleutel).toBeNull();
   });
 
   it('test de verbinding en meldt ontbrekende inloggegevens', async () => {

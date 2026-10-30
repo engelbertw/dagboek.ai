@@ -171,13 +171,15 @@ export const bezoeken = pgTable('bezoeken', {
   createdAt: createdAt(),
 });
 
-export const ACTIVITEIT_SOORTEN = ['doel', 'resultaat', 'afspraak', 'actie', 'kans', 'risico'] as const;
+export const ACTIVITEIT_SOORTEN = ['doel', 'resultaat', 'afspraak', 'actie', 'kans', 'risico', 'intern'] as const;
 export type ActiviteitSoort = (typeof ACTIVITEIT_SOORTEN)[number];
 
-export const klantActiviteiten = pgTable('klant_activiteiten', {
+/** Alles wat gedaan of bijgehouden moet worden, per klant en/of per onderwerp. `intern` is wat wij zelf intern moeten doen. */
+export const activiteiten = pgTable('activiteiten', {
   id: id(),
   klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'cascade' }),
   bezoekId: uuid('bezoek_id').references(() => bezoeken.id, { onDelete: 'cascade' }),
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'cascade' }),
   soort: text('soort', { enum: ACTIVITEIT_SOORTEN }).notNull(),
   omschrijving: text('omschrijving').notNull(),
   eigenaarId: uuid('eigenaar_id').references(() => employees.id, { onDelete: 'set null' }),
@@ -189,6 +191,12 @@ export const klantActiviteiten = pgTable('klant_activiteiten', {
   controleNodig: boolean('controle_nodig').notNull().default(false),
   controleReden: text('controle_reden'),
   callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  bron: text('bron', { enum: ['handmatig', 'gesprek'] }).notNull().default('gesprek'),
+  deadlineOorspronkelijk: date('deadline_oorspronkelijk'),
+  deadlineGewijzigdAantal: integer('deadline_gewijzigd_aantal').notNull().default(0),
+  jiraSleutel: text('jira_sleutel'),
+  jiraUrl: text('jira_url'),
+  jiraAangemaaktOp: timestamp('jira_aangemaakt_op', { withTimezone: true }),
   createdAt: createdAt(),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
 });

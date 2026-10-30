@@ -28,9 +28,9 @@ describe('houding van de assistent', () => {
     await t.api('PUT', '/api/instellingen/houding', { waarde: 'Kritisch maar vriendelijk.' });
     const m = (await t.api('POST', '/api/employees', { naam: 'Daan', telefoon: '0612345678' })).json();
     const topic = (await t.api('POST', '/api/topics', { titel: 'Offertes', eigenaarId: m.id })).json();
-    await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Offerte versturen', deadline: '2020-01-01' });
-    await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Planning maken', deadline: '2099-01-01' });
-    await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Zonder datum' });
+    await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Offerte versturen', deadline: '2020-01-01' });
+    await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Planning maken', deadline: '2099-01-01' });
+    await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Zonder datum' });
     await t.api('POST', `/api/employees/${m.id}/bel`);
     const opdracht = t.opdrachten[0];
     expect(opdracht.houding).toBe('Kritisch maar vriendelijk.');

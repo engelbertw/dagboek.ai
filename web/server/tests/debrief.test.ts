@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { bezoeken, calls, employees, klantActiviteiten, klantContacten, klanten, openItems, toestemmingen, updates } from '../schema.js';
+import { bezoeken, calls, employees, activiteiten, klantContacten, klanten, toestemmingen, updates } from '../schema.js';
 import { STANDAARD_DEBRIEF_VRAGEN } from '../instellingen.js';
 import { kansDetails, leesDebriefAntwoord } from '../debrief.js';
 import { SERVICE_KEY, maakTestApp } from './helpers.js';
@@ -87,7 +87,7 @@ describe('verwerking van een debrief', () => {
     expect(b).toHaveLength(1);
     expect(b[0]).toMatchObject({ klantId: k[0].id, tevredenheid: 8, soort: 'evaluatie', callId: s.callId });
 
-    const a = await s.t.db.select().from(klantActiviteiten);
+    const a = await s.t.db.select().from(activiteiten);
     const kans = a.find((x) => x.soort === 'kans')!;
     expect(kans).toMatchObject({ klantId: k[0].id, controleNodig: false, status: 'open' });
     expect(kans.details).toEqual({ indicatie_bedrag: 'circa 50.000 euro', fase: 'offerte', beslisser: 'Mevrouw De Boer', budget_aanwezig: 'onbekend' });
@@ -99,13 +99,13 @@ describe('verwerking van een debrief', () => {
     expect(t[0]).toMatchObject({ doel: 'verkoop_debrief', versie: 'debrief-v1', besluit: 'gegeven' });
     // Het dagboek blijft onaangeroerd.
     expect(await s.t.db.select().from(updates)).toHaveLength(0);
-    expect(await s.t.db.select().from(openItems)).toHaveLength(0);
+    expect((await s.t.db.select().from(activiteiten)).filter((a) => a.topicId)).toHaveLength(0);
   });
 
   it('markeert een activiteit zonder echt citaat als te controleren en laat de deadline weg', async () => {
     const s = await scenario({ ...GOED, acties: [{ omschrijving: 'Contract opzeggen', eigenaar: 'collega', deadline: '2030-01-01', citaat: 'Dit heeft niemand gezegd' }] });
     await s.meld();
-    const a = (await s.t.db.select().from(klantActiviteiten)).find((x) => x.soort === 'actie')!;
+    const a = (await s.t.db.select().from(activiteiten)).find((x) => x.soort === 'actie')!;
     expect(a).toMatchObject({ controleNodig: true, controleReden: 'bron_niet_te_verifieren', deadline: null, citaat: '' });
   });
 
@@ -114,7 +114,7 @@ describe('verwerking van een debrief', () => {
     await s.meld();
     expect(await s.t.db.select().from(klanten)).toHaveLength(0);
     // Activiteiten blijven bewaard maar wachten op controle omdat de klant niet is herkend.
-    const a = await s.t.db.select().from(klantActiviteiten);
+    const a = await s.t.db.select().from(activiteiten);
     expect(a.length).toBeGreaterThan(0);
     expect(a.every((x) => x.controleNodig && x.klantId === null)).toBe(true);
   });
@@ -130,14 +130,14 @@ describe('verwerking van een debrief', () => {
     await s.t.klaarMetAchtergrond();
     expect(await s.t.db.select().from(klanten)).toHaveLength(1);
     expect(await s.t.db.select().from(bezoeken)).toHaveLength(2);
-    expect((await s.t.db.select().from(klantActiviteiten)).filter((x) => x.soort === 'kans')).toHaveLength(1);
+    expect((await s.t.db.select().from(activiteiten)).filter((x) => x.soort === 'kans')).toHaveLength(1);
   });
 
   it('legt niets vast als de accountmanager de toestemming weigert', async () => {
     const s = await scenario({ toestemming: 'geweigerd', toestemming_citaat: '' }, { transcript: [{ role: 'assistant', content: 'Mag ik een verslag maken?' }, { role: 'user', content: 'Nee liever niet.' }] });
     await s.meld();
     expect(await s.t.db.select().from(bezoeken)).toHaveLength(0);
-    expect(await s.t.db.select().from(klantActiviteiten)).toHaveLength(0);
+    expect((await s.t.db.select().from(activiteiten)).filter((a) => a.topicId)).toHaveLength(0);
     expect(await s.t.db.select().from(klanten)).toHaveLength(0);
     expect((await s.call()).samenvattingStatus).toBe('geweigerd');
   });
@@ -190,7 +190,7 @@ describe('verkoopregister-API', () => {
     expect(lijst).toHaveLength(1);
     expect(lijst[0]).toMatchObject({ naam: 'Gemeente Voorbeeld', status: 'voorgesteld', openActiviteiten: 4 });
 
-    const register = (await s.t.api('GET', '/api/verkoopregister')).json();
+    const register = (await s.t.api('GET', '/api/activiteiten')).json();
     const teControleren = register.find((r: any) => r.controleNodig);
     expect(teControleren.omschrijving).toBe('Contract opzeggen');
     expect((await s.t.api('POST', `/api/activiteiten/${teControleren.id}/controle`, { besluit: 'afwijzen' })).json()).toMatchObject({ verwijderd: true });
@@ -209,7 +209,7 @@ describe('verkoopregister-API', () => {
 
     // Wissen haalt klant, contacten, bezoeken en activiteiten weg.
     expect((await s.t.api('DELETE', `/api/klanten/${doel.id}`)).statusCode).toBe(200);
-    expect(await s.t.db.select().from(klantActiviteiten)).toHaveLength(0);
+    expect((await s.t.db.select().from(activiteiten)).filter((a) => a.topicId)).toHaveLength(0);
     expect(await s.t.db.select().from(bezoeken)).toHaveLength(0);
     expect(await s.t.db.select().from(klantContacten)).toHaveLength(0);
   });
@@ -226,7 +226,7 @@ describe('verkoopregister-API', () => {
   it('is niet toegankelijk zonder inlog', async () => {
     const t = await maakTestApp(); open.push(t);
     expect((await t.app.inject({ method: 'GET', url: '/api/klanten' })).statusCode).toBe(401);
-    expect((await t.app.inject({ method: 'GET', url: '/api/verkoopregister' })).statusCode).toBe(401);
+    expect((await t.app.inject({ method: 'GET', url: '/api/activiteiten' })).statusCode).toBe(401);
   });
 });
 
@@ -245,10 +245,10 @@ describe('statusupdate op eerdere afspraken en acties', () => {
     const s = await scenario(llm, { toestemming: true, transcript });
     const [klant] = await s.t.db.insert(klanten).values({ naam: 'Gemeente Voorbeeld', status: 'klant' }).returning();
     const [ander] = await s.t.db.insert(klanten).values({ naam: 'Andere Gemeente', status: 'klant' }).returning();
-    const [actie] = await s.t.db.insert(klantActiviteiten).values({ klantId: klant.id, soort: 'actie', omschrijving: 'Offerte sturen' }).returning();
+    const [actie] = await s.t.db.insert(activiteiten).values({ klantId: klant.id, soort: 'actie', omschrijving: 'Offerte sturen' }).returning();
     return { s, klant, ander, actie };
   }
-  const status = async (s: Awaited<ReturnType<typeof scenario>>, id: string) => (await s.t.db.select().from(klantActiviteiten).where(eq(klantActiviteiten.id, id)))[0];
+  const status = async (s: Awaited<ReturnType<typeof scenario>>, id: string) => (await s.t.db.select().from(activiteiten).where(eq(activiteiten.id, id)))[0];
 
   it('geeft de open punten alleen aan het model en sluit er een met een citaat dat in het gesprek staat', async () => {
     const { s, actie } = await opzet(ANTWOORD(1, 'de offerte inmiddels verstuurd'));
@@ -286,7 +286,7 @@ describe('statusupdate op eerdere afspraken en acties', () => {
     expect((await s.t.api('POST', `/api/activiteiten/${actie.id}/controle`, { besluit: 'afwijzen' })).statusCode).toBe(200);
     expect(await status(s, actie.id)).toMatchObject({ status: 'open', controleNodig: false, controleReden: null });
 
-    await s.t.db.update(klantActiviteiten).set({ controleNodig: true, controleReden: 'mogelijk_afgerond' }).where(eq(klantActiviteiten.id, actie.id));
+    await s.t.db.update(activiteiten).set({ controleNodig: true, controleReden: 'mogelijk_afgerond' }).where(eq(activiteiten.id, actie.id));
     expect((await s.t.api('POST', `/api/activiteiten/${actie.id}/controle`, { besluit: 'goedkeuren' })).statusCode).toBe(200);
     const na = await status(s, actie.id);
     expect(na).toMatchObject({ status: 'afgerond', controleNodig: false });

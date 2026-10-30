@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { api } from './api';
 import { Melding, Veld, foutTekst } from './ui';
-import { Acties } from './pages/Acties';
 import { Dagboek } from './pages/Dagboek';
 import { Dashboard } from './pages/Dashboard';
 import { Gesprekken } from './pages/Gesprekken';
@@ -14,13 +13,13 @@ import { Onderwerp } from './pages/Onderwerp';
 import { Suggesties } from './pages/Suggesties';
 import { Planning } from './pages/Planning';
 import { Projecten } from './pages/Projecten';
-import { Verkoopregister } from './pages/Verkoopregister';
+import { Werk } from './pages/Werk';
 import { Gebruikers } from './pages/Gebruikers';
 
-interface Me { ingelogd: boolean; email?: string; naam?: string; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean }
+interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: 'beheerder' | 'accountmanager'; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean }
 
 const INLOGFOUT: Record<string, string> = {
-  geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om de rol beheerder.',
+  geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om je de rol beheerder of accountmanager te geven.',
   ongeldig: 'De inlogpoging is verlopen of ongeldig. Probeer het opnieuw.',
   keycloak: 'Keycloak is nu niet bereikbaar. Probeer het later opnieuw.',
 };
@@ -55,56 +54,71 @@ function Inloggen({ me, klaar }: { me: Me; klaar: () => void }) {
   );
 }
 
+interface MenuGroep { titel: string; items: { naar: string; label: string; einde?: boolean; ook?: string }[]; alleenBeheerder?: boolean }
+
+const MENU: MenuGroep[] = [
+  { titel: 'Overzicht', alleenBeheerder: true, items: [{ naar: '/', label: 'Dagboek', einde: true, ook: '/onderwerp' }, { naar: '/dashboard', label: 'Dashboard' }] },
+  { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }] },
+  { titel: 'Gesprekken', alleenBeheerder: true, items: [{ naar: '/gesprekken', label: 'Gesprekken' }, { naar: '/planning', label: 'Planning' }, { naar: '/suggesties', label: 'Suggesties' }] },
+  { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/instellingen', label: 'Instellingen' }] },
+];
+
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const controleer = () => api<Me>('GET', '/me').then(setMe).catch(() => setMe({ ingelogd: false, keycloak: false, noodlogin: true, gebruikersbeheer: false }));
   useEffect(() => { void controleer(); }, []);
   const { pathname } = useLocation();
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
   if (me === null) return null;
   if (!me.ingelogd) return <Inloggen me={me} klaar={() => void controleer()} />;
+  const beheerder = me.rol !== 'accountmanager';
+  const groepen = MENU.filter((g) => beheerder || !g.alleenBeheerder);
+  const actief = (naar: string, ook?: string) => (naar === '/' ? pathname === '/' : pathname === naar || pathname.startsWith(`${naar}/`)) || (!!ook && pathname.startsWith(ook));
   return (
-    <>
+    <div className="app">
       <header className="kop">
+        <button type="button" className="menuknop" aria-expanded={menuOpen} aria-controls="hoofdmenu" onClick={() => setMenuOpen(!menuOpen)}>Menu</button>
         <span className="merk">Dagboek</span>
-        <nav aria-label="Hoofdmenu">
-          <NavLink to="/" end className={({ isActive }) => (isActive || pathname.startsWith('/onderwerp') ? 'actief' : '')}>Dagboek</NavLink>
-          <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'actief' : '')}>Dashboard</NavLink>
-          <NavLink to="/acties" className={({ isActive }) => (isActive ? 'actief' : '')}>Acties</NavLink>
-          <NavLink to="/klanten" className={({ isActive }) => (isActive ? 'actief' : '')}>Klanten</NavLink>
-          <NavLink to="/verkoopregister" className={({ isActive }) => (isActive ? 'actief' : '')}>Verkoopregister</NavLink>
-          <NavLink to="/medewerkers" className={({ isActive }) => (isActive ? 'actief' : '')}>Medewerkers</NavLink>
-          <NavLink to="/projecten" className={({ isActive }) => (isActive ? 'actief' : '')}>Projecten</NavLink>
-          <NavLink to="/gesprekken" className={({ isActive }) => (isActive ? 'actief' : '')}>Gesprekken</NavLink>
-          <NavLink to="/planning" className={({ isActive }) => (isActive ? 'actief' : '')}>Planning</NavLink>
-          <NavLink to="/suggesties" className={({ isActive }) => (isActive ? 'actief' : '')}>Suggesties</NavLink>
-          <NavLink to="/instellingen" className={({ isActive }) => (isActive ? 'actief' : '')}>Instellingen</NavLink>
-          {me.gebruikersbeheer && <NavLink to="/gebruikers" className={({ isActive }) => (isActive ? 'actief' : '')}>Gebruikers</NavLink>}
-        </nav>
         <span className="zacht klein wie">{me.naam}</span>
         <button className="tekstknop" onClick={async () => {
           const { eindUrl } = await api<{ eindUrl: string | null }>('POST', '/logout');
           if (eindUrl) window.location.href = eindUrl; else setMe({ ...me, ingelogd: false });
         }}>Uitloggen</button>
       </header>
+      <nav id="hoofdmenu" className={`zijmenu${menuOpen ? ' open' : ''}`} aria-label="Hoofdmenu">
+        {groepen.map((g) => (
+          <div key={g.titel} className="menugroep">
+            <h2 className="menutitel">{g.titel}</h2>
+            {g.items.map((i) => <NavLink key={i.naar} to={i.naar} end={i.einde} className={actief(i.naar, i.ook) ? 'actief' : ''}>{i.label}</NavLink>)}
+            {g.titel === 'Beheer' && me.gebruikersbeheer && <NavLink to="/gebruikers" className={actief('/gebruikers') ? 'actief' : ''}>Gebruikers</NavLink>}
+          </div>
+        ))}
+      </nav>
       <main>
         <Routes>
-          <Route path="/" element={<Dagboek />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/acties" element={<Acties />} />
+          {beheerder ? (
+            <>
+              <Route path="/" element={<Dagboek />} />
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/planning" element={<Planning />} />
+              <Route path="/suggesties" element={<Suggesties />} />
+              <Route path="/instellingen" element={<Instellingen />} />
+              <Route path="/onderwerp/:id" element={<Onderwerp />} />
+              <Route path="/medewerkers" element={<Medewerkers />} />
+              {me.gebruikersbeheer && <Route path="/gebruikers" element={<Gebruikers ikEmail={me.email ?? ''} />} />}
+              <Route path="/projecten" element={<Projecten />} />
+              <Route path="/gesprekken" element={<Gesprekken />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </>
+          ) : <Route path="*" element={<Navigate to="/werk" replace />} />}
+          <Route path="/werk" element={<Werk />} />
+          <Route path="/acties" element={<Navigate to="/werk" replace />} />
+          <Route path="/verkoopregister" element={<Navigate to="/werk" replace />} />
           <Route path="/klanten" element={<Klanten />} />
           <Route path="/klanten/:id" element={<Klant />} />
-          <Route path="/verkoopregister" element={<Verkoopregister />} />
-          <Route path="/planning" element={<Planning />} />
-          <Route path="/suggesties" element={<Suggesties />} />
-          <Route path="/instellingen" element={<Instellingen />} />
-          <Route path="/onderwerp/:id" element={<Onderwerp />} />
-          <Route path="/medewerkers" element={<Medewerkers />} />
-          {me.gebruikersbeheer && <Route path="/gebruikers" element={<Gebruikers ikEmail={me.email ?? ''} />} />}
-          <Route path="/projecten" element={<Projecten />} />
-          <Route path="/gesprekken" element={<Gesprekken />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-    </>
+    </div>
   );
 }

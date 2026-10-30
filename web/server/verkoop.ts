@@ -8,7 +8,7 @@ import { z } from 'zod';
 import type { Db } from './db.js';
 import { beoordeelKlantenLijst } from './klanten-import.js';
 import { bewaarDebriefVragen, leesDebriefVragen, leesVorigeDebriefVragen } from './instellingen.js';
-import { bezoeken, employees, klantActiviteiten, klantContacten, klanten } from './schema.js';
+import { bezoeken, employees, activiteiten, klantContacten, klanten } from './schema.js';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -33,7 +33,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
   app.get('/api/klanten', async () => db.select({
     id: klanten.id, naam: klanten.naam, status: klanten.status, bron: klanten.bron, accountmanagerId: klanten.accountmanagerId, accountmanagerNaam: employees.naam,
     contractEinde: klanten.contractEinde, bijgewerktOp: klanten.bijgewerktOp,
-    openActiviteiten: sql<number>`(select count(*)::int from ${klantActiviteiten} where ${klantActiviteiten.klantId} = ${klanten.id} and ${klantActiviteiten.status} = 'open')`,
+    openActiviteiten: sql<number>`(select count(*)::int from ${activiteiten} where ${activiteiten.klantId} = ${klanten.id} and ${activiteiten.status} = 'open')`,
     laatsteBezoek: sql<string | null>`(select max(${bezoeken.datum})::text from ${bezoeken} where ${bezoeken.klantId} = ${klanten.id})`,
   }).from(klanten).leftJoin(employees, eq(klanten.accountmanagerId, employees.id)).orderBy(asc(klanten.naam)));
 
@@ -73,15 +73,15 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     const id = uuid.parse((req.params as any).id);
     const [klant] = await db.select().from(klanten).where(eq(klanten.id, id));
     if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
-    const [contacten, bezoekRijen, activiteiten] = await Promise.all([
+    const [contacten, bezoekRijen, punten] = await Promise.all([
       db.select().from(klantContacten).where(eq(klantContacten.klantId, id)).orderBy(asc(klantContacten.naam)),
       db.select({
         id: bezoeken.id, datum: bezoeken.datum, soort: bezoeken.soort, tevredenheid: bezoeken.tevredenheid, samenvatting: bezoeken.samenvatting,
         callId: bezoeken.callId, accountmanagerNaam: employees.naam, createdAt: bezoeken.createdAt,
       }).from(bezoeken).leftJoin(employees, eq(bezoeken.accountmanagerId, employees.id)).where(eq(bezoeken.klantId, id)).orderBy(sql`${bezoeken.datum} desc nulls last`, desc(bezoeken.createdAt)),
-      db.select().from(klantActiviteiten).where(eq(klantActiviteiten.klantId, id)).orderBy(desc(klantActiviteiten.createdAt)),
+      db.select().from(activiteiten).where(eq(activiteiten.klantId, id)).orderBy(desc(activiteiten.createdAt)),
     ]);
-    return { klant, contacten, bezoeken: bezoekRijen, activiteiten };
+    return { klant, contacten, bezoeken: bezoekRijen, activiteiten: punten };
   });
 
   app.patch('/api/klanten/:id', async (req, reply) => {
@@ -106,7 +106,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     if (b.besluit === 'goedkeuren') {
       const [rij] = await db.update(klanten).set({ status: b.status, bijgewerktOp: new Date() }).where(eq(klanten.id, id)).returning();
       // Activiteiten waarvan alleen de klant onzeker was, zijn nu ook gecontroleerd.
-      await db.update(klantActiviteiten).set({ controleNodig: false, controleReden: null }).where(and(eq(klantActiviteiten.klantId, id), eq(klantActiviteiten.controleReden, 'klant_niet_herkend')));
+      await db.update(activiteiten).set({ controleNodig: false, controleReden: null }).where(and(eq(activiteiten.klantId, id), eq(activiteiten.controleReden, 'klant_niet_herkend')));
       return rij;
     }
     if (b.met === id) return reply.code(400).send({ fout: 'Kies een andere klant' });
@@ -114,7 +114,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
       const [doel] = await tx.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.met));
       if (!doel) return reply.code(404).send({ fout: 'Doelklant niet gevonden' });
       await tx.update(bezoeken).set({ klantId: b.met }).where(eq(bezoeken.klantId, id));
-      await tx.update(klantActiviteiten).set({ klantId: b.met }).where(eq(klantActiviteiten.klantId, id));
+      await tx.update(activiteiten).set({ klantId: b.met }).where(eq(activiteiten.klantId, id));
       await tx.update(klantContacten).set({ klantId: b.met }).where(eq(klantContacten.klantId, id));
       await tx.delete(klanten).where(eq(klanten.id, id));
       return { ok: true, samengevoegdMet: b.met };
@@ -141,54 +141,5 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
   app.delete('/api/klant-contacten/:id', async (req, reply) => {
     const gewist = await db.delete(klantContacten).where(eq(klantContacten.id, uuid.parse((req.params as any).id))).returning({ id: klantContacten.id });
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Contactpersoon niet gevonden' });
-  });
-
-  // ── Verkoopregister: alle activiteiten, met filters aan de clientkant ──
-  app.get('/api/verkoopregister', async () => db.select({
-    id: klantActiviteiten.id, soort: klantActiviteiten.soort, omschrijving: klantActiviteiten.omschrijving, status: klantActiviteiten.status,
-    klantId: klantActiviteiten.klantId, klantNaam: klanten.naam, klantStatus: klanten.status,
-    eigenaarId: klantActiviteiten.eigenaarId, eigenaarNaam: employees.naam, eigenaarExtern: klantActiviteiten.eigenaarExtern,
-    deadline: klantActiviteiten.deadline, details: klantActiviteiten.details, citaat: klantActiviteiten.citaat,
-    controleNodig: klantActiviteiten.controleNodig, controleReden: klantActiviteiten.controleReden, createdAt: klantActiviteiten.createdAt, afgerondOp: klantActiviteiten.afgerondOp,
-  }).from(klantActiviteiten).leftJoin(klanten, eq(klantActiviteiten.klantId, klanten.id)).leftJoin(employees, eq(klantActiviteiten.eigenaarId, employees.id))
-    .orderBy(asc(klantActiviteiten.status), sql`${klantActiviteiten.deadline} asc nulls last`, desc(klantActiviteiten.createdAt)));
-
-  app.patch('/api/activiteiten/:id', async (req, reply) => {
-    const id = uuid.parse((req.params as any).id);
-    const b = z.object({
-      omschrijving: nonEmpty.max(400), status: z.enum(['open', 'afgerond']), klantId: uuid.nullable(), eigenaarId: uuid.nullable(),
-      eigenaarExtern: z.string().trim().max(100), deadline: datum.nullable(), details: z.record(z.string(), z.unknown()),
-    }).partial().parse(req.body);
-    const waarden: Record<string, unknown> = { ...b };
-    if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
-    if (!Object.keys(waarden).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
-    const [rij] = await db.update(klantActiviteiten).set(waarden).where(eq(klantActiviteiten.id, id)).returning();
-    return rij ?? reply.code(404).send({ fout: 'Activiteit niet gevonden' });
-  });
-
-  // Een activiteit die niet te onderbouwen was wacht op een besluit: goedkeuren houdt hem, afwijzen verwijdert hem.
-  app.post('/api/activiteiten/:id/controle', async (req, reply) => {
-    const id = uuid.parse((req.params as any).id);
-    const { besluit } = z.object({ besluit: z.enum(['goedkeuren', 'afwijzen']) }).parse(req.body);
-    const [punt] = await db.select().from(klantActiviteiten).where(eq(klantActiviteiten.id, id));
-    if (!punt) return reply.code(404).send({ fout: 'Activiteit niet gevonden' });
-    if (!punt.controleNodig) return reply.code(409).send({ fout: 'Deze activiteit hoeft niet gecontroleerd te worden' });
-    // Een bestaand punt dat mogelijk is afgerond: goedkeuren sluit het, afwijzen houdt het open. Het wordt nooit verwijderd.
-    if (punt.controleReden === 'mogelijk_afgerond') {
-      const [rij] = await db.update(klantActiviteiten).set({
-        controleNodig: false, controleReden: null, ...(besluit === 'goedkeuren' ? { status: 'afgerond' as const, afgerondOp: new Date() } : {}),
-      }).where(eq(klantActiviteiten.id, id)).returning();
-      return rij;
-    }
-    if (besluit === 'afwijzen') {
-      await db.delete(klantActiviteiten).where(eq(klantActiviteiten.id, id));
-      return { ok: true, verwijderd: true };
-    }
-    const [rij] = await db.update(klantActiviteiten).set({ controleNodig: false, controleReden: null }).where(eq(klantActiviteiten.id, id)).returning();
-    return rij;
-  });
-  app.delete('/api/activiteiten/:id', async (req, reply) => {
-    const gewist = await db.delete(klantActiviteiten).where(eq(klantActiviteiten.id, uuid.parse((req.params as any).id))).returning({ id: klantActiviteiten.id });
-    return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Activiteit niet gevonden' });
   });
 }

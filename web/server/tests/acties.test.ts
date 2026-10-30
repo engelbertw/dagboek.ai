@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { berekenDashboard, type ActieRij } from '../dashboard.js';
-import { openItems } from '../schema.js';
+import { activiteiten } from '../schema.js';
 import { bepaalEigenaar, bouwGebruikersBericht, geldigeDeadline, vandaagNL } from '../samenvatten.js';
 import { SERVICE_KEY, maakTestApp } from './helpers.js';
 
@@ -125,8 +125,8 @@ describe('acties via de api en uit een gesprek', () => {
     await t.klaarMetAchtergrond();
 
     expect(vragen[0]).toContain(`Vandaag is het ${vandaag}`);
-    const acties = (await t.api('GET', '/api/acties')).json();
-    const per = (tekst: string) => acties.find((a: any) => a.tekst === tekst);
+    const acties = (await t.api('GET', '/api/activiteiten')).json();
+    const per = (tekst: string) => acties.find((a: any) => a.omschrijving === tekst);
     expect(per('Offerte versturen')).toMatchObject({ eigenaarId: daan.id, deadline: vandaag, topicTitel: 'Offertes' });
     expect(per('Aanvraag beoordelen')).toMatchObject({ eigenaarId: jarich.id, deadline: null }); // 'volgende week' is geen datum
     expect(per('Contract aanleveren')).toMatchObject({ eigenaarId: null, eigenaarExtern: 'Hans van Holstein' });
@@ -142,20 +142,20 @@ describe('acties via de api en uit een gesprek', () => {
     open.push(t);
     const m = (await t.api('POST', '/api/employees', { naam: 'Daan', telefoon: '0612345678' })).json();
     const topic = (await t.api('POST', '/api/topics', { titel: 'X', eigenaarId: m.id })).json();
-    const a = (await t.api('POST', `/api/topics/${topic.id}/open-items`, { tekst: 'Doe iets' })).json();
+    const a = (await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Doe iets' })).json();
     expect(a).toMatchObject({ eigenaarId: m.id, deadline: null }); // standaard: eigenaar van het onderwerp
 
-    expect((await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-13-45' })).statusCode).toBe(400);
-    expect((await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-02-30' })).statusCode).toBe(400);
-    expect((await t.api('PATCH', `/api/open-items/${a.id}`, { eigenaarId: 'geen-uuid' })).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-13-45' })).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-02-30' })).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/activiteiten/${a.id}`, { eigenaarId: 'geen-uuid' })).statusCode).toBe(400);
 
-    const na = (await t.api('PATCH', `/api/open-items/${a.id}`, { deadline: '2026-11-06', eigenaarId: null, eigenaarExtern: 'Klant' })).json();
-    expect(na).toMatchObject({ deadline: '2026-11-06', eigenaarId: null, eigenaarExtern: 'Klant', tekst: 'Doe iets', status: 'open' });
+    const na = (await t.api('PATCH', `/api/activiteiten/${a.id}`, { deadline: '2026-11-06', eigenaarId: null, eigenaarExtern: 'Klant' })).json();
+    expect(na).toMatchObject({ deadline: '2026-11-06', eigenaarId: null, eigenaarExtern: 'Klant', omschrijving: 'Doe iets', status: 'open' });
 
-    const klaar = (await t.api('PATCH', `/api/open-items/${a.id}`, { status: 'afgerond' })).json();
+    const klaar = (await t.api('PATCH', `/api/activiteiten/${a.id}`, { status: 'afgerond' })).json();
     expect(klaar.afgerondOp).toBeTruthy();
     expect(klaar).toMatchObject({ deadline: '2026-11-06', eigenaarExtern: 'Klant' }); // deelwijziging laat de rest met rust
-    expect((await t.api('PATCH', `/api/open-items/${a.id}`, { status: 'open' })).json().afgerondOp).toBeNull();
-    expect((await t.db.select().from(openItems).where(eq(openItems.id, a.id)))[0].deadline).toBe('2026-11-06');
+    expect((await t.api('PATCH', `/api/activiteiten/${a.id}`, { status: 'open' })).json().afgerondOp).toBeNull();
+    expect((await t.db.select().from(activiteiten).where(eq(activiteiten.id, a.id)))[0].deadline).toBe('2026-11-06');
   });
 });

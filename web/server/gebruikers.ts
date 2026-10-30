@@ -6,16 +6,17 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { KeycloakConfig } from './config.js';
-import { BEHEERDER_ROL } from './oidc.js';
+import { ACCOUNTMANAGER_ROL, BEHEERDER_ROL, ROLLEN, type GebruikersRol } from './rollen.js';
 import { log } from './log.js';
 
 type Haal = typeof fetch;
 
-export interface Gebruiker { id: string; email: string; naam: string; actief: boolean; mfa: boolean; aangemaakt: string | null }
+export interface Gebruiker { id: string; email: string; naam: string; rol: GebruikersRol; actief: boolean; mfa: boolean; aangemaakt: string | null }
 
 export interface KeycloakBeheer {
   lijst(): Promise<Gebruiker[]>;
-  maak(p: { email: string; naam: string; wachtwoord: string }): Promise<string>;
+  maak(p: { email: string; naam: string; wachtwoord: string; rol?: GebruikersRol }): Promise<string>;
+  zetRol(id: string, rol: GebruikersRol): Promise<void>;
   zetActief(id: string, actief: boolean): Promise<void>;
   resetWachtwoord(id: string, wachtwoord: string): Promise<void>;
   resetMfa(id: string): Promise<void>;
@@ -62,15 +63,33 @@ export function maakKeycloakBeheer(cfg: KeycloakConfig, haal: Haal = fetch): Key
 
   const heeftOtp = async (id: string) => ((await (await vraag(`/users/${id}/credentials`)).json()) as { type: string }[]).some((c) => c.type === 'otp');
 
+  /** De rol zoals Keycloak hem kent; ontbreekt hij (de rol is nog niet aangemaakt in de realm), dan is dat een duidelijke fout. */
+  const rolVan = async (rol: GebruikersRol) => {
+    try { return await (await vraag(`/roles/${rol}`)).json(); } catch (e) {
+      if (e instanceof BeheerFout && e.status === 404) throw new BeheerFout(409, `De rol ${rol} bestaat nog niet in Keycloak`);
+      throw e;
+    }
+  };
+  type KcGebruiker = { id: string; email?: string; firstName?: string; lastName?: string; enabled: boolean; createdTimestamp?: number };
+  const metRol = async (rol: GebruikersRol): Promise<KcGebruiker[]> => {
+    try { return (await (await vraag(`/roles/${rol}/users?max=200`)).json()) as KcGebruiker[]; } catch (e) {
+      if (e instanceof BeheerFout && e.status === 404) return []; // een rol die nog niet bestaat heeft nog geen gebruikers
+      throw e;
+    }
+  };
+
   return {
     async lijst() {
-      const rollen = await (await vraag(`/roles/${BEHEERDER_ROL}/users?max=200`)).json() as { id: string; email?: string; firstName?: string; lastName?: string; enabled: boolean; createdTimestamp?: number }[];
-      return Promise.all(rollen.map(async (u) => ({
-        id: u.id, email: u.email ?? '', naam: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || '', actief: u.enabled,
+      const perRol = await Promise.all(ROLLEN.map(async (rol) => (await metRol(rol)).map((u) => ({ u, rol }))));
+      const uniek = new Map<string, { u: KcGebruiker; rol: GebruikersRol }>();
+      for (const r of perRol.flat()) if (!uniek.has(r.u.id)) uniek.set(r.u.id, r); // ROLLEN begint met beheerder: wie beide heeft, is beheerder
+      return Promise.all([...uniek.values()].map(async ({ u, rol }) => ({
+        id: u.id, email: u.email ?? '', naam: [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || '', rol, actief: u.enabled,
         mfa: await heeftOtp(u.id), aangemaakt: u.createdTimestamp ? new Date(u.createdTimestamp).toISOString() : null,
       })));
     },
-    async maak({ email, naam, wachtwoord }) {
+    async maak({ email, naam, wachtwoord, rol = BEHEERDER_ROL }) {
+      const rolRep = await rolVan(rol);
       const [voor, ...rest] = naam.split(/\s+/);
       const r = await vraag('/users', {
         method: 'POST',
@@ -81,9 +100,17 @@ export function maakKeycloakBeheer(cfg: KeycloakConfig, haal: Haal = fetch): Key
       });
       const id = r.headers.get('location')?.split('/').pop();
       if (!id) throw new BeheerFout(502, 'Keycloak gaf geen gebruiker terug');
-      const rol = await (await vraag(`/roles/${BEHEERDER_ROL}`)).json();
-      await vraag(`/users/${id}/role-mappings/realm`, { method: 'POST', body: JSON.stringify([rol]) });
+      await vraag(`/users/${id}/role-mappings/realm`, { method: 'POST', body: JSON.stringify([rolRep]) });
       return id;
+    },
+    async zetRol(id, rol) {
+      const nieuw = await rolVan(rol);
+      const andere = ROLLEN.filter((x) => x !== rol);
+      for (const o of andere) {
+        const rep = await rolVan(o).catch(() => null);
+        if (rep) await vraag(`/users/${id}/role-mappings/realm`, { method: 'DELETE', body: JSON.stringify([rep]) });
+      }
+      await vraag(`/users/${id}/role-mappings/realm`, { method: 'POST', body: JSON.stringify([nieuw]) });
     },
     async zetActief(id, actief) { await vraag(`/users/${id}`, { method: 'PUT', body: JSON.stringify({ enabled: actief }) }); },
     async resetWachtwoord(id, wachtwoord) {
@@ -104,6 +131,7 @@ const uuid = z.string().uuid();
 const nieuweGebruiker = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
   naam: z.string().trim().min(1).max(150),
+  rol: z.enum(ROLLEN).default(BEHEERDER_ROL),
 });
 
 /** `ikEmail` geeft het e-mailadres van wie ingelogd is, zodat je jezelf niet kunt uitzetten of verwijderen. */
@@ -128,18 +156,18 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
     return metFout(reply, async () => {
       const wachtwoord = tijdelijkWachtwoord();
       const id = await beheer.maak({ ...b, wachtwoord });
-      log('info', 'gebruiker.aangemaakt', { door: 'beheerder' });
+      log('info', 'gebruiker.aangemaakt', { rol: b.rol });
       return reply.code(201).send({ id, tijdelijkWachtwoord: wachtwoord });
     });
   });
 
   // Je kunt jezelf niet uitzetten of verwijderen, en de laatste actieve beheerder blijft altijd bestaan.
-  async function beschermd(b: KeycloakBeheer, id: string, req: unknown) {
+  async function beschermd(b: KeycloakBeheer, id: string, req: unknown, eigenBericht = 'Je kunt je eigen account niet uitzetten of verwijderen', laatsteBericht = 'De laatste actieve beheerder kan niet worden uitgezet of verwijderd') {
     const lijst = await b.lijst();
     const doel = lijst.find((g) => g.id === id);
     if (!doel) throw new BeheerFout(404, 'Gebruiker niet gevonden');
-    if (doel.email.toLowerCase() === ikEmail(req)) throw new BeheerFout(409, 'Je kunt je eigen account niet uitzetten of verwijderen');
-    if (doel.actief && lijst.filter((g) => g.actief && g.id !== id).length === 0) throw new BeheerFout(409, 'De laatste actieve beheerder kan niet worden uitgezet of verwijderd');
+    if (doel.email.toLowerCase() === ikEmail(req)) throw new BeheerFout(409, eigenBericht);
+    if (doel.actief && doel.rol === BEHEERDER_ROL && lijst.filter((g) => g.actief && g.rol === BEHEERDER_ROL && g.id !== id).length === 0) throw new BeheerFout(409, laatsteBericht);
   }
 
   app.patch('/api/gebruikers/:id', async (req, reply) => {
@@ -150,6 +178,21 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
       if (!actief) await beschermd(beheer, id, req);
       await beheer.zetActief(id, actief);
       log('info', actief ? 'gebruiker.aangezet' : 'gebruiker.uitgezet', {});
+      return { ok: true };
+    });
+  });
+
+  // Een rol wijzigen mag niet bij jezelf, en de laatste actieve beheerder blijft beheerder.
+  app.post('/api/gebruikers/:id/rol', async (req, reply) => {
+    if (!beheer) return ontbreekt(reply);
+    const id = uuid.parse((req.params as any).id);
+    const { rol } = z.object({ rol: z.enum(ROLLEN) }).parse(req.body);
+    return metFout(reply, async () => {
+      const doel = (await beheer.lijst()).find((g) => g.id === id);
+      if (!doel) throw new BeheerFout(404, 'Gebruiker niet gevonden');
+      if (rol !== BEHEERDER_ROL) await beschermd(beheer, id, req, 'De rol van je eigen account kun je niet wijzigen', 'De laatste actieve beheerder kan geen accountmanager worden');
+      await beheer.zetRol(id, rol);
+      log('info', 'gebruiker.rol_gewijzigd', { rol });
       return { ok: true };
     });
   });

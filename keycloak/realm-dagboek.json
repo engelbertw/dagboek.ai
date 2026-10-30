@@ -29,7 +29,8 @@
   "otpPolicyPeriod": 30,
   "roles": {
     "realm": [
-      { "name": "beheerder", "description": "Beheerder van dagboek.ai: ziet alle gegevens en beheert gebruikers. Maak beheerders aan met de vereiste actie CONFIGURE_TOTP, zodat MFA verplicht is." }
+      { "name": "beheerder", "description": "Beheerder van dagboek.ai: ziet alle gegevens en beheert gebruikers. Maak beheerders aan met de vereiste actie CONFIGURE_TOTP, zodat MFA verplicht is." },
+      { "name": "accountmanager", "description": "Accountmanager: ziet alleen het werkregister en de klanten van dagboek.ai. Ook met verplichte MFA." }
     ]
   },
   "requiredActions": [

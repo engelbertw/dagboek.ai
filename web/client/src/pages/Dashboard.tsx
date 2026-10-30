@@ -13,7 +13,7 @@ function ActieLijst({ titel, acties, leeg }: { titel: string; acties: Actie[]; l
       {acties.length === 0 && <Leeg>{leeg}</Leeg>}
       {acties.map((a) => (
         <div key={a.id} className="punt">
-          <span style={{ flex: 1, minWidth: 180 }}><Link to={`/onderwerp/${a.topicId}`}>{a.tekst}</Link> <span className="zacht klein">· {a.topicTitel}</span></span>
+          <span style={{ flex: 1, minWidth: 180 }}><Link to={a.topicId ? `/onderwerp/${a.topicId}` : a.klantId ? `/klanten/${a.klantId}` : '/werk'}>{a.tekst}</Link> <span className="zacht klein">· {a.topicTitel ?? a.klantNaam ?? 'zonder klant'}</span></span>
           <span className="zacht klein">{a.eigenaarNaam ?? (a.eigenaarExtern ? `${a.eigenaarExtern} (extern)` : 'Geen eigenaar')}</span>
           <Badge soort={titel.startsWith('Deadline verlopen') ? 'mislukt' : 'wacht'}>{deadlineTekst(a.deadline)}</Badge>
         </div>

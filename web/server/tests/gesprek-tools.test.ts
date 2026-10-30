@@ -48,7 +48,7 @@ describe('MCP-hulpmiddelen tijdens een inkomend gesprek', () => {
     const punten = await tool(t, 'zoek_punten_van_collega', { gesprek_id: call, medewerker: 'daan' });
     expect(punten).toMatchObject({ ok: true, medewerker: 'Daan van Hooft', onderwerpen: [{ titel: 'Goes' }] });
     expect(await tool(t, 'voeg_aandachtspunt_toe', { gesprek_id: call, medewerker: 'Daan', onderwerp: 'goes', tekst: 'Offerte nakijken' })).toMatchObject({ ok: true, onderwerp: 'Goes' });
-    const acties = (await t.api('GET', '/api/acties')).json();
+    const acties = (await t.api('GET', '/api/activiteiten')).json();
     const regel = JSON.stringify(acties);
     expect(regel).toContain('Offerte nakijken');
     expect(regel).toContain('Telefonisch toegevoegd door Engelbert');

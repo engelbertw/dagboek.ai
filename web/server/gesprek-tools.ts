@@ -4,7 +4,7 @@ import { logGebeurtenis } from './call-log.js';
 import type { Db } from './db.js';
 import { stelOnderwerpenSamen } from './gesprek-starten.js';
 import { log } from './log.js';
-import { calls, employees, openItems, overzichtToegang, topics } from './schema.js';
+import { activiteiten, calls, employees, overzichtToegang, topics } from './schema.js';
 
 /** Hulpmiddelen voor de gespreksmotor tijdens een inkomend gesprek. Wat een beller over collega's mag opvragen hangt af van een beheerrol met codewoord. */
 export const MAX_CODEWOORD_POGINGEN = 3;
@@ -92,8 +92,8 @@ export async function voegAandachtspuntToe(db: Db, callId: string, naam: string,
   const actief = await db.select({ id: topics.id, titel: topics.titel }).from(topics).where(and(eq(topics.eigenaarId, m.id), eq(topics.status, 'actief')));
   const treffers = q ? actief.filter((t) => t.titel.toLowerCase().includes(q)) : [];
   if (treffers.length !== 1) return fout(treffers.length ? 'meerdere_onderwerpen' : 'onderwerp_niet_gevonden', { onderwerpen: actief.slice(0, 10).map((t) => schoon(t.titel, 100)) });
-  await db.insert(openItems).values({
-    topicId: treffers[0].id, tekst: punt, callId, eigenaarId: m.id, bron: 'gesprek', controleNodig: true,
+  await db.insert(activiteiten).values({
+    topicId: treffers[0].id, soort: 'intern', omschrijving: punt, callId, eigenaarId: m.id, bron: 'gesprek', controleNodig: true,
     controleReden: `Telefonisch toegevoegd door ${g.beller.naam} (codewoord genoemd)`,
   });
   await logGebeurtenis(db, callId, 'voice', 'tool:aandachtspunt_toegevoegd');
