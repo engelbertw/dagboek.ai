@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, datumTijd, MOTOR_LABEL, type Gesprek, type GesprekRegel, type SamenvattingStatus } from '../api';
+import { api, datumTijd, MOTOR_LABEL, type Gesprek, type GesprekRegel, type GesprekType, type SamenvattingStatus } from '../api';
 import { Badge, Leeg, Melding, foutTekst, useLaden } from '../ui';
 
 const LABEL: Record<string, string> = {
@@ -99,13 +99,15 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
       setFout(OPHALEN[r.uitkomst] ?? `Uitkomst: ${r.uitkomst}`); ververs();
     } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
   }
+  const debrief = g.type === 'verkoop_debrief';
   const s = SAMENVATTING[g.samenvattingStatus];
+  const uitleg = debrief && g.samenvattingStatus === 'klaar' ? 'Het bezoek staat in het verkoopregister, bij de klant.' : s.uitleg;
   const kanOphalen = g.engine === 'elevenlabs_agent' && !g.heeftTranscript && !g.transcriptGewist && ['belt', 'gesprek', 'onderbroken', 'niet_bereikt', 'mislukt'].includes(g.status);
   const kanOpnieuw = g.status === 'gesproken' && ['geen', 'mislukt', 'onduidelijk'].includes(g.samenvattingStatus);
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{g.employeeNaam}</h3><span className="zacht klein">{datumTijd(g.createdAt)} · {g.bron}{g.engine && ` · ${MOTOR_LABEL[g.engine]}`}</span></div>
+        <div><h3>{g.employeeNaam} {debrief && <Badge soort="wacht">verkoop-debrief</Badge>}</h3><span className="zacht klein">{datumTijd(g.createdAt)} · {g.bron}{g.engine && ` · ${MOTOR_LABEL[g.engine]}`}</span></div>
         <div className="rij"><Badge soort={g.status}>{LABEL[g.status]}</Badge><button onClick={toggle} aria-expanded={!!detail}>{detail ? 'Verbergen' : 'Bekijken'}</button></div>
       </div>
       {g.fout && <p className="zacht klein">{g.fout}</p>}
@@ -118,7 +120,7 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
       {g.status === 'gesproken' && (
         <div className="rij">
           <Badge soort={BADGE[g.samenvattingStatus]}>{s.label}</Badge>
-          <span className="zacht klein">{g.samenvattingStatus === 'mislukt' ? g.samenvattingFout : s.uitleg}</span>
+          <span className="zacht klein">{g.samenvattingStatus === 'mislukt' ? g.samenvattingFout : uitleg}</span>
           {kanOpnieuw && <button onClick={opnieuw} disabled={bezig}>{bezig ? 'Bezig…' : g.samenvattingStatus === 'geen' ? 'Nu samenvatten' : 'Opnieuw proberen'}</button>}
         </div>
       )}
@@ -149,12 +151,19 @@ const aandachtNodig = (g: GesprekRegel) =>
 
 export function Gesprekken() {
   const lijst = useLaden(() => api<GesprekRegel[]>('GET', '/calls'));
-  const aandacht = (lijst.data ?? []).filter(aandachtNodig);
+  const [type, setType] = useState<'alle' | GesprekType>('alle');
+  const gefilterd = (lijst.data ?? []).filter((g) => type === 'alle' || (g.type ?? 'dagboek') === type);
+  const aandacht = gefilterd.filter(aandachtNodig);
   return (
     <div className="stapel">
       <div className="rij spreid">
         <div><h1>Gesprekken</h1><p className="zacht">Alle gesprekken met uitkomst en transcript.</p></div>
-        <button onClick={lijst.ververs}>Verversen</button>
+        <div className="rij">
+          <select aria-label="Soort gesprek" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
+            <option value="alle">Alle gesprekken</option><option value="dagboek">Dagboek</option><option value="verkoop_debrief">Verkoop-debrief</option>
+          </select>
+          <button onClick={lijst.ververs}>Verversen</button>
+        </div>
       </div>
       <Melding tekst={lijst.fout} />
       {lijst.data?.length === 0 && <Leeg>Nog geen gesprekken. Start er een via Medewerkers → Bel nu.</Leeg>}
@@ -165,8 +174,8 @@ export function Gesprekken() {
           {aandacht.map((g) => <Regel key={g.id} g={g} ververs={lijst.ververs} />)}
         </section>
       )}
-      {lijst.data && <Vergelijking lijst={lijst.data} />}
-      {lijst.data?.map((g) => <Regel key={g.id} g={g} ververs={lijst.ververs} />)}
+      {lijst.data && <Vergelijking lijst={gefilterd} />}
+      {gefilterd.map((g) => <Regel key={g.id} g={g} ververs={lijst.ververs} />)}
     </div>
   );
 }

@@ -1,4 +1,5 @@
-export interface Medewerker { id: string; naam: string; telefoon: string; email: string; locgovGebruikersnaam: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string }
+export type Rol = 'medewerker' | 'accountmanager';
+export interface Medewerker { id: string; naam: string; telefoon: string; email: string; locgovGebruikersnaam: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string; rol: Rol }
 export interface Project { id: string; naam: string; omschrijving: string; status: 'actief' | 'afgerond' }
 export type TopicStatus = 'actief' | 'wacht' | 'afgerond';
 export type TopicType = 'project' | 'thema' | 'taak';
@@ -27,7 +28,8 @@ export type CallStatus = 'gepland' | 'verzenden' | 'onderbroken' | 'belt' | 'ges
 export type SamenvattingStatus = 'geen' | 'bezig' | 'klaar' | 'geen_inhoud' | 'geweigerd' | 'onduidelijk' | 'mislukt';
 export type Motor = 'pipecat' | 'elevenlabs_agent';
 export const MOTOR_LABEL: Record<Motor, string> = { pipecat: 'Pipecat (huidig)', elevenlabs_agent: 'ElevenLabs-agent' };
-export interface GesprekRegel { heeftTranscript: boolean; transcriptGewist: boolean; engine: Motor | null; beoordeling: number | null; beoordelingOpmerking: string | null; id: string; status: CallStatus; bron: string; fout: string | null; samenvattingStatus: SamenvattingStatus; samenvattingFout: string | null; gestartOp: string | null; afgerondOp: string | null; createdAt: string; employeeId: string; employeeNaam: string }
+export type GesprekType = 'dagboek' | 'verkoop_debrief';
+export interface GesprekRegel { type?: GesprekType; heeftTranscript: boolean; transcriptGewist: boolean; engine: Motor | null; beoordeling: number | null; beoordelingOpmerking: string | null; id: string; status: CallStatus; bron: string; fout: string | null; samenvattingStatus: SamenvattingStatus; samenvattingFout: string | null; gestartOp: string | null; afgerondOp: string | null; createdAt: string; employeeId: string; employeeNaam: string }
 export interface Gesprek extends GesprekRegel { transcript: { role: string; content: string }[] | null }
 
 export class ApiFout extends Error {
@@ -51,3 +53,19 @@ export const datumTijd = (iso: string | null) =>
 export const DAGEN = ['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'];
 export interface JiraInstelling { site: string; project: string; issuetype: string; teamId: string; inloggegevens: boolean; geconfigureerd: boolean }
 export interface JiraUitkomst { id: string; status: 'voorbeeld' | 'aangemaakt' | 'gekoppeld' | 'overgeslagen' | 'fout'; reden?: string; sleutel?: string; url?: string; samenvatting?: string; eigenaar?: string | null; deadline?: string | null; project?: string }
+
+export type KlantStatus = 'prospect' | 'klant' | 'voorgesteld' | 'inactief';
+export const KLANT_STATUS_LABEL: Record<KlantStatus, string> = { prospect: 'Prospect', klant: 'Klant', voorgesteld: 'Voorgesteld (controle)', inactief: 'Inactief' };
+export type ActiviteitSoort = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'kans' | 'risico';
+export const SOORT_LABEL: Record<ActiviteitSoort, string> = { doel: 'Doel', resultaat: 'Resultaat', afspraak: 'Afspraak', actie: 'Actie', kans: 'Kans', risico: 'Risico' };
+export interface KlantRegel { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; accountmanagerNaam: string | null; contractEinde: string | null; bijgewerktOp: string; openActiviteiten: number; laatsteBezoek: string | null }
+export interface Klant { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; omschrijving: string; contractEinde: string | null; afasId: string | null }
+export interface KlantContact { id: string; naam: string; functie: string; rol: string }
+export interface Bezoek { id: string; datum: string | null; soort: string; tevredenheid: number | null; samenvatting: string; callId: string | null; accountmanagerNaam: string | null; createdAt: string }
+export interface Activiteit {
+  id: string; soort: ActiviteitSoort; omschrijving: string; status: 'open' | 'afgerond'; klantId: string | null; klantNaam: string | null; klantStatus: KlantStatus | null;
+  eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; details: Record<string, unknown>; citaat: string;
+  controleNodig: boolean; controleReden: string | null; createdAt: string; afgerondOp: string | null;
+}
+export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam'> & { bezoekId: string | null })[] }
+export interface DebriefVragen extends Houding { vorige: string }

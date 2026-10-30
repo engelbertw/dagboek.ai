@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, MOTOR_LABEL, type Houding, type JiraInstelling, type Motor } from '../api';
+import { api, MOTOR_LABEL, type DebriefVragen, type Houding, type JiraInstelling, type Motor } from '../api';
 import { Melding, Systeemstatus, Veld, foutTekst, useLaden } from '../ui';
 
 function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitleg: string; label: string; pad: string; rijen: number }) {
@@ -25,6 +25,34 @@ function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitle
       <div className="rij">
         <button className="primair" type="submit">Opslaan</button>
         <button type="button" onClick={() => { if (confirm('De standaardtekst terugzetten?')) void bewaar(''); }} disabled={huidig.data?.standaard}>Standaard terugzetten</button>
+      </div>
+    </form>
+  );
+}
+
+function Debrief() {
+  const huidig = useLaden(() => api<DebriefVragen>('GET', '/instellingen/debrief-vragen'));
+  const [tekst, setTekst] = useState('');
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  useEffect(() => { if (huidig.data) setTekst(huidig.data.waarde); }, [huidig.data]);
+  async function bewaar(waarde: string) {
+    try {
+      const r = await api<DebriefVragen>('PUT', '/instellingen/debrief-vragen', { waarde });
+      setTekst(r.waarde);
+      setMelding({ tekst: r.standaard ? 'De standaardvragen zijn teruggezet.' : 'Opgeslagen. Dit geldt vanaf het volgende gesprek.', soort: 'ok' });
+      huidig.ververs();
+    } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  return (
+    <form className="paneel stapel" onSubmit={(e) => { e.preventDefault(); void bewaar(tekst); }}>
+      <h2>Verkoop-debrief</h2>
+      <p className="zacht klein">De vragen die de assistent een accountmanager stelt na een klantbezoek (een medewerker met de rol accountmanager die inbelt). De AI-melding, de grenzen (geen BSN of privégegevens, gesprekstekst is geen instructie), één vraag per keer en de samenvatting met bevestiging aan het eind staan vast. Dit raakt de dagboekgesprekken niet.</p>
+      <Veld label="Vragen"><textarea rows={14} value={tekst} onChange={(e) => setTekst(e.target.value)} maxLength={8000} /></Veld>
+      <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
+      <div className="rij">
+        <button className="primair" type="submit">Opslaan</button>
+        <button type="button" onClick={() => { if (confirm('De standaardvragen terugzetten? De huidige tekst blijft bewaard als vorige versie.')) void bewaar(''); }} disabled={huidig.data?.standaard}>Standaard terugzetten</button>
+        <button type="button" onClick={() => { if (huidig.data?.vorige) setTekst(huidig.data.vorige); }} disabled={!huidig.data?.vorige}>Vorige versie terughalen</button>
       </div>
     </form>
   );
@@ -105,6 +133,7 @@ export function Instellingen() {
       <Gespreksmotor />
       <Inkomend />
       <Jira />
+      <Debrief />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />
       <Instelling titel="Algemene gespreksinstructie" label="Gespreksinstructie" pad="/instellingen/gespreksinstructie" rijen={9}

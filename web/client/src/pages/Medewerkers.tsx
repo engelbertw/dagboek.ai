@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { api, datum, MOTOR_LABEL, type Medewerker, type Motor } from '../api';
+import { api, datum, MOTOR_LABEL, type Medewerker, type Motor, type Rol } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 function Overzichtsrol({ m, heeft, ververs }: { m: Medewerker; heeft: boolean; ververs: () => void }) {
@@ -29,7 +29,7 @@ function Overzichtsrol({ m, heeft, ververs }: { m: Medewerker; heeft: boolean; v
 
 function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: () => void; overzicht: { heeft: boolean; ververs: () => void } }) {
   const [open, setOpen] = useState(false);
-  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie });
+  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie, rol: m.rol });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [bezig, setBezig] = useState(false);
   const sleutel = `motor-${m.id}`;
@@ -54,7 +54,7 @@ function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: ()
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{m.naam} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
+        <div><h3>{m.naam} {m.rol === 'accountmanager' && <Badge soort="wacht">accountmanager</Badge>} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
         <div className="rij">
           <select aria-label="Gespreksmotor voor dit gesprek" value={motor} onChange={(e) => setMotor(e.target.value as '' | Motor)}>
             <option value="">Motor: standaard (zie Instellingen)</option>
@@ -72,6 +72,11 @@ function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: ()
         <form className="stapel" onSubmit={(e) => { e.preventDefault(); void wijzig(bewerk); }}>
           <div className="raster">
             <Veld label="Naam"><input value={bewerk.naam} onChange={(e) => setBewerk({ ...bewerk, naam: e.target.value })} required /></Veld>
+            <Veld label="Rol">
+              <select value={bewerk.rol} onChange={(e) => setBewerk({ ...bewerk, rol: e.target.value as Rol })}>
+                <option value="medewerker">Medewerker (dagboek)</option><option value="accountmanager">Accountmanager (verkoop-debrief)</option>
+              </select>
+            </Veld>
             <Veld label="Telefoonnummer"><input value={bewerk.telefoon} onChange={(e) => setBewerk({ ...bewerk, telefoon: e.target.value })} required /></Veld>
           </div>
           <Veld label="E-mailadres"><input type="email" value={bewerk.email} onChange={(e) => setBewerk({ ...bewerk, email: e.target.value })} /></Veld>
@@ -94,7 +99,7 @@ function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: ()
 export function Medewerkers() {
   const lijst = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const rollen = useLaden(() => api<string[]>('GET', '/overzicht-toegang'));
-  const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string } | null>(null);
+  const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string; rol: Rol } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
 
   async function maakAan(e: FormEvent) {
@@ -104,14 +109,19 @@ export function Medewerkers() {
   return (
     <div className="stapel">
       <div className="rij spreid">
-        <div><h1>Medewerkers</h1><p className="zacht">Collega’s die we bellen voor een update.</p></div>
-        <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
+        <div><h1>Medewerkers</h1><p className="zacht">Collega’s die we bellen voor een update. Een accountmanager die inbelt krijgt een verkoop-debrief in plaats van het dagboek.</p></div>
+        <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '', rol: 'medewerker' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
       </div>
       {nieuw && (
         <form className="paneel stapel" onSubmit={maakAan}>
           <div className="raster">
             <Veld label="Naam"><input value={nieuw.naam} onChange={(e) => setNieuw({ ...nieuw, naam: e.target.value })} required /></Veld>
             <Veld label="Mobiel nummer (bijvoorbeeld 06 12345678)"><input type="tel" value={nieuw.telefoon} onChange={(e) => setNieuw({ ...nieuw, telefoon: e.target.value })} required /></Veld>
+            <Veld label="Rol">
+              <select value={nieuw.rol} onChange={(e) => setNieuw({ ...nieuw, rol: e.target.value as Rol })}>
+                <option value="medewerker">Medewerker (dagboek)</option><option value="accountmanager">Accountmanager (verkoop-debrief)</option>
+              </select>
+            </Veld>
             <Veld label="E-mailadres (niet verplicht)"><input type="email" value={nieuw.email} onChange={(e) => setNieuw({ ...nieuw, email: e.target.value })} /></Veld>
           </div>
           <Melding tekst={fout} />

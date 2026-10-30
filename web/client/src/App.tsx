@@ -7,11 +7,14 @@ import { Dagboek } from './pages/Dagboek';
 import { Dashboard } from './pages/Dashboard';
 import { Gesprekken } from './pages/Gesprekken';
 import { Instellingen } from './pages/Instellingen';
+import { Klant } from './pages/Klant';
+import { Klanten } from './pages/Klanten';
 import { Medewerkers } from './pages/Medewerkers';
 import { Onderwerp } from './pages/Onderwerp';
 import { Suggesties } from './pages/Suggesties';
 import { Planning } from './pages/Planning';
 import { Projecten } from './pages/Projecten';
+import { Verkoopregister } from './pages/Verkoopregister';
 
 function Inloggen({ klaar }: { klaar: () => void }) {
   const [email, setEmail] = useState('');
@@ -47,6 +50,8 @@ export function App() {
           <NavLink to="/" end className={({ isActive }) => (isActive || pathname.startsWith('/onderwerp') ? 'actief' : '')}>Dagboek</NavLink>
           <NavLink to="/dashboard" className={({ isActive }) => (isActive ? 'actief' : '')}>Dashboard</NavLink>
           <NavLink to="/acties" className={({ isActive }) => (isActive ? 'actief' : '')}>Acties</NavLink>
+          <NavLink to="/klanten" className={({ isActive }) => (isActive ? 'actief' : '')}>Klanten</NavLink>
+          <NavLink to="/verkoopregister" className={({ isActive }) => (isActive ? 'actief' : '')}>Verkoopregister</NavLink>
           <NavLink to="/medewerkers" className={({ isActive }) => (isActive ? 'actief' : '')}>Medewerkers</NavLink>
           <NavLink to="/projecten" className={({ isActive }) => (isActive ? 'actief' : '')}>Projecten</NavLink>
           <NavLink to="/gesprekken" className={({ isActive }) => (isActive ? 'actief' : '')}>Gesprekken</NavLink>
@@ -61,6 +66,9 @@ export function App() {
           <Route path="/" element={<Dagboek />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/acties" element={<Acties />} />
+          <Route path="/klanten" element={<Klanten />} />
+          <Route path="/klanten/:id" element={<Klant />} />
+          <Route path="/verkoopregister" element={<Verkoopregister />} />
           <Route path="/planning" element={<Planning />} />
           <Route path="/suggesties" element={<Suggesties />} />
           <Route path="/instellingen" element={<Instellingen />} />

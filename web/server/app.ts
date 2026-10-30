@@ -554,7 +554,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
       id: calls.id, status: calls.status, bron: calls.bron, fout: calls.fout, gestartOp: calls.gestartOp, afgerondOp: calls.afgerondOp,
       createdAt: calls.createdAt, employeeId: calls.employeeId, employeeNaam: employees.naam,
       samenvattingStatus: calls.samenvattingStatus, samenvattingFout: calls.samenvattingFout,
-      engine: calls.engine, beoordeling: calls.beoordeling, beoordelingOpmerking: calls.beoordelingOpmerking,
+      engine: calls.engine, type: calls.type, beoordeling: calls.beoordeling, beoordelingOpmerking: calls.beoordelingOpmerking,
       heeftTranscript: sql<boolean>`${calls.transcript} is not null`, transcriptGewist: sql<boolean>`${calls.transcriptGewistOp} is not null`,
     }).from(calls).innerJoin(employees, eq(calls.employeeId, employees.id))
       .where(employeeId ? eq(calls.employeeId, employeeId) : undefined).orderBy(desc(calls.createdAt)).limit(100);
