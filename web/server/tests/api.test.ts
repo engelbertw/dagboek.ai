@@ -16,8 +16,8 @@ describe('toegang', () => {
     expect(nep.statusCode).toBe(401);
   });
   it('geeft na inloggen toegang', async () => {
-    expect((await t.api('GET', '/api/me')).json()).toEqual({ ingelogd: true, email: 'beheer@test.nl' });
-    expect((await t.app.inject({ method: 'GET', url: '/api/me' })).json()).toEqual({ ingelogd: false });
+    expect((await t.api('GET', '/api/me')).json()).toEqual({ ingelogd: true, email: 'beheer@test.nl', naam: 'Beheerder', rol: 'beheerder', keycloak: false, noodlogin: true, gebruikersbeheer: false });
+    expect((await t.app.inject({ method: 'GET', url: '/api/me' })).json()).toEqual({ ingelogd: false, keycloak: false, noodlogin: true, gebruikersbeheer: false });
     expect(WACHTWOORD.length).toBeGreaterThan(11);
   });
   it('blokkeert na 5 mislukte pogingen', async () => {

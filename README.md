@@ -69,7 +69,7 @@ Aan het eind van elk gesprek vraagt de assistent naar nieuwe onderwerpen en verb
 | Suggesties | Voorstellen uit gesprekken |
 | Instellingen | Houding en algemene gespreksinstructie |
 
-Alleen de beheerder logt in. Gebelde medewerkers hebben geen toegang.
+Alleen beheerders loggen in, via Keycloak met wachtwoord en een code uit een authenticator-app (zie Inloggen en gebruikers). Gebelde medewerkers hebben geen toegang. Het scherm **Gebruikers** (alleen met Keycloak ingesteld) voegt beheerders toe, zet ze uit, reset wachtwoord en MFA en verwijdert ze.
 
 ## Architectuur
 
@@ -101,7 +101,7 @@ Drie services op Railway (project `dagboek-ai`), gedeployed vanaf de branch `mai
 `employees`, `projects`, `topics`, `updates` met `update_historie`, `open_items` (de acties), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`, `toestemmingen` (register, alleen toevoegen), `call_log` (gespreksverloop), `opschoning_runs`, en voor de verkoop-debrief `klanten`, `klant_contacten`, `bezoeken` en `klant_activiteiten` (zie Verkoop-debrief). Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
 
 ### Beveiliging en privacy
-- Inloggen met e-mail en wachtwoord (scrypt), sessiecookie `HttpOnly`, `Secure`, `SameSite=Strict`, begrenzing van mislukte pogingen.
+- Inloggen via Keycloak (authorization code met PKCE, `state` en `nonce`; wachtwoord van minimaal 12 tekens en verplichte TOTP, brute-force-beveiliging), sessiecookie `HttpOnly`, `Secure`, `SameSite=Strict`. De tweede factor wordt door Keycloak afgedwongen (vereiste actie `CONFIGURE_TOTP`); de app controleert alleen de beheerdersrol. De noodingang met `ADMIN_EMAIL` en wachtwoord (scrypt, begrenzing van mislukte pogingen) staat met Keycloak uit tenzij `NOODLOGIN=aan` en heeft geen tweede factor; gebruik wordt gelogd (`login.noodingang`).
 - Twilio-webhooks controleren de handtekening; *voice* is alleen te bellen met `ADMIN_TOKEN`; de terugmelding van *voice* naar *web* gaat met `SERVICE_KEY`.
 - BSN en IBAN worden in transcripten gemaskeerd. Het model krijgt de opdracht geen persoonsgegevens op te schrijven.
 - **Bewaartermijn**: transcripten (in de database en op de schijf van *voice*) worden na `TRANSCRIPT_BEWAAR_DAGEN` (standaard 30) gewist; de samenvattingen blijven staan.
@@ -119,6 +119,8 @@ Voorbeelden staan in `web/.env.example` en `voice/.env.example`. Geheimen horen 
 **web**: `DATABASE_URL` (`memory` draait op een tijdelijke database om lokaal te proberen), `SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `SERVICE_KEY`, `VOICE_URL`, `VOICE_ADMIN_TOKEN`, `TSYSTEMS_BASE_URL`, `TSYSTEMS_API_KEY`, `LLM_MODEL`, `TRANSCRIPT_BEWAAR_DAGEN`, `TRANSCRIPT_ONBEVESTIGD_UREN` (standaard 24), `PORT`, `INSECURE_COOKIES` (alleen lokaal zonder https).
 
 **voice**: `TSYSTEMS_BASE_URL`, `TSYSTEMS_API_KEY`, `LLM_MODEL`, `STT_MODEL`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `PUBLIC_HOST`, `WS_TOKEN`, `ADMIN_TOKEN`, `DATA_DIR`, `OPDRACHTGEVER_NAAM`, `UITGAAND_MAX_PER_UUR`, `UITGAAND_MIN_SECS_PER_NUMMER`, `BEL_TIMEOUT_SECS`, `WEB_CALLBACK_URL`, `WEB_SERVICE_KEY`, `TRANSCRIPT_BEWAAR_DAGEN`, `LOG_LEVEL` (standaard INFO), `PIPECAT_LOG_LEVEL` (standaard WARNING; DEBUG zet gespreksinhoud in de logs), `ONDERBROKEN_NA_SECS` (standaard 1200), `VOICE_ENGINE` (`pipecat` of `elevenlabs_agent`, standaard `pipecat`), voor de ElevenLabs-agent `ELEVENLABS_AGENT_ID`, `ELEVENLABS_AGENT_PHONE_NUMBER_ID` en `ELEVENLABS_WEBHOOK_SECRET` (optioneel `ELEVENLABS_VERWIJDER_GESPREK`, standaard `true`: het gesprek wordt bij ElevenLabs gewist zodra het transcript in het dagboek staat; de API-sleutel heeft daarvoor schrijfrechten nodig).
+
+**Keycloak (web):** `KEYCLOAK_ISSUER` (bijvoorbeeld `https://…/realms/dagboek`), `KEYCLOAK_CLIENT_ID` (`dagboek-web`), `KEYCLOAK_CLIENT_SECRET`, voor het scherm Gebruikers `KEYCLOAK_ADMIN_CLIENT_ID` (`dagboek-beheer`) en `KEYCLOAK_ADMIN_CLIENT_SECRET`, optioneel `NOODLOGIN=aan` en `PUBLIC_URL` (de terugkeer-URL is `PUBLIC_URL/api/auth/callback`). Zonder `KEYCLOAK_ISSUER` werkt alleen de login met `ADMIN_EMAIL`.
 
 Een wachtwoordhash maak je met `cd web && npx tsx server/hash.ts 'jouw-wachtwoord-van-12-tekens'`.
 
@@ -170,7 +172,7 @@ Nog niet (of niet live) bewezen:
 - De scheduler met een echte klok in productie; de logica is getest met een nagebootste klok.
 - Het eigen Twilio-nummer: tijdelijk wordt het demonummer van Inwoner.AI gebruikt.
 
-Gepland: een wachtwoord wijzigen in het scherm, een verlofperiode per medewerker, de koppeling met Confluence en het terugsturen van de Jira-status naar het dagboek, het domein dagboek.ai, meerdere organisaties en inloggen via Keycloak/LOCGOV.
+Gepland: een verlofperiode per medewerker, de koppeling met Confluence en het terugsturen van de Jira-status naar het dagboek, het domein dagboek.ai, meerdere organisaties en inloggen via Keycloak/LOCGOV.
 
 ## Afspraken
 
@@ -222,3 +224,12 @@ Een accountmanager belt hetzelfde nummer als een collega voor het dagboek. Is de
 1. Migratie `019_verkoop_debrief.sql` (additief: kolommen `employees.rol` en `calls.type`, vier nieuwe tabellen) wordt bij het starten van *web* toegepast. Er zijn geen nieuwe omgevingsvariabelen.
 2. Geef de accountmanagers de rol bij Medewerkers (telefoonnummer zoals bij elke medewerker; precies één actieve medewerker per nummer) en zet Inbellen aan.
 3. Deploy eerst *voice*, dan *web*. Een nieuwe *web* met oude *voice* geeft het type niet door en laat een accountmanager het dagboek-gesprek krijgen.
+
+## Inloggen en gebruikers (Keycloak)
+Keycloak draait als eigen service in het Railway-project (map `keycloak/`: `Dockerfile`, realm `realm-dagboek.json`, inlogthema `themes/dagboek` in de huisstijl van Inwoner.AI). De realm `dagboek` heeft de rol `beheerder`, de client `dagboek-web` (code + PKCE, geheim) voor het inloggen en de client `dagboek-beheer` (service-account met alleen `manage-users`, `view-users`, `query-users` en `view-realm`) voor het scherm Gebruikers. Gebruikersgegevens staan alleen in Keycloak, niet in de database van het dagboek.
+
+- **Eerste login van een nieuwe gebruiker:** het scherm Gebruikers toont eenmalig een tijdelijk wachtwoord. Bij de eerste login kiest de gebruiker een eigen wachtwoord (minimaal 12 tekens) en koppelt een authenticator-app; daarna vraagt Keycloak bij elke login om de code. *MFA resetten* verwijdert de koppeling en eist een nieuwe. Er is geen SMTP: uitnodigingen en wachtwoord-vergeten per e-mail kunnen pas met een mailrelay.
+- **Beveiligd:** je kunt je eigen account niet uitzetten of verwijderen en de laatste actieve beheerder blijft altijd bestaan. De app slaat geen tokens op; Keycloak-geheimen staan alleen als variabelen.
+- **Keycloak-service (Railway):** variabelen `KC_DB=postgres`, `KC_DB_URL`, `KC_DB_USERNAME`, `KC_DB_PASSWORD`, `KC_HOSTNAME` (de publieke URL), `KC_HTTP_ENABLED=true`, `KC_PROXY_HEADERS=xforwarded`, `KC_BOOTSTRAP_ADMIN_USERNAME`/`KC_BOOTSTRAP_ADMIN_PASSWORD`, en voor de realm-import `DAGBOEK_WEB_SECRET`, `DAGBOEK_BEHEER_SECRET` en `DAGBOEK_PUBLIC_URL` (de URL van de web-service). Alleen de eerste start importeert de realm (strategie IGNORE_EXISTING); latere wijzigingen gaan via de admin-console.
+- **Uitrolvolgorde:** (1) Keycloak-service opzetten en de eerste beheerders aanmaken (Engelbert en Ruben) met MFA; (2) de web-service met de `KEYCLOAK_*`-variabelen uitrollen terwijl de noodingang nog werkt (`NOODLOGIN=aan`) en controleren dat beiden via Keycloak binnenkomen; (3) `NOODLOGIN` weghalen (of op `uit`), zodat de noodingang dicht is. Bij een Keycloak-storing zet je `NOODLOGIN=aan` tijdelijk terug (de `ADMIN_*`-variabelen moeten dan nog bestaan).
+- **Lokaal proberen:** `docker run … quay.io/keycloak/keycloak:26.2.1 start-dev --import-realm` met `realm-dagboek.json` en `themes/dagboek` gemount, en de drie `DAGBOEK_*`-variabelen.

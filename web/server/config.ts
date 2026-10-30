@@ -1,3 +1,14 @@
+/** Koppeling met Keycloak (realm `dagboek`): inloggen met MFA en het beheren van gebruikers. Alleen als omgevingsvariabelen. */
+export interface KeycloakConfig {
+  /** Bijvoorbeeld https://keycloak.example/realms/dagboek */
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+  /** Service-account voor het scherm Gebruikers; zonder deze twee is dat scherm uit. */
+  beheerClientId: string;
+  beheerClientSecret: string;
+}
+
 export interface Config {
   port: number;
   databaseUrl: string;
@@ -21,9 +32,20 @@ export interface Config {
   publiekeUrl: string;
   /** Sleutel waarmee de gespreksmotor de hulpmiddelen (MCP) aanroept. Leeg = hulpmiddelen staan uit. */
   mcpKey: string;
+  /** Aanwezig = inloggen via Keycloak. */
+  keycloak?: KeycloakConfig;
+  /** De oude login met ADMIN_EMAIL en wachtwoord. Standaard aan zolang er geen Keycloak is; met Keycloak alleen als NOODLOGIN=aan. */
+  noodlogin?: boolean;
 }
 
 export function loadConfig(env = process.env): Config {
+  const issuer = (env.KEYCLOAK_ISSUER ?? '').replace(/\/$/, '');
+  const keycloak: KeycloakConfig | undefined = issuer
+    ? {
+      issuer, clientId: env.KEYCLOAK_CLIENT_ID ?? '', clientSecret: env.KEYCLOAK_CLIENT_SECRET ?? '',
+      beheerClientId: env.KEYCLOAK_ADMIN_CLIENT_ID ?? '', beheerClientSecret: env.KEYCLOAK_ADMIN_CLIENT_SECRET ?? '',
+    }
+    : undefined;
   return {
     port: Number(env.PORT ?? 3000),
     databaseUrl: env.DATABASE_URL ?? '',
@@ -43,13 +65,22 @@ export function loadConfig(env = process.env): Config {
     jiraApiToken: env.JIRA_API_TOKEN ?? '',
     publiekeUrl: (env.PUBLIC_URL ?? '').replace(/\/$/, ''),
     mcpKey: env.MCP_KEY ?? '',
+    keycloak,
+    noodlogin: !keycloak || env.NOODLOGIN === 'aan',
   };
 }
 
+export const noodloginAan = (c: Config) => c.noodlogin ?? true;
+
 export function ontbrekendeInstellingen(c: Config): string[] {
   const nodig: [keyof Config, string][] = [
-    ['databaseUrl', 'DATABASE_URL'], ['sessionSecret', 'SESSION_SECRET'], ['adminEmail', 'ADMIN_EMAIL'],
-    ['adminPasswordHash', 'ADMIN_PASSWORD_HASH'], ['serviceKey', 'SERVICE_KEY'],
+    ['databaseUrl', 'DATABASE_URL'], ['sessionSecret', 'SESSION_SECRET'], ['serviceKey', 'SERVICE_KEY'],
+    ...(noodloginAan(c) ? [['adminEmail', 'ADMIN_EMAIL'], ['adminPasswordHash', 'ADMIN_PASSWORD_HASH']] as [keyof Config, string][] : []),
   ];
-  return nodig.filter(([k]) => !c[k]).map(([, naam]) => naam);
+  const ontbreekt = nodig.filter(([k]) => !c[k]).map(([, naam]) => naam);
+  if (c.keycloak) {
+    if (!c.keycloak.clientId) ontbreekt.push('KEYCLOAK_CLIENT_ID');
+    if (!c.keycloak.clientSecret) ontbreekt.push('KEYCLOAK_CLIENT_SECRET');
+  }
+  return ontbreekt;
 }

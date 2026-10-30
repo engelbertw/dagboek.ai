@@ -6,8 +6,10 @@ import fastifyStatic from '@fastify/static';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { InlogBeperking, controleerWachtwoord, hashWachtwoord, leesSessie, maakSessie } from './auth.js';
-import { ontbrekendeInstellingen, type Config } from './config.js';
+import { InlogBeperking, controleerWachtwoord, hashWachtwoord, leesOndertekend, leesSessie, maakSessie, onderteken } from './auth.js';
+import { OidcFout, type Oidc } from './oidc.js';
+import { registreerGebruikers, type KeycloakBeheer } from './gebruikers.js';
+import { noodloginAan, ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
 import { callLog, calls, employees, instellingen, openItems, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
@@ -33,6 +35,8 @@ import { registreerVerkoop } from './verkoop.js';
 import { beoordeelLijst } from './medewerkers-import.js';
 
 const COOKIE = 'dagboek_sessie';
+/** Tijdelijke gegevens van een lopende Keycloak-inlogpoging (state, nonce, PKCE). */
+const OIDC_COOKIE = 'dagboek_oidc';
 const uuid = z.string().uuid();
 const tijd = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Gebruik HH:MM');
 const nonEmpty = z.string().trim().min(1);
@@ -82,11 +86,14 @@ export interface AppDeps {
   jira?: JiraClient;
   /** Laat voice een agent-gesprek alsnog bij ElevenLabs ophalen. */
   herstel?: VoiceHerstel;
+  /** Inloggen via Keycloak en het beheren van gebruikers; zonder deze twee werkt alleen de noodlogin. */
+  oidc?: Oidc;
+  gebruikersbeheer?: KeycloakBeheer;
   /** Start werk dat na het antwoord doorloopt. Standaard fire-and-forget; tests wachten erop. */
   achtergrond?: (taak: Promise<unknown>) => void;
 }
 
-export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
+export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oidc, gebruikersbeheer, achtergrond = (t) => void t.catch((e) => log('error', 'achtergrondtaak.mislukt', { foutcode: foutcode(e) })) }: AppDeps): FastifyInstance {
   const app = Fastify({ logger: false });
   const beperking = new InlogBeperking();
   app.register(cookie);
@@ -100,7 +107,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
 
   app.addHook('onRequest', async (req, reply) => {
     const pad = req.url.split('?')[0];
-    if (!pad.startsWith('/api/') || pad === '/api/login' || pad === '/api/health' || pad === '/api/ready' || pad === '/api/me') return;
+    if (!pad.startsWith('/api/') || pad === '/api/login' || pad === '/api/auth/start' || pad === '/api/auth/callback' || pad === '/api/health' || pad === '/api/ready' || pad === '/api/me') return;
     if (pad.startsWith('/api/intern/')) {
       const sleutel = String(req.headers['x-service-key'] ?? '');
       if (!config.serviceKey || !gelijk(sleutel, config.serviceKey)) return reply.code(401).send({ fout: 'Niet toegestaan' });
@@ -129,21 +136,68 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
   });
 
   // ── Inloggen ────────────────────────────────────────────────────────────
+  const zetSessie = (reply: any, email: string, extra: { naam?: string; rol?: string } = {}) => reply.setCookie(COOKIE, maakSessie(email, config.sessionSecret, Date.now(), extra), {
+    httpOnly: true, sameSite: 'strict', secure: config.secureCookies, path: '/', maxAge: 12 * 60 * 60,
+  });
+  const publiekeUrl = (req: any) => config.publiekeUrl || `${String(req.headers['x-forwarded-proto'] ?? req.protocol).split(',')[0]}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
+  const terugNaarInlog = (reply: any, fout: string) => reply.redirect(`/?inlogfout=${fout}`);
+
+  // Noodingang met het vaste beheerdersaccount. Met Keycloak staat die standaard uit (NOODLOGIN=aan zet hem aan).
   app.post('/api/login', async (req, reply) => {
+    if (!noodloginAan(config)) return reply.code(404).send({ fout: 'Inloggen met wachtwoord staat uit; gebruik Keycloak' });
     const { email, wachtwoord } = z.object({ email: z.string(), wachtwoord: z.string() }).parse(req.body);
     if (beperking.geblokkeerd(req.ip)) return reply.code(429).send({ fout: 'Te veel pogingen, probeer het later opnieuw' });
     const ok = email.trim().toLowerCase() === config.adminEmail && controleerWachtwoord(wachtwoord, config.adminPasswordHash);
     if (!ok) { beperking.mislukt(req.ip); return reply.code(401).send({ fout: 'E-mailadres of wachtwoord klopt niet' }); }
-    reply.setCookie(COOKIE, maakSessie(config.adminEmail, config.sessionSecret), {
-      httpOnly: true, sameSite: 'strict', secure: config.secureCookies, path: '/', maxAge: 12 * 60 * 60,
-    });
+    if (oidc) log('warn', 'login.noodingang', {});
+    zetSessie(reply, config.adminEmail, { naam: 'Beheerder', rol: 'beheerder' });
     return { email: config.adminEmail };
   });
-  app.post('/api/logout', async (_req, reply) => { reply.clearCookie(COOKIE, { path: '/' }); return { ok: true }; });
+
+  app.get('/api/auth/start', async (req, reply) => {
+    if (!oidc) return reply.code(404).send({ fout: 'Inloggen via Keycloak is niet ingesteld' });
+    try {
+      const { url, state, nonce, verifier } = await oidc.start(`${publiekeUrl(req)}/api/auth/callback`);
+      // Lax, want de browser komt vanaf Keycloak terug op deze site; de sessiecookie zelf blijft Strict.
+      reply.setCookie(OIDC_COOKIE, onderteken({ state, nonce, verifier }, config.sessionSecret, 10 * 60_000), {
+        httpOnly: true, sameSite: 'lax', secure: config.secureCookies, path: '/api/auth', maxAge: 10 * 60,
+      });
+      return reply.redirect(url);
+    } catch (e) {
+      log('error', 'login.start_mislukt', { foutcode: foutcode(e) });
+      return terugNaarInlog(reply, 'keycloak');
+    }
+  });
+
+  app.get('/api/auth/callback', async (req, reply) => {
+    if (!oidc) return reply.code(404).send({ fout: 'Inloggen via Keycloak is niet ingesteld' });
+    const q = z.object({ code: z.string().max(4000).optional(), state: z.string().max(200).optional(), error: z.string().max(100).optional() }).parse(req.query);
+    const eigen = leesOndertekend(req.cookies[OIDC_COOKIE], config.sessionSecret);
+    reply.clearCookie(OIDC_COOKIE, { path: '/api/auth' });
+    if (q.error || !q.code || !eigen || typeof eigen.state !== 'string' || !q.state || !gelijk(q.state, eigen.state)) return terugNaarInlog(reply, 'ongeldig');
+    try {
+      const wie = await oidc.afronden({ code: q.code, verifier: String(eigen.verifier), nonce: String(eigen.nonce), redirectUri: `${publiekeUrl(req)}/api/auth/callback` });
+      zetSessie(reply, wie.email, { naam: wie.naam, rol: wie.rol });
+      log('info', 'login.keycloak', {});
+      return reply.redirect('/');
+    } catch (e) {
+      log('warn', 'login.keycloak_geweigerd', { foutcode: e instanceof OidcFout ? e.code : foutcode(e) });
+      return terugNaarInlog(reply, e instanceof OidcFout ? e.code : 'keycloak');
+    }
+  });
+
+  app.post('/api/logout', async (req, reply) => {
+    reply.clearCookie(COOKIE, { path: '/' });
+    const eindUrl = oidc && leesSessie(req.cookies[COOKIE], config.sessionSecret) && config.keycloak ? await oidc.uitlogUrl(`${publiekeUrl(req)}/`).catch(() => null) : null;
+    return { ok: true, eindUrl };
+  });
   app.get('/api/me', async (req) => {
     const sessie = leesSessie(req.cookies[COOKIE], config.sessionSecret);
-    return sessie ? { ingelogd: true, email: sessie.email } : { ingelogd: false };
+    const opties = { keycloak: !!oidc, noodlogin: noodloginAan(config), gebruikersbeheer: !!gebruikersbeheer };
+    return sessie ? { ingelogd: true, email: sessie.email, naam: sessie.naam ?? sessie.email, rol: sessie.rol ?? 'beheerder', ...opties } : { ingelogd: false, ...opties };
   });
+
+  registreerGebruikers(app, gebruikersbeheer, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
 
   // ── Medewerkers ─────────────────────────────────────────────────────────
   app.get('/api/employees', async () => db.select().from(employees).orderBy(asc(employees.naam)));

@@ -1,0 +1,87 @@
+{
+  "realm": "dagboek",
+  "displayName": "dagboek.ai",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "registrationEmailAsUsername": true,
+  "verifyEmail": false,
+  "loginTheme": "dagboek",
+  "internationalizationEnabled": true,
+  "supportedLocales": ["nl", "en"],
+  "defaultLocale": "nl",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 43200,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "waitIncrementSeconds": 60,
+  "maxFailureWaitSeconds": 900,
+  "permanentLockout": false,
+  "passwordPolicy": "length(12)",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyDigits": 6,
+  "otpPolicyPeriod": 30,
+  "roles": {
+    "realm": [
+      { "name": "beheerder", "description": "Beheerder van dagboek.ai: ziet alle gegevens en beheert gebruikers. Maak beheerders aan met de vereiste actie CONFIGURE_TOTP, zodat MFA verplicht is." }
+    ]
+  },
+  "requiredActions": [
+    { "alias": "CONFIGURE_TOTP", "name": "Configure OTP", "providerId": "CONFIGURE_TOTP", "enabled": true, "defaultAction": true, "priority": 10 },
+    { "alias": "UPDATE_PASSWORD", "name": "Update Password", "providerId": "UPDATE_PASSWORD", "enabled": true, "defaultAction": false, "priority": 30 }
+  ],
+  "clients": [
+    {
+      "clientId": "dagboek-web",
+      "name": "dagboek.ai",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${DAGBOEK_WEB_SECRET}",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["${DAGBOEK_PUBLIC_URL}/api/auth/callback", "http://localhost:3000/api/auth/callback"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "${DAGBOEK_PUBLIC_URL}/*##http://localhost:3000/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "realm-rollen",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": { "claim.name": "realm_access.roles", "jsonType.label": "String", "multivalued": "true", "id.token.claim": "false", "access.token.claim": "true", "userinfo.token.claim": "false" }
+        }
+      ]
+    },
+    {
+      "clientId": "dagboek-beheer",
+      "name": "dagboek.ai gebruikersbeheer",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${DAGBOEK_BEHEER_SECRET}",
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "service-account-dagboek-beheer",
+      "enabled": true,
+      "serviceAccountClientId": "dagboek-beheer",
+      "clientRoles": { "realm-management": ["manage-users", "view-users", "query-users", "view-realm"] }
+    }
+  ]
+}

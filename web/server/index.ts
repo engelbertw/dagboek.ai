@@ -4,6 +4,8 @@ import { buildApp } from './app.js';
 import { loadConfig, ontbrekendeInstellingen } from './config.js';
 import { connectMemory, connectPostgres, migrate } from './db.js';
 import { maakJiraClient } from './jira.js';
+import { maakOidc } from './oidc.js';
+import { maakKeycloakBeheer } from './gebruikers.js';
 import { maakLlmClient } from './llm.js';
 import { startScheduler } from './scheduler.js';
 import { voerOpschoningUit } from './opschoning.js';
@@ -28,7 +30,9 @@ const hier = dirname(fileURLToPath(import.meta.url));
 const voice = maakVoiceClient(config);
 const llm = maakLlmClient(config);
 const herstelVoice = maakVoiceHerstel(config);
-const app = buildApp({ db: handle.db, config, voice, llm, jira: maakJiraClient(config), herstel: herstelVoice, clientDir: join(hier, '..', 'dist', 'client') });
+const app = buildApp({ db: handle.db, config, voice, llm, jira: maakJiraClient(config), herstel: herstelVoice,
+  oidc: config.keycloak ? maakOidc(config.keycloak) : undefined,
+  gebruikersbeheer: config.keycloak?.beheerClientId && config.keycloak.beheerClientSecret ? maakKeycloakBeheer(config.keycloak) : undefined, clientDir: join(hier, '..', 'dist', 'client') });
 const opzoeken = maakVoiceOpzoeker(config);
 const herstel = async () => {
   await herstelVastgelopen(handle.db);
