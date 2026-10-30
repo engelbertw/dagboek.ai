@@ -173,6 +173,13 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     const [punt] = await db.select().from(klantActiviteiten).where(eq(klantActiviteiten.id, id));
     if (!punt) return reply.code(404).send({ fout: 'Activiteit niet gevonden' });
     if (!punt.controleNodig) return reply.code(409).send({ fout: 'Deze activiteit hoeft niet gecontroleerd te worden' });
+    // Een bestaand punt dat mogelijk is afgerond: goedkeuren sluit het, afwijzen houdt het open. Het wordt nooit verwijderd.
+    if (punt.controleReden === 'mogelijk_afgerond') {
+      const [rij] = await db.update(klantActiviteiten).set({
+        controleNodig: false, controleReden: null, ...(besluit === 'goedkeuren' ? { status: 'afgerond' as const, afgerondOp: new Date() } : {}),
+      }).where(eq(klantActiviteiten.id, id)).returning();
+      return rij;
+    }
     if (besluit === 'afwijzen') {
       await db.delete(klantActiviteiten).where(eq(klantActiviteiten.id, id));
       return { ok: true, verwijderd: true };

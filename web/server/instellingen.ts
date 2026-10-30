@@ -40,7 +40,7 @@ export const bewaarInstructie = (db: Db, waarde: string) => bewaar(db, 'gespreks
  * gespreksinhoud als gegeven) en de samenvatting met bevestiging aan het eind staan vast in de voice-service (voice/prompts.py).
  */
 export const STANDAARD_DEBRIEF_VRAGEN = [
-  'Stel altijd één korte vraag tegelijk en wacht op het antwoord. Een vraag per beurt, nooit twee in één zin. Vraag alleen door als een antwoord vaag is, en dan ook met één concrete vraag. Houd het gesprek kort: ongeveer acht tot tien minuten. Elke regel hieronder is één aparte vraag; sla een vraag over als het antwoord al is gegeven of als er niets over te melden is.',
+  'Dit is een lijst om na te lopen wat er nog ontbreekt, geen volgorde. De accountmanager vertelt eerst vrij; vraag daarna alleen naar wat nog niet is genoemd. Stel altijd één korte vraag tegelijk en wacht op het antwoord, nooit twee in één zin. Vraag alleen door als een antwoord vaag is, en dan ook met één concrete vraag. Elke regel hieronder is één aparte vraag; sla een vraag over als het antwoord al is gegeven of als er niets over te melden is. Houd het gesprek kort: ongeveer acht tot tien minuten.',
   '1. Bezoek: Bij welke klant was je?',
   '1. Bezoek: Met wie heb je gesproken, en wat is diens functie?',
   '1. Bezoek: Was het een evaluatie, een kennismaking of een vervolgafspraak?',
@@ -54,6 +54,7 @@ export const STANDAARD_DEBRIEF_VRAGEN = [
   '6. Kansen: Zag je een kans of een nieuwe behoefte bij de klant? Zo ja: vraag daarna los van elkaar wat de klant wil, ongeveer hoe groot dat is, hoe ver het is (een signaal, een gesprek, een offerte of onderhandeling) en wanneer een besluit wordt verwacht. Vraag naar beslisser, concurrent, budget en contractdatum alleen als het gesprek daar vanzelf naartoe gaat. Raad niets: wat de accountmanager niet weet, blijft leeg.',
   '7. Risico: Is er een risico dat de klant ontevreden wordt of opzegt?',
   '8. Vervolg: Wat moet er nog gebeuren, wie doet het, en voor wanneer? Eén actie per keer; vraag daarna of er nog een is.',
+  '8. Eerdere acties: Zijn er afspraken of acties van eerder die inmiddels klaar zijn of anders lopen? Laat de accountmanager ze in eigen woorden noemen; lees niets voor.',
   '9. Contactpersonen: Zijn er nieuwe contactpersonen of beslissers? Vraag alleen naam, functie en rol.',
 ].join('\n');
 

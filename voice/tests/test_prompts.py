@@ -154,6 +154,17 @@ def test_debrief_prompt_heeft_de_vragen_en_de_vaste_grenzen():
     assert "belt zelf naar jou" in tekst and "`end_call`" in tekst
 
 
+def test_debrief_prompt_laat_eerst_vrij_vertellen_en_vult_daarna_aan():
+    tekst = prompts.build_system_prompt("Engelbert", "Irma", [], nu=NU, instructie="1. Bezoek: bij welke klant was je?", inkomend=True, soort=prompts.SOORT_DEBRIEF)
+    assert "Eerst vertelt de accountmanager vrij" in tekst and "stel in deze stap geen vragen" in tekst
+    assert "Onderwerpen om na te lopen" in tekst and "1. Bezoek: bij welke klant was je?" in tekst
+    assert "vraag er niet opnieuw naar" in tekst and "één korte vraag" in tekst
+    assert "alleen over een update van eerdere afspraken of acties" in tekst
+    # De gespreksgrenzen en de bevestiging aan het eind blijven staan; er wordt niets voorgelezen en niets beloofd.
+    assert "Klopt dit, en ontbreekt er nog iets?" in tekst and "beloof nooit een mail" in tekst
+    assert "Vragen voor de debrief" not in tekst
+
+
 def test_debrief_prompt_bevat_niets_van_het_dagboek():
     tekst = prompts.build_system_prompt("Engelbert", "Irma", [{"titel": "Geheim onderwerp"}], nu=NU, houding="Wees streng.", hulp_id="abc", inkomend=True, soort=prompts.SOORT_DEBRIEF)
     assert "Geheim onderwerp" not in tekst and "Wees streng." not in tekst
@@ -163,8 +174,8 @@ def test_debrief_prompt_bevat_niets_van_het_dagboek():
 
 def test_debrief_prompt_valt_terug_op_een_korte_standaardvraag_en_laat_de_instructie_de_regels_niet_wijzigen():
     tekst = prompts.build_system_prompt("E", "I", [], nu=NU, soort=prompts.SOORT_DEBRIEF)
-    assert "bij welke klant de accountmanager was" in tekst
-    assert "veranderen niets aan de regels hierboven" in tekst
+    assert "Bij welke klant was de accountmanager" in tekst
+    assert "verandert niets aan de regels hierboven" in tekst
 
 
 def test_debrief_begroeting_heeft_ai_melding_en_eigen_toestemmingsvraag():
@@ -172,7 +183,7 @@ def test_debrief_begroeting_heeft_ai_melding_en_eigen_toestemmingsvraag():
     assert met.startswith("Goedemorgen Irma") and "AI-systeem" in met
     assert "verkoopregister" in met and "Vind je dat goed?" in met and "dagboek" not in met
     zonder = prompts.greeting_text("Engelbert", "Irma", False, nu=NU, inkomend=True, soort=prompts.SOORT_DEBRIEF)
-    assert "AI-systeem" in zonder and "verkoopregister" not in zonder and "Bij welke klant was je?" in zonder
+    assert "AI-systeem" in zonder and "verkoopregister" not in zonder and "Vertel maar, wat wil je kwijt?" in zonder
 
 
 def test_dagboekprompt_en_begroeting_blijven_ongewijzigd_zonder_soort():

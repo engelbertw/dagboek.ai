@@ -229,3 +229,67 @@ describe('verkoopregister-API', () => {
     expect((await t.app.inject({ method: 'GET', url: '/api/verkoopregister' })).statusCode).toBe(401);
   });
 });
+
+describe('statusupdate op eerdere afspraken en acties', () => {
+  const UPDATE = [
+    { role: 'assistant', content: 'Goedemorgen Irma. Vertel maar, wat wil je kwijt?' },
+    { role: 'user', content: 'Bij Gemeente Voorbeeld is de offerte inmiddels verstuurd. Verder niets nieuws.' },
+  ];
+  const ANTWOORD = (nr: number, citaat: string, klant = 'Gemeente Voorbeeld') => ({
+    toestemming: 'niet_van_toepassing', toestemming_citaat: '',
+    klant: { naam: klant, bestaand: klant, bezoek_soort: 'statusupdate', datum: null, tevredenheid: null },
+    samenvatting: 'Update over de offerte.', afgeronde_activiteiten: [{ nr, citaat }],
+  });
+
+  async function opzet(llm: unknown, transcript: unknown = UPDATE) {
+    const s = await scenario(llm, { toestemming: true, transcript });
+    const [klant] = await s.t.db.insert(klanten).values({ naam: 'Gemeente Voorbeeld', status: 'klant' }).returning();
+    const [ander] = await s.t.db.insert(klanten).values({ naam: 'Andere Gemeente', status: 'klant' }).returning();
+    const [actie] = await s.t.db.insert(klantActiviteiten).values({ klantId: klant.id, soort: 'actie', omschrijving: 'Offerte sturen' }).returning();
+    return { s, klant, ander, actie };
+  }
+  const status = async (s: Awaited<ReturnType<typeof scenario>>, id: string) => (await s.t.db.select().from(klantActiviteiten).where(eq(klantActiviteiten.id, id)))[0];
+
+  it('geeft de open punten alleen aan het model en sluit er een met een citaat dat in het gesprek staat', async () => {
+    const { s, actie } = await opzet(ANTWOORD(1, 'de offerte inmiddels verstuurd'));
+    await s.meld();
+    expect(s.vragen[0].gebruiker).toContain('<open_punten>');
+    expect(s.vragen[0].gebruiker).toContain('1. [Gemeente Voorbeeld] actie: Offerte sturen');
+    const na = await status(s, actie.id);
+    expect(na).toMatchObject({ status: 'afgerond', controleNodig: false });
+    expect(na.afgerondOp).not.toBeNull();
+    expect((await s.call()).samenvattingStatus).toBe('klaar');
+  });
+
+  it('sluit niets zonder aantoonbaar citaat, maar laat het controleren', async () => {
+    const { s, actie } = await opzet(ANTWOORD(1, 'dat hebben we vorige week afgerond'));
+    await s.meld();
+    expect(await status(s, actie.id)).toMatchObject({ status: 'open', controleNodig: true, controleReden: 'mogelijk_afgerond' });
+  });
+
+  it('sluit niets van een andere klant dan die in het gesprek', async () => {
+    const { s, actie } = await opzet(ANTWOORD(1, 'de offerte inmiddels verstuurd', 'Andere Gemeente'));
+    await s.meld();
+    expect(await status(s, actie.id)).toMatchObject({ status: 'open', controleNodig: true, controleReden: 'mogelijk_afgerond' });
+  });
+
+  it('negeert een onbekend nummer', async () => {
+    const { s, actie } = await opzet(ANTWOORD(7, 'de offerte inmiddels verstuurd'));
+    await s.meld();
+    expect(await status(s, actie.id)).toMatchObject({ status: 'open', controleNodig: false });
+    expect((await s.call()).samenvattingStatus).toBe('klaar');
+  });
+
+  it('laat de beheerder een mogelijk afgerond punt sluiten of open houden, en verwijdert het nooit', async () => {
+    const { s, actie } = await opzet(ANTWOORD(1, 'niet in het gesprek'));
+    await s.meld();
+    expect((await s.t.api('POST', `/api/activiteiten/${actie.id}/controle`, { besluit: 'afwijzen' })).statusCode).toBe(200);
+    expect(await status(s, actie.id)).toMatchObject({ status: 'open', controleNodig: false, controleReden: null });
+
+    await s.t.db.update(klantActiviteiten).set({ controleNodig: true, controleReden: 'mogelijk_afgerond' }).where(eq(klantActiviteiten.id, actie.id));
+    expect((await s.t.api('POST', `/api/activiteiten/${actie.id}/controle`, { besluit: 'goedkeuren' })).statusCode).toBe(200);
+    const na = await status(s, actie.id);
+    expect(na).toMatchObject({ status: 'afgerond', controleNodig: false });
+    expect(na.afgerondOp).not.toBeNull();
+  });
+});

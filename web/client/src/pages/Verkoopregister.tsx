@@ -4,6 +4,7 @@ import { SOORT_LABEL, api, deadlineTekst, vandaagIso, type Activiteit, type Acti
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 export const REDEN: Record<string, string> = {
+  mogelijk_afgerond: 'De accountmanager noemde dit als afgerond, maar dat is niet aantoonbaar in het gesprek. Bevestig dat het klaar is, of laat het open.',
   bron_niet_te_verifieren: 'Dit staat niet aantoonbaar in het gesprek; een genoemde deadline is weggelaten.',
   klant_niet_herkend: 'De klant is niet herkend of nog niet bevestigd. Koppel de klant of bevestig de voorgestelde klant.',
   eigenaar_onzeker: 'De genoemde eigenaar kwam niet voor in het gesprek.',
@@ -85,8 +86,8 @@ export function Verkoopregister() {
                 <Details a={a} />
                 <br /><span className="zacht klein">{REDEN[a.controleReden ?? ''] ?? 'Controle nodig'}</span>
               </span>
-              <button type="button" className="primair" onClick={() => void besluit(a, 'goedkeuren')}>Klopt</button>
-              <button type="button" onClick={() => void besluit(a, 'afwijzen')}>Verwijderen</button>
+              <button type="button" className="primair" onClick={() => void besluit(a, 'goedkeuren')}>{a.controleReden === 'mogelijk_afgerond' ? 'Afgerond' : 'Klopt'}</button>
+              <button type="button" onClick={() => void besluit(a, 'afwijzen')}>{a.controleReden === 'mogelijk_afgerond' ? 'Nog open' : 'Verwijderen'}</button>
             </div>
           ))}
         </section>
