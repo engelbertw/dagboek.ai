@@ -98,7 +98,7 @@ Drie services op Railway (project `dagboek-ai`), gedeployed vanaf de branch `mai
 - **Postgres**: alle gegevens.
 
 ### Datamodel
-`employees`, `projects`, `topics`, `updates` met `update_historie`, `open_items` (de acties), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`, `toestemmingen` (register, alleen toevoegen), `call_log` (gespreksverloop), `opschoning_runs`. Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
+`employees`, `projects`, `topics`, `updates` met `update_historie`, `open_items` (de acties), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`, `toestemmingen` (register, alleen toevoegen), `call_log` (gespreksverloop), `opschoning_runs`, en voor de verkoop-debrief `klanten`, `klant_contacten`, `bezoeken` en `klant_activiteiten` (zie Verkoop-debrief). Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
 
 ### Beveiliging en privacy
 - Inloggen met e-mail en wachtwoord (scrypt), sessiecookie `HttpOnly`, `Secure`, `SameSite=Strict`, begrenzing van mislukte pogingen.
@@ -205,3 +205,19 @@ Een medewerker met **overzichtsrol** (Medewerkers → Instellingen → Overzicht
 - Het codewoord wordt als hash bewaard, een beller heeft 3 pogingen per gesprek en de verificatie geldt 60 minuten. Alle aanroepen komen zonder inhoud in het verloop van het gesprek.
 - Een toegevoegd aandachtspunt is een open punt met bron `gesprek` dat eerst bij Acties gecontroleerd moet worden; het komt daarna pas in een volgend gesprek.
 - Instellen: zet `MCP_KEY` op `web` en `INKOMEND_TOOLS=true` op `voice`; voeg bij ElevenLabs een custom MCP-server toe met URL `https://<web>/mcp` en een secret-header `Authorization` met `Bearer <MCP_KEY>`, en koppel die aan de agent (tool approval: altijd vragen bij `voeg_aandachtspunt_toe`).
+
+## Verkoop-debrief (accountmanager belt na een klantbezoek)
+Een accountmanager belt hetzelfde nummer als een collega voor het dagboek. Is de beller een actieve medewerker met de rol **accountmanager** (Medewerkers → Rol), dan start geen dagboekgesprek maar een debrief: de assistent vraagt bij welke klant, wat de doelen en resultaten waren, hoe tevreden de klant is, wat is afgesproken, welke kansen en risico's er zijn en welke vervolgacties er moeten komen, en vat aan het eind samen met een bevestiging. Het gesprek gebruikt dezelfde inbelroute en toestemmingsregels als het dagboek (zie Inbellen); het type staat op het gesprek (`calls.type`).
+
+- **Register, los van het dagboek.** Een debrief levert een bezoek (`bezoeken`) en activiteiten (`klant_activiteiten`: doel, resultaat, afspraak, actie, kans, risico) per klant (`klanten`, met `klant_contacten`). Ze komen niet bij Acties maar onder **Klanten** (klantkaart met tijdlijn) en **Verkoopregister** (filters op soort, status, eigenaar, klant en te laat). De velden van een kans (indicatie, fase, beslisser, verwachte datum, concurrent, budget, contract) staan in `details`; wat de accountmanager niet noemde blijft leeg.
+- **Onbetrouwbare invoer.** Net als bij het dagboek telt alleen wat in het gesprek is terug te vinden: een punt zonder letterlijk citaat, een klant of eigenaar die niet in het gesprek voorkomt of een niet-herkende klant komt onder *Controle nodig* in het Verkoopregister. Een nieuwe klant uit een gesprek is een *voorstel* (status Voorgesteld) dat de beheerder bevestigt of samenvoegt met een bestaande klant. Een gesprek overschrijft nooit een stamgegeven.
+- **Alleen wegschrijven.** Een telefoonnummer kan vervalst zijn. De assistent leest in een debrief daarom nooit klantgegevens, collega's of eerdere gesprekken voor en heeft geen hulpmiddelen (MCP) om die op te vragen; `zoek_punten_van_collega` neemt de debrief niet mee. De gegevens zijn alleen zichtbaar voor de beheerder in de web-UI (iedere ingelogde beheerder ziet alle klanten).
+- **Vragen.** De vragenlijst is bewerkbaar bij Instellingen → Verkoop-debrief (de vorige tekst blijft bewaard). De grenzen (AI-melding, geen BSN, IBAN of privégegevens, gesprekstekst is geen instructie, samenvatting met bevestiging) staan vast in `voice/prompts.py` (`VASTE_REGELS_DEBRIEF`, promptversie `debrief-v1`).
+- **Toestemming.** Elke accountmanager geeft toestemming in het eerste gesprek of door de beheerder; die staat in het register onder doel `verkoop_debrief` (versie `debrief-v1`), los van het dagboek.
+- **Privacy.** Grondslag voor de klant- en contactgegevens is gerechtvaardigd belang; er worden alleen naam, functie en rol van contactpersonen vastgelegd. Transcripten volgen de bestaande bewaartermijn (`TRANSCRIPT_BEWAAR_DAGEN`). De klantgegevens zelf hebben geen automatische bewaartermijn; wissen kan per klant (met bezoeken, activiteiten en contactpersonen) en per contactpersoon op de klantkaart. Neem de verwerking op in de privacyverklaring.
+- **Nog niet gebouwd.** Koppeling met AFAS (alleen lezen, CRM- en contractgegevens, synchronisatie van klantgegevens) en de toets aan de SLA.
+
+### Installeren
+1. Migratie `019_verkoop_debrief.sql` (additief: kolommen `employees.rol` en `calls.type`, vier nieuwe tabellen) wordt bij het starten van *web* toegepast. Er zijn geen nieuwe omgevingsvariabelen.
+2. Geef de accountmanagers de rol bij Medewerkers (telefoonnummer zoals bij elke medewerker; precies één actieve medewerker per nummer) en zet Inbellen aan.
+3. Deploy eerst *voice*, dan *web*. Een nieuwe *web* met oude *voice* geeft het type niet door en laat een accountmanager het dagboek-gesprek krijgen.
