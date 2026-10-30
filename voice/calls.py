@@ -47,11 +47,11 @@ def _schrijf(pad: Path, spec: dict) -> None:
     os.replace(tmp, pad)
 
 
-def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat") -> str:
+def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat", soort: str = "dagboek") -> str:
     call_id = call_id or uuid.uuid4().hex
     spec = {
         "call_id": call_id, "nummer": nummer, "medewerker": medewerker, "onderwerpen": onderwerpen,
-        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "engine": engine, "aangemaakt": time.time(),
+        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "engine": engine, "soort": soort, "aangemaakt": time.time(),
         "bijgewerkt": time.time(),
     }
     with _LOCK:
