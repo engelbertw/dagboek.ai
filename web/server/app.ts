@@ -633,6 +633,18 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     await logGebeurtenis(db, id, 'beheer', 'transcript:gewist_op_verzoek');
     return { ok: true };
   });
+  // Een gesprek dat niet meer op te halen is (geen transcript, niet gesproken, niet meer onderweg) mag worden verwijderd.
+  app.delete('/api/calls/:id', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const [rij] = await db.select({ status: calls.status, createdAt: calls.createdAt, transcriptGewistOp: calls.transcriptGewistOp, heeftTranscript: sql<boolean>`${calls.transcript} is not null` }).from(calls).where(eq(calls.id, id));
+    if (!rij) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
+    if (rij.heeftTranscript || rij.status === 'gesproken') return reply.code(409).send({ fout: 'Alleen een gesprek zonder transcript dat niet is gesproken kan worden verwijderd' });
+    const onderweg = ['gepland', 'verzenden', 'belt', 'gesprek', 'onderbroken'].includes(rij.status);
+    if (onderweg && Date.now() - rij.createdAt.getTime() < 15 * 60_000) return reply.code(409).send({ fout: 'Dit gesprek is mogelijk nog bezig; probeer het over een kwartier opnieuw' });
+    await db.delete(calls).where(eq(calls.id, id));
+    log('info', 'gesprek.verwijderd', { correlatieId: id });
+    return { ok: true };
+  });
   app.get('/api/systeem/status', async () => {
     const [hartslag] = await db.select().from(instellingen).where(eq(instellingen.sleutel, 'scheduler_hartslag'));
     const opschoning = await opschoningStatus(db, config.transcriptBewaarDagen);

@@ -42,36 +42,6 @@ function Beoordeling({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
   );
 }
 
-/** Per motor naast elkaar: aantal gesprekken, hoeveel er zijn gesproken, de gemiddelde duur en de gemiddelde beoordeling. */
-function Vergelijking({ lijst }: { lijst: GesprekRegel[] }) {
-  const groepen = new Map<string, GesprekRegel[]>();
-  for (const g of lijst) groepen.set(g.engine ?? 'pipecat', [...(groepen.get(g.engine ?? 'pipecat') ?? []), g]);
-  if (groepen.size < 2) return null;
-  const gem = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
-  return (
-    <section className="paneel stapel" aria-label="Vergelijking van gespreksmotoren">
-      <h2>Vergelijking per motor</h2>
-      <table>
-        <thead><tr><th>Motor</th><th>Gesprekken</th><th>Gesproken</th><th>Samengevat</th><th>Gem. duur</th><th>Gem. beoordeling</th></tr></thead>
-        <tbody>
-          {[...groepen].map(([motor, gs]) => {
-            const gesproken = gs.filter((g) => g.status === 'gesproken');
-            const duur = gem(gesproken.filter((g) => g.gestartOp && g.afgerondOp).map((g) => (new Date(g.afgerondOp!).getTime() - new Date(g.gestartOp!).getTime()) / 60000));
-            const score = gem(gs.filter((g) => g.beoordeling).map((g) => g.beoordeling!));
-            return (
-              <tr key={motor}>
-                <td>{MOTOR_LABEL[motor as keyof typeof MOTOR_LABEL] ?? motor}</td><td>{gs.length}</td><td>{gesproken.length}</td>
-                <td>{gesproken.filter((g) => g.samenvattingStatus === 'klaar').length}</td>
-                <td>{duur === null ? '–' : `${duur.toFixed(1)} min`}</td><td>{score === null ? '–' : score.toFixed(1)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
 function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
   const [detail, setDetail] = useState<Gesprek | null>(null);
   const [fout, setFout] = useState<string | null>(null);
@@ -87,6 +57,10 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
   async function wisTranscript() {
     if (!window.confirm('Het transcript van dit gesprek definitief wissen? De samenvatting in het dagboek blijft staan.')) return;
     try { await api('DELETE', `/calls/${g.id}/transcript`); setDetail(null); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); }
+  }
+  async function verwijder() {
+    if (!window.confirm('Dit gesprek verwijderen? Het is niet meer op te halen en er is geen transcript. Dit kan niet ongedaan worden gemaakt.')) return;
+    try { await api('DELETE', `/calls/${g.id}`); ververs(); } catch (e) { setFout(foutTekst(e)); }
   }
   async function opnieuw() {
     setBezig(true);
@@ -115,7 +89,11 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
         <div className="rij">
           <span className="zacht klein">Er is geen transcript. Bij de ElevenLabs-agent kan het gesprek daar nog staan.</span>
           <button onClick={ophalen} disabled={bezig}>{bezig ? 'Bezig…' : 'Opnieuw ophalen'}</button>
+          <button type="button" className="gevaar" onClick={verwijder} disabled={bezig}>Verwijderen</button>
         </div>
+      )}
+      {!kanOphalen && g.status !== 'gesproken' && !g.heeftTranscript && !g.transcriptGewist && ['niet_bereikt', 'mislukt', 'voicemail'].includes(g.status) && (
+        <div className="rij"><button type="button" className="gevaar" onClick={verwijder}>Verwijderen</button></div>
       )}
       {g.status === 'gesproken' && (
         <div className="rij">
@@ -174,7 +152,6 @@ export function Gesprekken() {
           {aandacht.map((g) => <Regel key={g.id} g={g} ververs={lijst.ververs} />)}
         </section>
       )}
-      {lijst.data && <Vergelijking lijst={gefilterd} />}
       {gefilterd.map((g) => <Regel key={g.id} g={g} ververs={lijst.ververs} />)}
     </div>
   );

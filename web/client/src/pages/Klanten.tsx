@@ -16,14 +16,14 @@ function Importeren({ klaar }: { klaar: () => void }) {
   async function voegToe() {
     try {
       const r = await api<KlantenImportUitkomst>('POST', '/klanten/import', { tekst, status });
-      setMelding({ tekst: `${r.toegevoegd.gemeenten} gemeenten en ${r.toegevoegd.contacten} contactpersonen toegevoegd.`, soort: 'ok' });
+      setMelding({ tekst: `$${r.toegevoegd.gemeenten} gemeenten en ${r.toegevoegd.contacten} contactpersonen toegevoegd${r.toegevoegd.bijgewerkt ? `, ${r.toegevoegd.bijgewerkt} bestaande aangevuld` : ''}.`, soort: 'ok' });
       setTekst(''); setVoorbeeld(null); klaar();
     } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
   }
   return (
     <section className="paneel stapel" aria-label="Lijst importeren">
       <h2>Lijst importeren</h2>
-      <p className="zacht klein">Plak een lijst met per regel: <strong>Gemeente ; Contactpersoon ; Functie ; Rol</strong>, gescheiden door een tab (plakken uit Excel), een puntkomma of een verticale streep. Een lege eerste kolom betekent dezelfde gemeente als hierboven; een regel met alleen een gemeente voegt alleen de gemeente toe. Er worden alleen naam, functie en rol bewaard. Je ziet eerst een voorbeeld; bestaande gemeenten en contactpersonen worden niet dubbel toegevoegd.</p>
+      <p className="zacht klein">Plak een lijst uit Excel (gescheiden door een tab, puntkomma of verticale streep). Met een kopregel herkent de import de kolommen <strong>Gemeente, Samenwerkingsverband, Inwonersaantallen, Sales AM, Contactpersoon, Functie, Rol, Emailadres, Telefoonnummer</strong> en <strong>Looptijd contract</strong> (dag-maand-jaar). Zonder kopregel geldt: Gemeente ; Contactpersoon ; Functie ; Rol. Een lege gemeente betekent dezelfde gemeente als hierboven. Je ziet eerst een voorbeeld. Bestaande gemeenten en contactpersonen worden niet dubbel toegevoegd en niets wordt overschreven: alleen lege velden worden aangevuld.</p>
       <Veld label="Lijst"><textarea rows={8} value={tekst} onChange={(e) => { setTekst(e.target.value); setVoorbeeld(null); }} placeholder={'Gemeente Voorbeeld; Jan Jansen; Teamleider ICT; Beslisser\n; Piet Pieters; Inkoper; Adviseur'} /></Veld>
       <Veld label="Status van nieuwe gemeenten">
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="klant">Klant</option><option value="prospect">Prospect</option></select>
@@ -34,8 +34,9 @@ function Importeren({ klaar }: { klaar: () => void }) {
           {voorbeeld.gemeenten.map((g) => (
             <div key={g.naam}>
               <strong>{g.naam}</strong> <Badge soort={g.status === 'nieuw' ? '' : 'wacht'}>{g.status === 'nieuw' ? 'nieuwe gemeente' : 'bestaat al'}</Badge>
+              <div className="zacht klein">{[g.velden.samenwerkingsverband, g.velden.inwoners !== null ? `${g.velden.inwoners.toLocaleString('nl-NL')} inwoners` : '', g.velden.salesAm && `sales ${g.velden.salesAm}`, g.velden.contractEinde && `contract tot ${datum(g.velden.contractEinde)}`].filter(Boolean).join(' · ')}</div>
               <ul className="klein" style={{ margin: '2px 0 0', paddingLeft: 20 }}>
-                {g.contacten.map((c, i) => <li key={i}>{c.naam}{(c.functie || c.rol) && <span className="zacht"> · {[c.functie, c.rol].filter(Boolean).join(' · ')}</span>} <span className="zacht">({c.status === 'nieuw' ? 'wordt toegevoegd' : 'staat er al'})</span></li>)}
+                {g.contacten.map((c, i) => <li key={i}>{c.naam}{(c.functie || c.rol || c.email || c.telefoon) && <span className="zacht"> · {[c.functie, c.rol, c.email, c.telefoon].filter(Boolean).join(' · ')}</span>} <span className="zacht">({c.status === 'nieuw' ? 'wordt toegevoegd' : 'staat er al'})</span></li>)}
               </ul>
             </div>
           ))}
@@ -100,6 +101,9 @@ export function Klanten() {
               {k.laatsteBezoek && ` · laatste bezoek ${datum(k.laatsteBezoek)}`}
               {k.contractEinde && ` · contract tot ${datum(k.contractEinde)}`}
             </span>
+            {(k.samenwerkingsverband || k.inwoners !== null || k.salesAm) && (
+              <div className="zacht klein">{[k.samenwerkingsverband, k.inwoners !== null && `${k.inwoners.toLocaleString('nl-NL')} inwoners`, k.salesAm && `sales ${k.salesAm}`].filter(Boolean).join(' · ')}</div>
+            )}
           </div>
           <span className="zacht klein">{k.openActiviteiten} open</span>
         </div>

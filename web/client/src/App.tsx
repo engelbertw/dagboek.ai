@@ -5,6 +5,7 @@ import { Melding, Veld, foutTekst } from './ui';
 import { Dagboek } from './pages/Dagboek';
 import { Dashboard } from './pages/Dashboard';
 import { Gesprekken } from './pages/Gesprekken';
+import { Spraakmotoren } from './pages/Spraakmotoren';
 import { Instellingen } from './pages/Instellingen';
 import { Klant } from './pages/Klant';
 import { Klanten } from './pages/Klanten';
@@ -60,7 +61,7 @@ const MENU: MenuGroep[] = [
   { titel: 'Overzicht', alleenBeheerder: true, items: [{ naar: '/', label: 'Dagboek', einde: true, ook: '/onderwerp' }, { naar: '/dashboard', label: 'Dashboard' }] },
   { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }] },
   { titel: 'Gesprekken', alleenBeheerder: true, items: [{ naar: '/gesprekken', label: 'Gesprekken' }, { naar: '/planning', label: 'Planning' }, { naar: '/suggesties', label: 'Suggesties' }] },
-  { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/instellingen', label: 'Instellingen' }] },
+  { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/instellingen', label: 'Instellingen' }] },
 ];
 
 export function App() {
@@ -109,6 +110,7 @@ export function App() {
               {me.gebruikersbeheer && <Route path="/gebruikers" element={<Gebruikers ikEmail={me.email ?? ''} />} />}
               <Route path="/projecten" element={<Projecten />} />
               <Route path="/gesprekken" element={<Gesprekken />} />
+              <Route path="/spraakmotoren" element={<Spraakmotoren />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
           ) : <Route path="*" element={<Navigate to="/werk" replace />} />}

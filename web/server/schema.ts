@@ -143,6 +143,9 @@ export const klanten = pgTable('klanten', {
   accountmanagerId: uuid('accountmanager_id').references(() => employees.id, { onDelete: 'set null' }),
   omschrijving: text('omschrijving').notNull().default(''),
   contractEinde: date('contract_einde'),
+  samenwerkingsverband: text('samenwerkingsverband').notNull().default(''),
+  inwoners: integer('inwoners'),
+  salesAm: text('sales_am').notNull().default(''),
   bron: text('bron', { enum: ['handmatig', 'gesprek', 'afas'] }).notNull().default('handmatig'),
   bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
   createdAt: createdAt(),
@@ -154,6 +157,8 @@ export const klantContacten = pgTable('klant_contacten', {
   naam: text('naam').notNull(),
   functie: text('functie').notNull().default(''),
   rol: text('rol').notNull().default(''),
+  email: text('email').notNull().default(''),
+  telefoon: text('telefoon').notNull().default(''),
   callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
 });

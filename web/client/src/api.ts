@@ -1,8 +1,8 @@
 export type Rol = 'medewerker' | 'accountmanager';
 export interface ImportRegel { naam: string; telefoon: string; email: string; status: 'nieuw' | 'bestaat_al' | 'dubbel_in_lijst' | 'ongeldig'; reden?: string }
 export interface KlantenImportUitkomst {
-  gemeenten: { naam: string; status: 'nieuw' | 'bestaat_al'; contacten: { naam: string; functie: string; rol: string; status: 'nieuw' | 'bestaat_al' }[] }[];
-  fouten: string[]; toegevoegd: { gemeenten: number; contacten: number };
+  gemeenten: { naam: string; status: 'nieuw' | 'bestaat_al'; velden: { samenwerkingsverband: string; inwoners: number | null; salesAm: string; contractEinde: string | null }; contacten: { naam: string; functie: string; rol: string; email: string; telefoon: string; status: 'nieuw' | 'bestaat_al' }[] }[];
+  fouten: string[]; toegevoegd: { gemeenten: number; contacten: number; bijgewerkt: number };
 }
 export interface ImportUitkomst { regels: ImportRegel[]; toegevoegd: number }
 export interface Medewerker { id: string; naam: string; telefoon: string; email: string; locgovGebruikersnaam: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string; rol: Rol }
@@ -64,9 +64,9 @@ export type KlantStatus = 'prospect' | 'klant' | 'voorgesteld' | 'inactief';
 export const KLANT_STATUS_LABEL: Record<KlantStatus, string> = { prospect: 'Prospect', klant: 'Klant', voorgesteld: 'Voorgesteld (controle)', inactief: 'Inactief' };
 export type ActiviteitSoort = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'intern' | 'kans' | 'risico';
 export const SOORT_LABEL: Record<ActiviteitSoort, string> = { doel: 'Doel', resultaat: 'Resultaat', afspraak: 'Afspraak', actie: 'Actie', intern: 'Intern', kans: 'Kans', risico: 'Risico' };
-export interface KlantRegel { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; accountmanagerNaam: string | null; contractEinde: string | null; bijgewerktOp: string; openActiviteiten: number; laatsteBezoek: string | null }
-export interface Klant { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; omschrijving: string; contractEinde: string | null; afasId: string | null }
-export interface KlantContact { id: string; naam: string; functie: string; rol: string }
+export interface KlantRegel { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; accountmanagerNaam: string | null; contractEinde: string | null; bijgewerktOp: string; openActiviteiten: number; laatsteBezoek: string | null; samenwerkingsverband: string; inwoners: number | null; salesAm: string }
+export interface Klant { id: string; naam: string; status: KlantStatus; bron: string; accountmanagerId: string | null; omschrijving: string; contractEinde: string | null; afasId: string | null; samenwerkingsverband: string; inwoners: number | null; salesAm: string }
+export interface KlantContact { id: string; naam: string; functie: string; rol: string; email: string; telefoon: string }
 export interface Bezoek { id: string; datum: string | null; soort: string; tevredenheid: number | null; samenvatting: string; callId: string | null; accountmanagerNaam: string | null; createdAt: string }
 export interface Activiteit {
   id: string; soort: ActiviteitSoort; omschrijving: string; status: 'open' | 'afgerond'; klantId: string | null; klantNaam: string | null; klantStatus: KlantStatus | null;

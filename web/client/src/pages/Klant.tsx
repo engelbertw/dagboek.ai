@@ -12,20 +12,20 @@ export function Klant() {
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const punten = useLaden(() => api<Activiteit[]>('GET', `/activiteiten?klantId=${id}`), [id]);
   const acties = useActies(() => { void punten.ververs(); void kaart.ververs(); }, punten.data ?? []);
-  const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '' });
+  const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '', samenwerkingsverband: '', inwoners: '', salesAm: '' });
   const [samenvoegMet, setSamenvoegMet] = useState('');
-  const [contact, setContact] = useState({ naam: '', functie: '', rol: '' });
+  const [contact, setContact] = useState({ naam: '', functie: '', rol: '', email: '', telefoon: '' });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const k = kaart.data?.klant;
   useEffect(() => {
-    if (k) setBewerk({ naam: k.naam, status: k.status, accountmanagerId: k.accountmanagerId ?? '', omschrijving: k.omschrijving, contractEinde: k.contractEinde ?? '' });
+    if (k) setBewerk({ naam: k.naam, status: k.status, accountmanagerId: k.accountmanagerId ?? '', omschrijving: k.omschrijving, contractEinde: k.contractEinde ?? '', samenwerkingsverband: k.samenwerkingsverband, inwoners: k.inwoners === null ? '' : String(k.inwoners), salesAm: k.salesAm });
   }, [k]);
 
   const fout = (e: unknown) => setMelding({ tekst: foutTekst(e), soort: 'fout' });
   async function bewaar(e: FormEvent) {
     e.preventDefault();
     try {
-      await api('PATCH', `/klanten/${id}`, { naam: bewerk.naam, status: bewerk.status, accountmanagerId: bewerk.accountmanagerId || null, omschrijving: bewerk.omschrijving, contractEinde: bewerk.contractEinde || null });
+      await api('PATCH', `/klanten/${id}`, { naam: bewerk.naam, status: bewerk.status, accountmanagerId: bewerk.accountmanagerId || null, omschrijving: bewerk.omschrijving, contractEinde: bewerk.contractEinde || null, samenwerkingsverband: bewerk.samenwerkingsverband, inwoners: bewerk.inwoners.trim() ? Number(bewerk.inwoners) : null, salesAm: bewerk.salesAm });
       setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); kaart.ververs();
     } catch (er) { fout(er); }
   }
@@ -42,7 +42,7 @@ export function Klant() {
   }
   async function voegContactToe(e: FormEvent) {
     e.preventDefault();
-    try { await api('POST', `/klanten/${id}/contacten`, contact); setContact({ naam: '', functie: '', rol: '' }); kaart.ververs(); } catch (er) { fout(er); }
+    try { await api('POST', `/klanten/${id}/contacten`, contact); setContact({ naam: '', functie: '', rol: '', email: '', telefoon: '' }); kaart.ververs(); } catch (er) { fout(er); }
   }
   async function wisContact(cid: string) {
     try { await api('DELETE', `/klant-contacten/${cid}`); kaart.ververs(); } catch (er) { fout(er); }
@@ -103,11 +103,11 @@ export function Klant() {
 
       <section className="paneel stapel" aria-label="Contactpersonen">
         <h2>Contactpersonen</h2>
-        <p className="zacht klein">Alleen naam, functie en rol. Geen privégegevens.</p>
+        <p className="zacht klein">Naam, functie, rol en zakelijke contactgegevens (e-mail, telefoon). Geen privégegevens.</p>
         {kaart.data.contacten.length === 0 && <Leeg>Nog geen contactpersonen.</Leeg>}
         {kaart.data.contacten.map((c) => (
           <div key={c.id} className="punt">
-            <span style={{ flex: 1 }}>{c.naam} <span className="zacht klein">{[c.functie, c.rol].filter(Boolean).join(' · ')}</span></span>
+            <span style={{ flex: 1 }}>{c.naam} <span className="zacht klein">{[c.functie, c.rol, c.email, c.telefoon].filter(Boolean).join(' · ')}</span></span>
             <button type="button" onClick={() => void wisContact(c.id)}>Verwijderen</button>
           </div>
         ))}
@@ -115,6 +115,8 @@ export function Klant() {
           <input value={contact.naam} onChange={(e) => setContact({ ...contact, naam: e.target.value })} placeholder="Naam" required maxLength={100} aria-label="Naam contactpersoon" />
           <input value={contact.functie} onChange={(e) => setContact({ ...contact, functie: e.target.value })} placeholder="Functie" maxLength={100} aria-label="Functie" />
           <input value={contact.rol} onChange={(e) => setContact({ ...contact, rol: e.target.value })} placeholder="Rol (bijv. beslisser)" maxLength={100} aria-label="Rol" />
+          <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="E-mailadres" maxLength={200} aria-label="E-mailadres" />
+          <input value={contact.telefoon} onChange={(e) => setContact({ ...contact, telefoon: e.target.value })} placeholder="Telefoon" maxLength={30} aria-label="Telefoon" />
           <button type="submit">Toevoegen</button>
         </form>
       </section>
@@ -135,6 +137,9 @@ export function Klant() {
             </select>
           </Veld>
           <Veld label="Contract tot"><input type="date" value={bewerk.contractEinde} onChange={(e) => setBewerk({ ...bewerk, contractEinde: e.target.value })} /></Veld>
+          <Veld label="Samenwerkingsverband"><input value={bewerk.samenwerkingsverband} onChange={(e) => setBewerk({ ...bewerk, samenwerkingsverband: e.target.value })} maxLength={200} /></Veld>
+          <Veld label="Inwoners"><input type="number" min={0} value={bewerk.inwoners} onChange={(e) => setBewerk({ ...bewerk, inwoners: e.target.value })} /></Veld>
+          <Veld label="Sales AM"><input value={bewerk.salesAm} onChange={(e) => setBewerk({ ...bewerk, salesAm: e.target.value })} maxLength={100} /></Veld>
         </div>
         <Veld label="Omschrijving"><textarea value={bewerk.omschrijving} onChange={(e) => setBewerk({ ...bewerk, omschrijving: e.target.value })} maxLength={2000} /></Veld>
         <div className="rij">
