@@ -23,7 +23,7 @@ const GOED = {
   toestemming: 'gegeven', toestemming_citaat: 'Ja, dat is goed',
   klant: { naam: 'Gemeente Voorbeeld', bestaand: '', bezoek_soort: 'evaluatie', datum: null, tevredenheid: 8 },
   samenvatting: 'Jaarlijkse evaluatie met een positieve klant.',
-  doelen: [], resultaten: [{ omschrijving: 'Klant is tevreden', citaat: 'De klant geeft een 8' }],
+  doelen: [], resultaten: [{ omschrijving: 'Klant geeft een 8 voor de dienstverlening', citaat: 'De klant geeft een 8' }],
   afspraken: [{ omschrijving: 'Offerte sturen', eigenaar: 'collega', deadline: null, citaat: 'Ik stuur de offerte voor vrijdag' }],
   acties: [], risicos: [],
   kansen: [{ omschrijving: 'Nieuw portaal', indicatie_bedrag: 'circa 50.000 euro', fase: 'offerte', beslisser: 'Mevrouw De Boer', verwachte_datum: null, concurrent: '', budget_aanwezig: 'onbekend', contract: '', citaat: 'Ze willen een nieuw portaal van ongeveer vijftigduizend euro' }],

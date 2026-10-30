@@ -54,6 +54,7 @@ Regels:
   - "eigenaar": wie de actie gaat doen. "collega" voor de collega met wie je spreekt, anders de naam zoals die in het gesprek of in de lijst met collega's staat (ook iemand buiten het team, bijvoorbeeld een klant). Weet je het niet, zet dan "collega".
   - "citaat": de woorden van de collega waaruit deze actie blijkt, letterlijk overgenomen uit het gesprek (hooguit één zin). Staat de actie niet in wat de collega zei, laat het citaat dan leeg.
   - "deadline": alleen als er een datum of termijn is genoemd, als YYYY-MM-DD. Reken termijnen als "vrijdag" of "volgende week" uit met de datum van vandaag die bij het gesprek staat. Is er niets genoemd, gebruik dan null. Verzin geen deadline. Wordt een actie al gedekt door een bestaand open punt, ook als dat met andere woorden is omschreven, voeg dan niets toe. Een bestaand punt dat de collega nog niet heeft afgerond blijft gewoon open staan.
+  - Neem alleen belangrijke, toetsbare acties op: iets dat iemand echt moet doen, met een duidelijk resultaat. Liever minder dan veel: hooguit drie of vier per onderwerp. Geen losse opmerkingen, geen sfeer of voortgangsgevoel ("het gaat goed", "we zijn verder gekomen"), geen kleine bijzaken en niet dezelfde actie in andere woorden.
 - "afgeronde_open_punten": alleen bestaande open punten (nummer) die de collega duidelijk als afgerond of opgelost benoemt, met in "citaat" de letterlijke woorden van de collega. Zonder zo'n citaat wordt het punt niet als afgerond aangenomen.
 - "suggesties": alleen wat de collega zelf voorstelt aan het einde van het gesprek: "onderwerp" voor een nieuw onderwerp dat gevolgd moet worden, "verbetering" voor een idee of opmerking over de dagboek-app of dit soort gesprekken. Kort en zonder naam of persoonsgegevens. Is er niets voorgesteld, gebruik dan een lege lijst. Een onderwerp dat al in de lijst staat is geen suggestie.
 - ${toestemmingNodig
@@ -118,22 +119,8 @@ export function leesAntwoord(tekst: string): Samenvatting {
   return resultaatSchema.parse(JSON.parse(tekst.slice(begin, eind + 1)));
 }
 
-const STOPWOORDEN = new Set(['de', 'het', 'een', 'met', 'en', 'van', 'voor', 'op', 'in', 'te', 'naar', 'is', 'zijn', 'dat', 'die', 'aan', 'om', 'bij', 'nog', 'deze', 'dit']);
-const woorden = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((w) => w && !STOPWOORDEN.has(w));
-
-/** Is dit punt al gedekt door een bestaand punt, ook met andere woorden? Liever een dubbel punt missen dan het dagboek vervuilen. */
-export function lijktOpBestaand(nieuw: string, bestaand: string[]): boolean {
-  const a = woorden(nieuw);
-  if (!a.length) return true;
-  return bestaand.some((b) => {
-    const w = woorden(b);
-    if (!w.length) return false;
-    const [kort, lang] = a.length <= w.length ? [a, w] : [w, a];
-    if (kort.every((x) => lang.includes(x))) return true; // het ene punt zit helemaal in het andere
-    const gemeenschappelijk = a.filter((x) => w.includes(x)).length;
-    return gemeenschappelijk / new Set([...a, ...w]).size >= 0.6;
-  });
-}
+import { MAX_DAGBOEK_PER_ONDERWERP, lijktOpBestaand, teVaag } from './kwaliteit.js';
+export { lijktOpBestaand };
 
 /** Wat er van een gesprek wordt gewist als er geen (geldige) toestemming is. */
 export const gewistVelden = () => ({ transcript: null, samenvattingRuw: null, transcriptBewarenTot: null, transcriptGewistOp: new Date() });
@@ -279,9 +266,12 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
 
           const bestaand = (await tx.select({ tekst: openItems.tekst }).from(openItems)
             .where(and(eq(openItems.topicId, onderwerp.id), eq(openItems.status, 'open')))).map((p) => p.tekst);
+          let nieuwBijOnderwerp = 0;
           for (const actie of o.nieuwe_open_punten) {
             const tekst = actie.tekst.trim();
-            if (!tekst || lijktOpBestaand(tekst, bestaand)) continue;
+            // Alleen wat belangrijk genoeg is om bij te houden: geen vage opmerkingen en niet meer dan een handvol per onderwerp.
+            if (!tekst || teVaag(tekst, 'dagboek') || nieuwBijOnderwerp >= MAX_DAGBOEK_PER_ONDERWERP || lijktOpBestaand(tekst, bestaand)) continue;
+            nieuwBijOnderwerp++;
             bestaand.push(tekst);
             const eigenaar = bepaalEigenaar(actie.eigenaar, collegas, medewerker.id);
             const onderbouwd = citaatKomtVoor(actie.citaat, transcript);

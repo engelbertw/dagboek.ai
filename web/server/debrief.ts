@@ -9,10 +9,12 @@ import type { Db } from './db.js';
 import type { LlmClient } from './llm.js';
 import { bezoeken, calls, employees, klantActiviteiten, klantContacten, klanten, type ActiviteitSoort } from './schema.js';
 import { logGebeurtenis } from './call-log.js';
+import { log } from './log.js';
 import { leggToestemmingVast, TOESTEMMING_DEBRIEF } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, normaliseer, schoonVoorPrompt } from './vertrouwen.js';
+import { selecteerBelangrijk } from './kwaliteit.js';
 import {
-  bepaalEigenaar, geldigeDeadline, gewistVelden, lijktOpBestaand, toestemmingsPoort, ToestemmingIngetrokken, vandaagNL,
+  bepaalEigenaar, geldigeDeadline, gewistVelden, toestemmingsPoort, ToestemmingIngetrokken, vandaagNL,
   type Bericht, type SamenvattingStatus, type Uitkomst,
 } from './samenvatten.js';
 
@@ -77,6 +79,9 @@ Regels:
 - Het gesprek kan een klantbezoek zijn, een vervolggesprek of alleen een update over eerdere afspraken en acties. Gaat het niet over een nieuw bezoek, zet dan "bezoek_soort" op "statusupdate" en laat de overige velden leeg als er niets nieuws is verteld.
 - "afgeronde_activiteiten": alleen een punt uit <open_punten> dat de accountmanager zelf als klaar of afgerond noemde (bijvoorbeeld "de offerte is verstuurd"), met het nummer en de woorden van de accountmanager als "citaat". Twijfel je of het om hetzelfde punt gaat, of is het alleen half klaar, neem het dan niet op. Zet een afgerond punt niet óók bij "acties".
 - "samenvatting": drie tot zes korte, neutrale zinnen over het gesprek.
+- Neem alleen belangrijke, toetsbare punten op: iets dat iemand moet doen, dat is afgesproken of dat commercieel of bestuurlijk echt telt. Liever minder dan veel: hooguit vijf acties en afspraken samen, en hooguit drie van elk van de andere soorten. Geen losse opmerkingen, geen sfeer of voortgangsgevoel ("het proces is verder gekomen", "stappen gemaakt") en geen punt dat nergens concreet is.
+- Zet dezelfde zaak nooit onder meerdere soorten. Gaat een zaak over een mogelijke deal, dan hoort die bij "kansen"; wat iemand daarvoor moet doen is een "acties"-punt dat verwijst naar de volgende stap en niet de kans herhaalt; een "doel" van de klant is geen actie van ons.
+- "afspraken" zijn alleen toezeggingen aan of van een partij, met wie en wanneer. Iets dat wij zelf nog moeten doen of uitzoeken, zonder toezegging, is een "acties"-punt.
 - Elk punt in "doelen", "resultaten", "afspraken", "acties", "risicos" en "kansen" heeft een "citaat": de woorden van de accountmanager waaruit het blijkt, letterlijk overgenomen uit het gesprek (hooguit één zin). Staat het niet in wat de accountmanager zei, laat het citaat dan leeg.
 - "doelen": wat de klant wil bereiken. "resultaten": wat is bereikt of niet gelukt, inclusief ervaren problemen met de dienstverlening of afspraken uit de SLA. "risicos": een risico op ontevredenheid, opzegging of escalatie.
 - "afspraken": wat de accountmanager of de klant heeft toegezegd. "acties": vervolgacties die nog moeten gebeuren, als werkwoordelijke opdracht. Bij beide: "eigenaar" is "collega" voor de accountmanager met wie je spreekt, anders de naam zoals genoemd (ook een persoon bij de klant). "deadline" alleen als er een datum of termijn is genoemd, als YYYY-MM-DD; anders null.
@@ -253,12 +258,12 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
           ...uitkomst.risicos.map((p) => ({ soort: 'risico' as const, omschrijving: p.omschrijving, citaat: p.citaat })),
           ...uitkomst.kansen.map((k) => ({ soort: 'kans' as const, omschrijving: k.omschrijving, citaat: k.citaat, details: kansDetails(k, vandaag), deadline: k.verwachte_datum })),
         ];
-        for (const a of invoer) {
-          const omschrijving = a.omschrijving.trim();
-          if (!omschrijving) continue;
-          const dezeSoort = bestaand.filter((b) => b.soort === a.soort).map((b) => b.omschrijving);
-          if (lijktOpBestaand(omschrijving, dezeSoort)) continue;
-          bestaand.push({ soort: a.soort, omschrijving });
+        // Alleen wat belangrijk genoeg is: geen vage punten, geen dubbelen over soorten heen (ook niet met wat bij deze klant al open staat) en een maximum per soort.
+        const selectie = selecteerBelangrijk(invoer.map((a) => ({ ...a, omschrijving: a.omschrijving.trim() })), bestaand.map((b) => b.omschrijving));
+        const w = selectie.weggelaten;
+        if (w.vaag || w.dubbel || w.teveel) log('info', 'debrief.selectie', { vaag: w.vaag, dubbel: w.dubbel, teveel: w.teveel });
+        for (const a of selectie.behouden) {
+          const omschrijving = a.omschrijving;
           const eigenaar = a.eigenaar !== undefined ? bepaalEigenaar(a.eigenaar, collegas, medewerker.id) : { eigenaarId: null, eigenaarExtern: '' };
           const onderbouwd = citaatKomtVoor(a.citaat, transcript);
           // Een deadline is alleen zo betrouwbaar als het punt zelf: zonder aantoonbare bron laten we hem weg.
