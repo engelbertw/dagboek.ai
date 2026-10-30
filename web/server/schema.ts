@@ -18,6 +18,8 @@ export const employees = pgTable('employees', {
   locgovGebruikersnaam: text('locgov_gebruikersnaam').notNull().default(''),
   taal: text('taal').notNull().default('nl'),
   actief: boolean('actief').notNull().default(true),
+  /** Een accountmanager krijgt bij het inbellen de verkoop-debrief in plaats van het dagboekgesprek. */
+  rol: text('rol', { enum: ['medewerker', 'accountmanager'] }).notNull().default('medewerker'),
   toestemmingOp: timestamp('toestemming_op', { withTimezone: true }),
   notitie: text('notitie').notNull().default(''),
   createdAt: createdAt(),
@@ -57,6 +59,7 @@ export const calls = pgTable('calls', {
     enum: ['gepland', 'verzenden', 'belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt', 'onderbroken'],
   }).notNull().default('gepland'),
   bron: text('bron', { enum: ['handmatig', 'schema', 'inkomend'] }).notNull().default('handmatig'),
+  type: text('type', { enum: ['dagboek', 'verkoop_debrief'] }).notNull().default('dagboek'),
   scheduleId: uuid('schedule_id'),
   slotStart: timestamp('slot_start', { withTimezone: true }),
   poging: integer('poging').notNull().default(1),
@@ -127,6 +130,65 @@ export const openItems = pgTable('open_items', {
   jiraUrl: text('jira_url'),
   jiraAangemaaktOp: timestamp('jira_aangemaakt_op', { withTimezone: true }),
   status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
+  createdAt: createdAt(),
+  afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
+});
+
+// ── Verkoop-debrief: klantenadministratie en verkoopregister ────────────────
+export const klanten = pgTable('klanten', {
+  id: id(),
+  naam: text('naam').notNull(),
+  afasId: text('afas_id'),
+  status: text('status', { enum: ['prospect', 'klant', 'voorgesteld', 'inactief'] }).notNull().default('voorgesteld'),
+  accountmanagerId: uuid('accountmanager_id').references(() => employees.id, { onDelete: 'set null' }),
+  omschrijving: text('omschrijving').notNull().default(''),
+  contractEinde: date('contract_einde'),
+  bron: text('bron', { enum: ['handmatig', 'gesprek', 'afas'] }).notNull().default('handmatig'),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: createdAt(),
+});
+
+export const klantContacten = pgTable('klant_contacten', {
+  id: id(),
+  klantId: uuid('klant_id').notNull().references(() => klanten.id, { onDelete: 'cascade' }),
+  naam: text('naam').notNull(),
+  functie: text('functie').notNull().default(''),
+  rol: text('rol').notNull().default(''),
+  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+});
+
+export const bezoeken = pgTable('bezoeken', {
+  id: id(),
+  klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'set null' }),
+  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  accountmanagerId: uuid('accountmanager_id').references(() => employees.id, { onDelete: 'set null' }),
+  klantNaamGenoemd: text('klant_naam_genoemd').notNull().default(''),
+  datum: date('datum'),
+  soort: text('soort').notNull().default(''),
+  tevredenheid: integer('tevredenheid'),
+  samenvatting: text('samenvatting').notNull().default(''),
+  createdAt: createdAt(),
+});
+
+export const ACTIVITEIT_SOORTEN = ['doel', 'resultaat', 'afspraak', 'actie', 'kans', 'risico'] as const;
+export type ActiviteitSoort = (typeof ACTIVITEIT_SOORTEN)[number];
+
+export const klantActiviteiten = pgTable('klant_activiteiten', {
+  id: id(),
+  klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'cascade' }),
+  bezoekId: uuid('bezoek_id').references(() => bezoeken.id, { onDelete: 'cascade' }),
+  soort: text('soort', { enum: ACTIVITEIT_SOORTEN }).notNull(),
+  omschrijving: text('omschrijving').notNull(),
+  eigenaarId: uuid('eigenaar_id').references(() => employees.id, { onDelete: 'set null' }),
+  eigenaarExtern: text('eigenaar_extern').notNull().default(''),
+  deadline: date('deadline'),
+  status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
+  details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+  citaat: text('citaat').notNull().default(''),
+  controleNodig: boolean('controle_nodig').notNull().default(false),
+  controleReden: text('controle_reden'),
+  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
   afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
 });

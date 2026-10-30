@@ -29,6 +29,7 @@ import { bepaalBewaartermijn, leggToestemmingVast } from './toestemming.js';
 import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
 import { vraagHerstel } from './gesprek-herstel.js';
+import { registreerVerkoop } from './verkoop.js';
 
 const COOKIE = 'dagboek_sessie';
 const uuid = z.string().uuid();
@@ -45,6 +46,7 @@ const medewerkerBody = z.object({
   naam: nonEmpty.max(100), telefoon: nonEmpty.max(30), email: z.union([z.literal(''), z.string().trim().toLowerCase().email().max(200)]).default(''), taal: z.enum(['nl', 'en']).default('nl'),
   locgovGebruikersnaam: z.union([z.literal(''), z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{1,64}$/)]).default(''),
   actief: z.boolean().default(true), notitie: z.string().max(2000).default(''), toestemming: z.boolean().optional(),
+  rol: z.enum(['medewerker', 'accountmanager']).default('medewerker'),
 });
 const projectBody = z.object({
   naam: nonEmpty.max(150), omschrijving: z.string().max(2000).default(''), status: z.enum(['actief', 'afgerond']).default('actief'),
@@ -148,7 +150,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
     const b = medewerkerBody.parse(req.body);
     const rij = await db.transaction(async (tx) => {
       const [nieuw] = await tx.insert(employees).values({
-        naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie,
+        naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie, rol: b.rol,
       }).returning();
       if (!b.toestemming) return nieuw;
       await leggToestemmingVast(tx, { employeeId: nieuw.id, besluit: 'gegeven', bron: 'beheerder' });
@@ -507,6 +509,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
     await bewaarInstructie(db, waarde);
     return leesInstructie(db);
   });
+  registreerVerkoop(app, db);
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.
   const geefSuggestie = async (reply: any, onderwerpen: OnderwerpVoorSuggestie[], doel: 'planning' | 'onderwerp') => {

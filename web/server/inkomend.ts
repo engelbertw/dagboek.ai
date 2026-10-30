@@ -1,7 +1,7 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { logGebeurtenis } from './call-log.js';
-import { leesHouding, leesInstructie, type Motor } from './instellingen.js';
+import { leesDebriefVragen, leesHouding, leesInstructie, type Motor } from './instellingen.js';
 import { stelOnderwerpenSamen } from './gesprek-starten.js';
 import { log } from './log.js';
 import { calls, employees } from './schema.js';
@@ -17,8 +17,10 @@ export function normaliseerNummer(ruw: string): string {
   return m ? `+31${m[1]}` : '';
 }
 
+export type GesprekType = 'dagboek' | 'verkoop_debrief';
+
 export type InkomendUitkomst =
-  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string }
+  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType }
   | { ok: false; reden: 'onbekend_nummer' | 'te_vaak' };
 
 /** Start de administratie van een gesprek waarbij de medewerker zelf belt. De beller wordt alleen herkend aan het nummer; er wordt geen nummer bewaard. */
@@ -32,12 +34,14 @@ export async function startInkomendGesprek(db: Db, beller: string, motor: Motor)
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(calls)
     .where(and(eq(calls.employeeId, m.id), eq(calls.bron, 'inkomend'), gt(calls.createdAt, new Date(Date.now() - 3600_000))));
   if (n >= INKOMEND_MAX_PER_UUR) return { ok: false, reden: 'te_vaak' };
-  const { onderwerpen, momentopname } = await stelOnderwerpenSamen(db, m.id);
-  const instructie = (await leesInstructie(db)).waarde;
+  // Een accountmanager belt voor een verkoop-debrief: geen onderwerpen van het dagboek, wel de vragen voor de debrief. Voor ieder ander blijft alles zoals het was.
+  const type: GesprekType = m.rol === 'accountmanager' ? 'verkoop_debrief' : 'dagboek';
+  const { onderwerpen, momentopname } = type === 'verkoop_debrief' ? { onderwerpen: [], momentopname: [] } : await stelOnderwerpenSamen(db, m.id);
+  const instructie = (type === 'verkoop_debrief' ? await leesDebriefVragen(db) : await leesInstructie(db)).waarde;
   const [call] = await db.insert(calls).values({
-    employeeId: m.id, status: 'gesprek', bron: 'inkomend', onderwerpen: momentopname, instructie, engine: motor, gestartOp: new Date(),
+    employeeId: m.id, status: 'gesprek', bron: 'inkomend', type, onderwerpen: momentopname, instructie, engine: motor, gestartOp: new Date(),
   }).returning();
   await logGebeurtenis(db, call.id, 'voice', 'claim:inkomend');
-  log('info', 'gesprek.inkomend', { correlatieId: call.id });
-  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig: !m.toestemmingOp, houding: (await leesHouding(db)).waarde, instructie };
+  log('info', 'gesprek.inkomend', { correlatieId: call.id, type });
+  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig: !m.toestemmingOp, houding: (await leesHouding(db)).waarde, instructie, type };
 }

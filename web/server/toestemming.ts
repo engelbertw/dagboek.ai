@@ -6,6 +6,8 @@ import { calls, employees, toestemmingen } from './schema.js';
 /** Versie van de toestemmingsvraag die in de begroeting wordt gesteld (voice/prompts.py: greeting_text). Bij een andere formulering ophogen. */
 export const TOESTEMMING_VERSIE = 'dagboek-v1';
 export const TOESTEMMING_DOEL = 'samenvatting_dagboek';
+/** De verkoop-debrief legt zijn toestemming onder een eigen doel en versie vast (voice/prompts.py: greeting_text met soort 'verkoop_debrief'). */
+export const TOESTEMMING_DEBRIEF = { doel: 'verkoop_debrief', versie: 'debrief-v1' } as const;
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -15,6 +17,9 @@ export interface Besluit {
   bron: 'gesprek' | 'beheerder';
   callId?: string;
   citaat?: string;
+  /** Standaard het dagboek; zie TOESTEMMING_DEBRIEF. */
+  doel?: string;
+  versie?: string;
 }
 
 /**
@@ -23,7 +28,7 @@ export interface Besluit {
  */
 export async function leggToestemmingVast(tx: Db | Tx, b: Besluit, nu = new Date()): Promise<void> {
   const ingevoegd = await tx.insert(toestemmingen).values({
-    employeeId: b.employeeId, besluit: b.besluit, bron: b.bron, callId: b.callId ?? null, versie: TOESTEMMING_VERSIE, doel: TOESTEMMING_DOEL,
+    employeeId: b.employeeId, besluit: b.besluit, bron: b.bron, callId: b.callId ?? null, versie: b.versie ?? TOESTEMMING_VERSIE, doel: b.doel ?? TOESTEMMING_DOEL,
     citaat: b.besluit === 'gegeven' ? (b.citaat ?? '').slice(0, 300) || null : null, vastgelegdOp: nu,
   }).onConflictDoNothing().returning({ id: toestemmingen.id });
   if (!ingevoegd.length) return;

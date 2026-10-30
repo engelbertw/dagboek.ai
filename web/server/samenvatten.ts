@@ -10,7 +10,7 @@ import { citaatKomtVoor, komtVoorInGesprek, schoonVoorPrompt } from './vertrouwe
 export type SamenvattingStatus = 'klaar' | 'geen_inhoud' | 'geweigerd' | 'onduidelijk' | 'mislukt';
 export interface Uitkomst { status: SamenvattingStatus | 'overgeslagen'; updates?: number; nieuweOpenPunten?: number; afgerondePunten?: number; fout?: string }
 
-interface Bericht { role: string; content: string }
+export interface Bericht { role: string; content: string }
 
 const citaat = z.string().max(300).nullish().transform((v) => v ?? '');
 
@@ -94,7 +94,7 @@ export function geldigeDeadline(ruw: string | null | undefined, vandaag: string)
 }
 
 /** De toestemming is ingetrokken terwijl de samenvatting werd gemaakt. */
-class ToestemmingIngetrokken extends Error {}
+export class ToestemmingIngetrokken extends Error {}
 
 export interface Collega { id: string; naam: string }
 
@@ -135,7 +135,69 @@ export function lijktOpBestaand(nieuw: string, bestaand: string[]): boolean {
   });
 }
 
+/** Wat er van een gesprek wordt gewist als er geen (geldige) toestemming is. */
+export const gewistVelden = () => ({ transcript: null, samenvattingRuw: null, transcriptBewarenTot: null, transcriptGewistOp: new Date() });
+
+export interface PoortInvoer {
+  callId: string;
+  medewerkerId: string;
+  toestemmingNodig: boolean;
+  /** Het oordeel van het model en de woorden waarop dat berust. */
+  toestemming: string;
+  toestemmingCitaat: string | null | undefined;
+  transcript: Bericht[];
+  eindig: (status: SamenvattingStatus, extra?: Partial<typeof calls.$inferInsert>) => Promise<void>;
+  /** Voor de toestemmingsregistratie van een ander gesprekstype (de verkoop-debrief heeft een eigen doel en versie). */
+  register?: { doel: string; versie: string };
+}
+
+/**
+ * Toestemming is een beslissing met gevolgen, dus het oordeel van het model alleen telt niet: "gegeven" en "ingetrokken" gelden pas
+ * als de woorden van de beller echt in het gesprek staan. Zonder dat bewaren we niets uit dit gesprek.
+ * Geeft de uitkomst terug als het gesprek hier stopt, of null als de verwerking door mag gaan.
+ */
+export async function toestemmingsPoort(db: Db, p: PoortInvoer): Promise<Uitkomst | null> {
+  const { callId, medewerkerId, toestemmingNodig, transcript, eindig } = p;
+  const gewist = gewistVelden();
+  const citaatOk = citaatKomtVoor(p.toestemmingCitaat, transcript);
+  const zegtNee = p.toestemming === 'geweigerd' || p.toestemming === 'ingetrokken';
+  if (toestemmingNodig) {
+    if (zegtNee) {
+      // Weigering is de veilige kant: geen samenvatting en geen transcript, ook zonder citaat.
+      await db.transaction(async (tx) => {
+        await leggToestemmingVast(tx, { employeeId: medewerkerId, besluit: 'geweigerd', bron: 'gesprek', callId, ...p.register });
+        await tx.update(calls).set({ samenvattingStatus: 'geweigerd', toestemmingStatus: 'geweigerd', ...gewist }).where(eq(calls.id, callId));
+      });
+      await logGebeurtenis(db, callId, 'web', 'samenvatting:geweigerd');
+      return { status: 'geweigerd' };
+    }
+    if (!(p.toestemming === 'gegeven' && citaatOk)) {
+      await eindig('onduidelijk', { toestemmingStatus: 'onduidelijk', samenvattingRuw: { toestemming: p.toestemming, citaatGeverifieerd: false } });
+      return { status: 'onduidelijk' };
+    }
+  } else if (zegtNee || p.toestemming === 'onduidelijk') {
+    if (zegtNee && citaatOk) {
+      await db.transaction(async (tx) => {
+        await leggToestemmingVast(tx, { employeeId: medewerkerId, besluit: 'ingetrokken', bron: 'gesprek', callId, ...p.register });
+        await tx.update(calls).set({ samenvattingStatus: 'geweigerd', toestemmingStatus: 'ingetrokken', ...gewist }).where(eq(calls.id, callId));
+      });
+      await logGebeurtenis(db, callId, 'web', 'samenvatting:toestemming_ingetrokken');
+      return { status: 'geweigerd' };
+    }
+    // Het model denkt dat de toestemming is ingetrokken, maar het is niet te onderbouwen: niets opslaan, de beheerder kijkt mee.
+    await eindig('onduidelijk', { toestemmingStatus: 'onduidelijk', samenvattingRuw: { toestemming: p.toestemming, citaatGeverifieerd: false } });
+    return { status: 'onduidelijk' };
+  }
+  return null;
+}
+
 export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }, callId: string): Promise<Uitkomst> {
+  // Een verkoop-debrief heeft een eigen verwerking (dynamisch geladen: debrief.ts gebruikt hulpfuncties uit dit bestand).
+  const [soort] = await db.select({ type: calls.type }).from(calls).where(eq(calls.id, callId));
+  if (soort?.type === 'verkoop_debrief') {
+    const { verwerkDebrief } = await import('./debrief.js');
+    return verwerkDebrief({ db, llm }, callId);
+  }
   // Alleen één run tegelijk, en alleen vanuit een stand waarin opnieuw proberen zinvol is.
   const geclaimd = await db.update(calls)
     .set({ samenvattingStatus: 'bezig', samenvattingGestartOp: new Date(), samenvattingFout: null })
@@ -175,38 +237,9 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
       return { status: 'mislukt', fout: 'Antwoord van het taalmodel niet te lezen' };
     }
 
-    // Toestemming is een beslissing met gevolgen, dus het oordeel van het model alleen telt niet: "gegeven" en "ingetrokken" gelden pas
-    // als de woorden van de collega echt in het gesprek staan. Zonder dat bewaren we niets uit dit gesprek.
-    const gewist = { transcript: null, samenvattingRuw: null, transcriptBewarenTot: null, transcriptGewistOp: new Date() };
-    const citaatOk = citaatKomtVoor(uitkomst.toestemming_citaat, transcript);
-    const zegtNee = uitkomst.toestemming === 'geweigerd' || uitkomst.toestemming === 'ingetrokken';
-    if (toestemmingNodig) {
-      if (zegtNee) {
-        // Weigering is de veilige kant: geen samenvatting en geen transcript, ook zonder citaat.
-        await db.transaction(async (tx) => {
-          await leggToestemmingVast(tx, { employeeId: medewerker.id, besluit: 'geweigerd', bron: 'gesprek', callId });
-          await tx.update(calls).set({ samenvattingStatus: 'geweigerd', toestemmingStatus: 'geweigerd', ...gewist }).where(eq(calls.id, callId));
-        });
-        await logGebeurtenis(db, callId, 'web', 'samenvatting:geweigerd');
-        return { status: 'geweigerd' };
-      }
-      if (!(uitkomst.toestemming === 'gegeven' && citaatOk)) {
-        await eindig('onduidelijk', { toestemmingStatus: 'onduidelijk', samenvattingRuw: { toestemming: uitkomst.toestemming, citaatGeverifieerd: false } });
-        return { status: 'onduidelijk' };
-      }
-    } else if (zegtNee || uitkomst.toestemming === 'onduidelijk') {
-      if (zegtNee && citaatOk) {
-        await db.transaction(async (tx) => {
-          await leggToestemmingVast(tx, { employeeId: medewerker.id, besluit: 'ingetrokken', bron: 'gesprek', callId });
-          await tx.update(calls).set({ samenvattingStatus: 'geweigerd', toestemmingStatus: 'ingetrokken', ...gewist }).where(eq(calls.id, callId));
-        });
-        await logGebeurtenis(db, callId, 'web', 'samenvatting:toestemming_ingetrokken');
-        return { status: 'geweigerd' };
-      }
-      // Het model denkt dat de toestemming is ingetrokken, maar het is niet te onderbouwen: niets opslaan, de beheerder kijkt mee.
-      await eindig('onduidelijk', { toestemmingStatus: 'onduidelijk', samenvattingRuw: { toestemming: uitkomst.toestemming, citaatGeverifieerd: false } });
-      return { status: 'onduidelijk' };
-    }
+    const gewist = gewistVelden();
+    const poort = await toestemmingsPoort(db, { callId, medewerkerId: medewerker.id, toestemmingNodig, toestemming: uitkomst.toestemming, toestemmingCitaat: uitkomst.toestemming_citaat, transcript, eindig });
+    if (poort) return poort;
 
     const tellers = { updates: 0, nieuweOpenPunten: 0, afgerondePunten: 0, teControleren: 0 };
     try {

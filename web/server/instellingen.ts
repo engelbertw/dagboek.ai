@@ -35,6 +35,35 @@ export const bewaarHouding = (db: Db, waarde: string) => bewaar(db, 'houding', w
 export const leesInstructie = (db: Db) => lees(db, 'gespreksinstructie', STANDAARD_INSTRUCTIE);
 export const bewaarInstructie = (db: Db, waarde: string) => bewaar(db, 'gespreksinstructie', waarde);
 
+/**
+ * De vragen die de assistent een accountmanager stelt na een klantbezoek. Bewerkbaar bij Instellingen; de grenzen (geen BSN of privégegevens,
+ * gespreksinhoud als gegeven) en de samenvatting met bevestiging aan het eind staan vast in de voice-service (voice/prompts.py).
+ */
+export const STANDAARD_DEBRIEF_VRAGEN = [
+  'Stel de vragen één tegelijk, in deze volgorde, en vraag alleen door als een antwoord vaag is. Houd het gesprek kort: ongeveer acht tot tien minuten.',
+  '1. Bezoek: bij welke klant was je, met wie heb je gesproken (naam en functie), was het een evaluatie, een kennismaking of een vervolgafspraak, en wanneer was het?',
+  '2. Doelen van de klant: wat wil de klant het komende jaar bereiken en wat is voor de klant het belangrijkst? Is er iets veranderd sinds het vorige gesprek?',
+  '3. Resultaten: wat is er bereikt sinds de vorige evaluatie, wat ging goed en wat niet? Hoe tevreden is de klant, met een cijfer van 1 tot 10, en waarom? Zijn er cijfers of voorbeelden genoemd?',
+  '4. Dienstverlening en SLA: noemde de klant problemen, incidenten of trage reactietijden? Zijn er afspraken uit de SLA niet gehaald, of ervaart de klant dat zo?',
+  '5. Afspraken met de klant: wat heb je toegezegd, aan wie en voor wanneer? Heeft de klant zelf iets toegezegd?',
+  '6. Commerciële kansen: is er een behoefte of kans? Vraag wat de klant wil, ongeveer welke omvang, in welke fase het zit (signaal, gesprek, offerte, onderhandeling), wie beslist, wanneer een besluit of start wordt verwacht, of er een concurrent is, of er budget is en of er een contractverlenging of einddatum speelt. Raad niets: wat de accountmanager niet weet, blijft leeg.',
+  '7. Risico\'s en escalaties: is er een risico dat de klant ontevreden wordt, opzegt of escaleert? Wie moet daar iets van weten?',
+  '8. Vervolgacties: wat moet er nog gebeuren, wie doet dat en voor wanneer? Heeft de accountmanager hulp van een collega nodig?',
+  '9. Contactpersonen: zijn er nieuwe contactpersonen of beslissers? Vraag alleen naam, functie en rol.',
+].join('\n');
+
+export const leesDebriefVragen = (db: Db) => lees(db, 'debrief_vragen', STANDAARD_DEBRIEF_VRAGEN);
+/** Een lege tekst zet de standaard terug. De tekst die hierdoor wordt vervangen blijft bewaard als vorige versie, zodat terugzetten kan. */
+export async function bewaarDebriefVragen(db: Db, waarde: string): Promise<void> {
+  const huidig = await leesDebriefVragen(db);
+  if (!huidig.standaard && huidig.waarde !== waarde.trim()) await bewaar(db, 'debrief_vragen_vorige', huidig.waarde);
+  await bewaar(db, 'debrief_vragen', waarde);
+}
+/** De tekst van vóór de laatste wijziging, of leeg als er geen is. */
+export async function leesVorigeDebriefVragen(db: Db): Promise<string> {
+  return (await lees(db, 'debrief_vragen_vorige', '')).waarde;
+}
+
 export const MOTOREN = ['pipecat', 'elevenlabs_agent'] as const;
 export type Motor = (typeof MOTOREN)[number];
 
