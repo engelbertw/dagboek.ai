@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api, datum, type Medewerker, type Project, type TopicRegel } from '../api';
+import { api, datum, type KlantRegel, type Medewerker, type Project, type TopicRegel } from '../api';
 import { Badge, Leeg, Melding, foutTekst, useLaden } from '../ui';
 import { LEGE_TOPIC, TopicVelden, type TopicWaarden } from './TopicVelden';
 
@@ -11,6 +11,7 @@ export function Dagboek() {
   const lijst = useLaden(() => api<TopicRegel[]>('GET', `/topics?status=${filter}`), [filter]);
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const projecten = useLaden(() => api<Project[]>('GET', '/projects'));
+  const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const [nieuw, setNieuw] = useState<TopicWaarden | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const navigeer = useNavigate();
@@ -34,7 +35,7 @@ export function Dagboek() {
       {nieuw && (
         <form className="paneel stapel" onSubmit={maakAan}>
           <h2>Nieuw onderwerp</h2>
-          <TopicVelden waarden={nieuw} zet={setNieuw} medewerkers={medewerkers.data ?? []} projecten={projecten.data ?? []} />
+          <TopicVelden waarden={nieuw} zet={setNieuw} medewerkers={medewerkers.data ?? []} projecten={projecten.data ?? []} klanten={klanten.data ?? []} />
           <Melding tekst={fout} />
           <button className="primair" type="submit">Onderwerp aanmaken</button>
         </form>
@@ -56,7 +57,7 @@ export function Dagboek() {
               <div className="rij"><Badge>{t.type}</Badge><Badge soort={t.status}>{t.status}</Badge></div>
             </div>
             <p className="zacht klein">
-              {[t.projectNaam, t.eigenaarNaam ? `bellen: ${t.eigenaarNaam}` : 'nog niemand gekoppeld'].filter(Boolean).join(' · ')}
+              {[t.klantNaam, t.projectNaam, t.eigenaarNaam ? `bellen: ${t.eigenaarNaam}` : 'nog niemand gekoppeld'].filter(Boolean).join(' · ')}
               {t.openPunten > 0 && ` · ${t.openPunten} open ${t.openPunten === 1 ? 'punt' : 'punten'}`}
             </p>
             {t.laatsteUpdate

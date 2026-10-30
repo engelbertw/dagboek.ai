@@ -11,7 +11,7 @@ import { OidcFout, type Oidc } from './oidc.js';
 import { registreerGebruikers, type KeycloakBeheer } from './gebruikers.js';
 import { noodloginAan, ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
-import { callLog, calls, employees, activiteiten, instellingen, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, employees, activiteiten, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
 import { foutcode, log } from './log.js';
@@ -61,7 +61,7 @@ const projectBody = z.object({
 const topicBody = z.object({
   titel: nonEmpty.max(200), type: z.enum(['project', 'thema', 'taak']).default('thema'),
   status: z.enum(['actief', 'wacht', 'afgerond']).default('actief'),
-  projectId: uuid.nullable().default(null), eigenaarId: uuid.nullable().default(null), aanwijzingen: z.string().max(4000).default(''),
+  projectId: uuid.nullable().default(null), eigenaarId: uuid.nullable().default(null), klantId: uuid.nullable().default(null), aanwijzingen: z.string().max(4000).default(''),
 });
 const updateBody = z.object({ samenvatting: nonEmpty.max(8000), besluiten: z.string().max(4000).default('') });
 const scheduleBody = z.object({
@@ -277,9 +277,9 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const status = z.enum(['actief', 'wacht', 'afgerond', 'alle']).default('alle').parse((req.query as any).status);
     const lijst = await db.select({
       id: topics.id, titel: topics.titel, type: topics.type, status: topics.status, aanwijzingen: topics.aanwijzingen,
-      projectId: topics.projectId, projectNaam: projects.naam, eigenaarId: topics.eigenaarId, eigenaarNaam: employees.naam,
+      projectId: topics.projectId, projectNaam: projects.naam, eigenaarId: topics.eigenaarId, eigenaarNaam: employees.naam, klantId: topics.klantId, klantNaam: klanten.naam,
       updatedAt: topics.updatedAt, afgerondOp: topics.afgerondOp,
-    }).from(topics).leftJoin(projects, eq(topics.projectId, projects.id)).leftJoin(employees, eq(topics.eigenaarId, employees.id))
+    }).from(topics).leftJoin(projects, eq(topics.projectId, projects.id)).leftJoin(employees, eq(topics.eigenaarId, employees.id)).leftJoin(klanten, eq(topics.klantId, klanten.id))
       .where(status === 'alle' ? undefined : eq(topics.status, status)).orderBy(desc(topics.updatedAt));
     if (!lijst.length) return [];
     const ids = lijst.map((t) => t.id);
@@ -295,6 +295,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   });
   app.post('/api/topics', async (req, reply) => {
     const b = topicBody.parse(req.body);
+    if (b.klantId && !(await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.klantId))).length) return reply.code(400).send({ fout: 'Klant niet gevonden' });
     const [rij] = await db.insert(topics).values({ ...b, afgerondOp: b.status === 'afgerond' ? new Date() : null }).returning();
     return reply.code(201).send(rij);
   });
@@ -313,7 +314,13 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const b = deelwijziging(topicBody).parse(req.body);
     const waarden: Record<string, unknown> = { ...b, updatedAt: new Date() };
     if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
-    const [rij] = await db.update(topics).set(waarden).where(eq(topics.id, id)).returning();
+    if (b.klantId && !(await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.klantId))).length) return reply.code(400).send({ fout: 'Klant niet gevonden' });
+    const rij = await db.transaction(async (tx) => {
+      const [bijgewerkt] = await tx.update(topics).set(waarden).where(eq(topics.id, id)).returning();
+      // De punten van dit onderwerp horen bij dezelfde klant, zodat ze in het werkregister onder die klant staan.
+      if (bijgewerkt && b.klantId !== undefined) await tx.update(activiteiten).set({ klantId: b.klantId }).where(eq(activiteiten.topicId, id));
+      return bijgewerkt;
+    });
     return rij ?? reply.code(404).send({ fout: 'Onderwerp niet gevonden' });
   });
   app.delete('/api/topics/:id', async (req, reply) => {

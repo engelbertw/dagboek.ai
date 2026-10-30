@@ -9,6 +9,7 @@ import { Spraakmotoren } from './pages/Spraakmotoren';
 import { Instellingen } from './pages/Instellingen';
 import { Klant } from './pages/Klant';
 import { Klanten } from './pages/Klanten';
+import { Contactpersonen } from './pages/Contactpersonen';
 import { Medewerkers } from './pages/Medewerkers';
 import { Onderwerp } from './pages/Onderwerp';
 import { Suggesties } from './pages/Suggesties';
@@ -59,7 +60,7 @@ interface MenuGroep { titel: string; items: { naar: string; label: string; einde
 
 const MENU: MenuGroep[] = [
   { titel: 'Overzicht', alleenBeheerder: true, items: [{ naar: '/', label: 'Dagboek', einde: true, ook: '/onderwerp' }, { naar: '/dashboard', label: 'Dashboard' }] },
-  { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }] },
+  { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }] },
   { titel: 'Gesprekken', alleenBeheerder: true, items: [{ naar: '/gesprekken', label: 'Gesprekken' }, { naar: '/planning', label: 'Planning' }, { naar: '/suggesties', label: 'Suggesties' }] },
   { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/instellingen', label: 'Instellingen' }] },
 ];
@@ -119,6 +120,7 @@ export function App() {
           <Route path="/verkoopregister" element={<Navigate to="/werk" replace />} />
           <Route path="/klanten" element={<Klanten />} />
           <Route path="/klanten/:id" element={<Klant />} />
+          <Route path="/contactpersonen" element={<Contactpersonen />} />
         </Routes>
       </main>
     </div>

@@ -61,6 +61,7 @@ Aan het eind van elk gesprek vraagt de assistent naar nieuwe onderwerpen en verb
 | Dagboek | Overzicht van alle onderwerpen en hun laatste update; onderwerpen aanmaken |
 | Onderwerp | Updates en historie, acties (eigenaar, deadline), gegevens van het onderwerp en een suggestie voor "wat willen we weten" |
 | Dashboard | Hoe goed komen we afspraken na |
+| Contactpersonen | Alle contactpersonen van de klanten: zoeken, bewerken, verplaatsen naar een andere klant, verwijderen |
 | Werk | Het werkregister: acties, afspraken, interne acties, kansen en risico’s, per klant of als één lijst |
 | Medewerkers | Medewerkers, toestemming en *Bel nu* |
 | Projecten | Projecten beheren |
@@ -98,7 +99,7 @@ Drie services op Railway (project `dagboek-ai`), gedeployed vanaf de branch `mai
 - **Postgres**: alle gegevens.
 
 ### Datamodel
-`employees`, `projects`, `topics`, `updates` met `update_historie`, `activiteiten` (het werkregister: acties, afspraken, interne acties, kansen, risico’s, doelen en resultaten; per klant en/of per onderwerp; vervangt `klant_activiteiten` en `open_items`, die tot de opruimmigratie als kopie blijft staan), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`, `toestemmingen` (register, alleen toevoegen), `call_log` (gespreksverloop), `opschoning_runs`, en voor de verkoop-debrief `klanten`, `klant_contacten`, en `bezoeken` (zie Verkoop-debrief). Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
+`employees`, `projects`, `topics`, `updates` met `update_historie`, `topics.klant_id` (een onderwerp kan bij een gemeente horen; de punten ervan staan dan ook onder die klant), `activiteiten` (het werkregister: acties, afspraken, interne acties, kansen, risico’s, doelen en resultaten; per klant en/of per onderwerp; vervangt `klant_activiteiten` en `open_items`, die tot de opruimmigratie als kopie blijft staan), `calls`, `schedules` met `schedule_employees` (de plannings), `suggesties`, `instellingen`, `toestemmingen` (register, alleen toevoegen), `call_log` (gespreksverloop), `opschoning_runs`, en voor de verkoop-debrief `klanten`, `klant_contacten`, en `bezoeken` (zie Verkoop-debrief). Migraties staan in `web/server/migrations/` en worden bij het starten toegepast (tabel `migraties`).
 
 ### Beveiliging en privacy
 - Inloggen via Keycloak (authorization code met PKCE, `state` en `nonce`; wachtwoord van minimaal 12 tekens en verplichte TOTP, brute-force-beveiliging), sessiecookie `HttpOnly`, `Secure`, `SameSite=Strict`. De tweede factor wordt door Keycloak afgedwongen (vereiste actie `CONFIGURE_TOTP`); de app controleert alleen de beheerdersrol. De noodingang met `ADMIN_EMAIL` en wachtwoord (scrypt, begrenzing van mislukte pogingen) staat met Keycloak uit tenzij `NOODLOGIN=aan` en heeft geen tweede factor; gebruik wordt gelogd (`login.noodingang`).

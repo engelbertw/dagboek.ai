@@ -1,14 +1,14 @@
 import { useState } from 'react';
-import { api, type Medewerker, type Project, type TopicStatus, type TopicType } from '../api';
+import { api, type KlantRegel, type Medewerker, type Project, type TopicStatus, type TopicType } from '../api';
 import { Melding, Veld, foutTekst } from '../ui';
 
 export interface TopicWaarden {
-  titel: string; type: TopicType; status: TopicStatus; projectId: string | null; eigenaarId: string | null; aanwijzingen: string;
+  titel: string; type: TopicType; status: TopicStatus; projectId: string | null; eigenaarId: string | null; klantId: string | null; aanwijzingen: string;
 }
-export const LEGE_TOPIC: TopicWaarden = { titel: '', type: 'thema', status: 'actief', projectId: null, eigenaarId: null, aanwijzingen: '' };
+export const LEGE_TOPIC: TopicWaarden = { titel: '', type: 'thema', status: 'actief', projectId: null, eigenaarId: null, klantId: null, aanwijzingen: '' };
 
-export function TopicVelden({ waarden, zet, medewerkers, projecten }: {
-  waarden: TopicWaarden; zet: (w: TopicWaarden) => void; medewerkers: Medewerker[]; projecten: Project[];
+export function TopicVelden({ waarden, zet, medewerkers, projecten, klanten }: {
+  waarden: TopicWaarden; zet: (w: TopicWaarden) => void; medewerkers: Medewerker[]; projecten: Project[]; klanten: Pick<KlantRegel, 'id' | 'naam'>[];
 }) {
   const wijzig = <K extends keyof TopicWaarden>(k: K, v: TopicWaarden[K]) => zet({ ...waarden, [k]: v });
   const [suggestie, setSuggestie] = useState<string | null>(null);
@@ -37,6 +37,12 @@ export function TopicVelden({ waarden, zet, medewerkers, projecten }: {
           <select value={waarden.projectId ?? ''} onChange={(e) => wijzig('projectId', e.target.value || null)}>
             <option value="">Geen project</option>
             {projecten.map((p) => <option key={p.id} value={p.id}>{p.naam}</option>)}
+          </select>
+        </Veld>
+        <Veld label="Gemeente (klant)">
+          <select value={waarden.klantId ?? ''} onChange={(e) => wijzig('klantId', e.target.value || null)}>
+            <option value="">Geen gemeente</option>
+            {klanten.map((k) => <option key={k.id} value={k.id}>{k.naam}</option>)}
           </select>
         </Veld>
         <Veld label="Wie bellen we hierover?">

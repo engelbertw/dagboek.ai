@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, api, datum, type Activiteit, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
+import { KLANT_STATUS_LABEL, api, datum, type Activiteit, type TopicRegel, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 import { ControleBanner, PuntToevoegen, Secties, useActies } from './ActiviteitenLijst';
 
@@ -10,6 +10,7 @@ export function Klant() {
   const kaart = useLaden(() => api<KlantDetail>('GET', `/klanten/${id}`), [id]);
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
+  const onderwerpen = useLaden(() => api<TopicRegel[]>('GET', '/topics?status=alle'));
   const punten = useLaden(() => api<Activiteit[]>('GET', `/activiteiten?klantId=${id}`), [id]);
   const acties = useActies(() => { void punten.ververs(); void kaart.ververs(); }, punten.data ?? []);
   const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '', samenwerkingsverband: '', inwoners: '', salesAm: '' });
@@ -88,6 +89,18 @@ export function Klant() {
         )}
         <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} vast={{ klantId: id }} />
       </section>
+
+      {(onderwerpen.data ?? []).some((t) => t.klantId === id) && (
+        <section className="paneel stapel" aria-label="Onderwerpen in het dagboek">
+          <h2>Onderwerpen in het dagboek</h2>
+          {(onderwerpen.data ?? []).filter((t) => t.klantId === id).map((t) => (
+            <div key={t.id} className="rij spreid">
+              <span><Link to={`/onderwerp/${t.id}`}>{t.titel}</Link> <span className="zacht klein">{[t.type, t.status, t.eigenaarNaam && `bellen: ${t.eigenaarNaam}`].filter(Boolean).join(' · ')}</span></span>
+              <span className="zacht klein">{t.openPunten} open</span>
+            </div>
+          ))}
+        </section>
+      )}
 
       <section className="paneel stapel" aria-label="Bezoeken">
         <h2>Bezoeken</h2>

@@ -58,9 +58,10 @@ export function registreerActiviteiten(app: FastifyInstance, db: Db) {
       if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
     }
     if (b.topicId) {
-      const [topic] = await db.select({ id: topics.id, eigenaarId: topics.eigenaarId }).from(topics).where(eq(topics.id, b.topicId));
+      const [topic] = await db.select({ id: topics.id, eigenaarId: topics.eigenaarId, klantId: topics.klantId }).from(topics).where(eq(topics.id, b.topicId));
       if (!topic) return reply.code(404).send({ fout: 'Onderwerp niet gevonden' });
       if (eigenaarId === undefined) eigenaarId = topic.eigenaarId;
+      if (b.klantId === undefined) b.klantId = topic.klantId;
     }
     const [rij] = await db.insert(activiteiten).values({
       soort: b.soort, omschrijving: b.omschrijving, klantId: b.klantId ?? null, topicId: b.topicId ?? null, eigenaarId: eigenaarId ?? null,

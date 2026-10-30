@@ -2,14 +2,14 @@
  * API voor het verkoopregister: klanten, bezoeken en activiteiten uit verkoop-debriefs. Alles is voor de ingelogde beheerder zichtbaar
  * (geen filter per klant of accountmanager); de agent leest hieruit nooit voor aan de telefoon.
  */
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
 import { beoordeelKlantenLijst } from './klanten-import.js';
 import { normaliseer } from './vertrouwen.js';
 import { bewaarDebriefVragen, leesDebriefVragen, leesVorigeDebriefVragen } from './instellingen.js';
-import { bezoeken, employees, activiteiten, klantContacten, klanten } from './schema.js';
+import { bezoeken, employees, activiteiten, klantContacten, klanten, topics } from './schema.js';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -141,6 +141,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
       if (!doel) return reply.code(404).send({ fout: 'Doelklant niet gevonden' });
       await tx.update(bezoeken).set({ klantId: b.met }).where(eq(bezoeken.klantId, id));
       await tx.update(activiteiten).set({ klantId: b.met }).where(eq(activiteiten.klantId, id));
+      await tx.update(topics).set({ klantId: b.met }).where(eq(topics.klantId, id));
       await tx.update(klantContacten).set({ klantId: b.met }).where(eq(klantContacten.klantId, id));
       await tx.delete(klanten).where(eq(klanten.id, id));
       return { ok: true, samengevoegdMet: b.met };
@@ -151,6 +152,8 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
   app.delete('/api/klanten/:id', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
     const gewist = await db.transaction(async (tx) => {
+      // De punten van dagboekonderwerpen blijven bestaan, ook zonder klant.
+      await tx.update(activiteiten).set({ klantId: null }).where(and(eq(activiteiten.klantId, id), isNotNull(activiteiten.topicId)));
       await tx.delete(bezoeken).where(eq(bezoeken.klantId, id)); // activiteiten van die bezoeken gaan mee (cascade)
       return tx.delete(klanten).where(eq(klanten.id, id)).returning({ id: klanten.id });
     });
@@ -163,6 +166,28 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     const [klant] = await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, id));
     if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
     return reply.code(201).send((await db.insert(klantContacten).values({ klantId: id, ...b }).returning())[0]);
+  });
+  // Alle contactpersonen op één plek, om te zoeken, bij te werken, te verplaatsen naar een andere klant of te verwijderen.
+  app.get('/api/klant-contacten', async () => db.select({
+    id: klantContacten.id, klantId: klantContacten.klantId, klantNaam: klanten.naam, naam: klantContacten.naam, functie: klantContacten.functie,
+    rol: klantContacten.rol, email: klantContacten.email, telefoon: klantContacten.telefoon,
+  }).from(klantContacten).innerJoin(klanten, eq(klantContacten.klantId, klanten.id)).orderBy(asc(klanten.naam), asc(klantContacten.naam)));
+  app.post('/api/klant-contacten', async (req, reply) => {
+    const b = contactBody.extend({ klantId: uuid }).parse(req.body);
+    const [klant] = await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.klantId));
+    if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    return reply.code(201).send((await db.insert(klantContacten).values(b).returning())[0]);
+  });
+  app.patch('/api/klant-contacten/:id', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const b = z.object({ naam: nonEmpty.max(100), functie: z.string().trim().max(100), rol: z.string().trim().max(100), email: contactBody.shape.email.unwrap(), telefoon: z.string().trim().max(30), klantId: uuid }).partial().parse(req.body);
+    if (!Object.keys(b).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
+    if (b.klantId) {
+      const [klant] = await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.klantId));
+      if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    }
+    const [rij] = await db.update(klantContacten).set(b).where(eq(klantContacten.id, id)).returning();
+    return rij ?? reply.code(404).send({ fout: 'Contactpersoon niet gevonden' });
   });
   app.delete('/api/klant-contacten/:id', async (req, reply) => {
     const gewist = await db.delete(klantContacten).where(eq(klantContacten.id, uuid.parse((req.params as any).id))).returning({ id: klantContacten.id });

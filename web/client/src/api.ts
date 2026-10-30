@@ -11,7 +11,7 @@ export type TopicStatus = 'actief' | 'wacht' | 'afgerond';
 export type TopicType = 'project' | 'thema' | 'taak';
 export interface TopicRegel {
   id: string; titel: string; type: TopicType; status: TopicStatus; aanwijzingen: string; projectId: string | null; projectNaam: string | null;
-  eigenaarId: string | null; eigenaarNaam: string | null; updatedAt: string; afgerondOp: string | null; openPunten: number;
+  eigenaarId: string | null; eigenaarNaam: string | null; klantId: string | null; klantNaam: string | null; updatedAt: string; afgerondOp: string | null; openPunten: number;
   laatsteUpdate: { samenvatting: string; createdAt: string } | null;
 }
 export interface Update { id: string; topicId: string; bron: 'voice' | 'handmatig'; samenvatting: string; besluiten: string; createdAt: string; bewerktOp: string | null }
@@ -25,7 +25,7 @@ export interface Houding { waarde: string; standaard: boolean }
 export const vandaagIso = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' });
 export const deadlineTekst = (iso: string | null) => (iso ? new Date(`${iso}T12:00:00Z`).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) : 'geen deadline');
 export interface TopicDetail {
-  id: string; titel: string; type: TopicType; status: TopicStatus; aanwijzingen: string; projectId: string | null; eigenaarId: string | null;
+  id: string; titel: string; type: TopicType; status: TopicStatus; aanwijzingen: string; projectId: string | null; eigenaarId: string | null; klantId: string | null;
   updates: Update[]; openItems: OpenPunt[];
 }
 export interface Historie { id: string; vorigeSamenvatting: string; vorigeBesluiten: string; gewijzigdOp: string }
@@ -76,3 +76,4 @@ export interface Activiteit {
 }
 export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam' | 'topicTitel'> & { bezoekId: string | null })[] }
 export interface DebriefVragen extends Houding { vorige: string }
+export interface ContactRegel extends KlantContact { klantId: string; klantNaam: string }

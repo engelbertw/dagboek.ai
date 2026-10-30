@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, datumTijd, type Activiteit, type Historie, type Medewerker, type Project, type TopicDetail, type Update } from '../api';
+import { api, datumTijd, type Activiteit, type KlantRegel, type Historie, type Medewerker, type Project, type TopicDetail, type Update } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 import { Punten, PuntToevoegen, useActies } from './ActiviteitenLijst';
 import { TopicVelden, type TopicWaarden } from './TopicVelden';
@@ -68,6 +68,7 @@ export function Onderwerp() {
   const topic = useLaden(() => api<TopicDetail>('GET', `/topics/${id}`), [id]);
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const projecten = useLaden(() => api<Project[]>('GET', '/projects'));
+  const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const [waarden, setWaarden] = useState<TopicWaarden | null>(null);
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [nieuweUpdate, setNieuweUpdate] = useState('');
@@ -75,7 +76,7 @@ export function Onderwerp() {
 
   useEffect(() => {
     const t = topic.data;
-    if (t) setWaarden({ titel: t.titel, type: t.type, status: t.status, projectId: t.projectId, eigenaarId: t.eigenaarId, aanwijzingen: t.aanwijzingen });
+    if (t) setWaarden({ titel: t.titel, type: t.type, status: t.status, projectId: t.projectId, eigenaarId: t.eigenaarId, klantId: t.klantId, aanwijzingen: t.aanwijzingen });
   }, [topic.data]);
 
   if (topic.fout) return <Melding tekst={topic.fout} />;
@@ -98,6 +99,7 @@ export function Onderwerp() {
     <div className="stapel">
       <p><Link to="/">← Dagboek</Link></p>
       <h1>{topic.data.titel}</h1>
+      {topic.data.klantId && <p className="zacht">Gemeente: <Link to={`/klanten/${topic.data.klantId}`}>{klanten.data?.find((k) => k.id === topic.data!.klantId)?.naam ?? 'bekijken'}</Link></p>}
 
       <section className="paneel">
         <h2>Dagboek</h2>
@@ -116,7 +118,7 @@ export function Onderwerp() {
 
       <form className="paneel stapel" onSubmit={bewaar}>
         <h2>Gegevens van dit onderwerp</h2>
-        <TopicVelden waarden={waarden} zet={setWaarden} medewerkers={medewerkers.data ?? []} projecten={projecten.data ?? []} />
+        <TopicVelden waarden={waarden} zet={setWaarden} medewerkers={medewerkers.data ?? []} projecten={projecten.data ?? []} klanten={klanten.data ?? []} />
         {melding && <Melding tekst={melding.tekst} soort={melding.soort} />}
         <div className="rij spreid"><button className="primair" type="submit">Opslaan</button><button type="button" className="gevaar" onClick={verwijder}>Onderwerp verwijderen</button></div>
       </form>

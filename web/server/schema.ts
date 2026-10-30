@@ -43,6 +43,7 @@ export const topics = pgTable('topics', {
   id: id(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
   eigenaarId: uuid('eigenaar_id').references(() => employees.id, { onDelete: 'set null' }),
+  klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'set null' }),
   titel: text('titel').notNull(),
   type: text('type', { enum: ['project', 'thema', 'taak'] }).notNull().default('thema'),
   status: text('status', { enum: ['actief', 'wacht', 'afgerond'] }).notNull().default('actief'),

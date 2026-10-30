@@ -264,6 +264,8 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
             }
           }
 
+          const [topicRij] = await tx.select({ klantId: topics.klantId }).from(topics).where(eq(topics.id, onderwerp.id));
+          const topicKlantId = topicRij?.klantId ?? null;
           const bestaand = (await tx.select({ tekst: activiteiten.omschrijving }).from(activiteiten)
             .where(and(eq(activiteiten.topicId, onderwerp.id), eq(activiteiten.status, 'open')))).map((p) => p.tekst);
           let nieuwBijOnderwerp = 0;
@@ -279,7 +281,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
             const deadline = onderbouwd ? geldigeDeadline(actie.deadline, vandaag) : null;
             const reden = !onderbouwd ? 'bron_niet_te_verifieren' : eigenaar.eigenaarExtern && !komtVoorInGesprek(eigenaar.eigenaarExtern, transcript) ? 'eigenaar_onzeker' : null;
             await tx.insert(activiteiten).values({
-              topicId: onderwerp.id, soort: 'intern', callId, omschrijving: tekst, deadline, deadlineOorspronkelijk: deadline, bron: 'gesprek', controleNodig: !!reden, controleReden: reden, ...eigenaar,
+              topicId: onderwerp.id, klantId: topicKlantId, soort: 'intern', callId, omschrijving: tekst, deadline, deadlineOorspronkelijk: deadline, bron: 'gesprek', controleNodig: !!reden, controleReden: reden, ...eigenaar,
             });
             tellers.nieuweOpenPunten++;
             if (reden) tellers.teControleren++;

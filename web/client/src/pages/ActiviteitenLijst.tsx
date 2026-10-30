@@ -251,7 +251,7 @@ export function PuntToevoegen({ acties, medewerkers, klanten = [], vast = {}, st
   async function verstuur(e: FormEvent) {
     e.preventDefault();
     const ok = await acties.voegToe({
-      omschrijving: w.omschrijving, soort: w.soort, klantId: vast.klantId ?? (w.klantId || null), ...(vast.topicId ? { topicId: vast.topicId } : {}),
+      omschrijving: w.omschrijving, soort: w.soort, ...((vast.klantId ?? w.klantId) ? { klantId: vast.klantId ?? w.klantId } : {}), ...(vast.topicId ? { topicId: vast.topicId } : {}),
       ...(w.eigenaarId ? { eigenaarId: w.eigenaarId } : {}), deadline: w.deadline || null,
     });
     if (ok) { setW(leeg); setOpen(false); }

@@ -131,3 +131,46 @@ describe('klantenlijst van sales met extra kolommen', () => {
     expect((await t.db.select().from(klanten)).find((k) => k.id === blaricum.id)).toMatchObject({ salesAm: 'Iemand anders', inwoners: 12947 });
   });
 });
+
+describe('contactpersonen beheren', () => {
+  it('toont alle contactpersonen met hun klant, bewerkt, verplaatst en verwijdert ze', async () => {
+    const t = await maakTestApp(); open.push(t);
+    await t.api('POST', '/api/klanten/import', { tekst: GEMEENTEN });
+    const alle = (await t.api('GET', '/api/klant-contacten')).json();
+    expect(alle).toHaveLength(3);
+    expect(alle.map((c: any) => c.klantNaam)).toEqual([...alle.map((c: any) => c.klantNaam)].sort());
+    const jan = alle.find((c: any) => c.naam === 'Jan Jansen');
+    const alleen = (await t.api('GET', '/api/klanten')).json().find((k: any) => k.naam === 'Gemeente Alleen');
+    const na = (await t.api('PATCH', `/api/klant-contacten/${jan.id}`, { email: 'jan@voorbeeld.nl', telefoon: '06-12345678', klantId: alleen.id })).json();
+    expect(na).toMatchObject({ naam: 'Jan Jansen', email: 'jan@voorbeeld.nl', klantId: alleen.id });
+    expect((await t.api('PATCH', `/api/klant-contacten/${jan.id}`, { email: 'geen-mail' })).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/klant-contacten/${jan.id}`, {})).statusCode).toBe(400);
+    expect((await t.api('PATCH', `/api/klant-contacten/${jan.id}`, { klantId: '00000000-0000-4000-8000-000000000009' })).statusCode).toBe(404);
+    const nieuw = await t.api('POST', '/api/klant-contacten', { klantId: alleen.id, naam: 'Nieuw Persoon', rol: 'beslisser' });
+    expect(nieuw.statusCode).toBe(201);
+    expect((await t.api('DELETE', `/api/klant-contacten/${nieuw.json().id}`)).statusCode).toBe(200);
+    expect((await t.api('GET', '/api/klant-contacten')).json()).toHaveLength(3);
+  });
+});
+
+describe('dagboekonderwerp bij een gemeente', () => {
+  it('koppelt een onderwerp aan een klant; de punten erven de klant en overleven het wissen van de klant', async () => {
+    const t = await maakTestApp(); open.push(t);
+    const klant = (await t.api('POST', '/api/klanten', { naam: 'Gemeente Goes' })).json();
+    expect((await t.api('POST', '/api/topics', { titel: 'X', klantId: '00000000-0000-4000-8000-000000000009' })).statusCode).toBe(400);
+    const topic = (await t.api('POST', '/api/topics', { titel: 'Zaaksysteem Goes', type: 'project' })).json();
+    const punt = (await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Planning maken' })).json();
+    expect(punt.klantId).toBeNull();
+    // Koppelen verplaatst de bestaande punten naar de klant, ontkoppelen haalt ze weg.
+    expect((await t.api('PATCH', `/api/topics/${topic.id}`, { klantId: klant.id })).json().klantId).toBe(klant.id);
+    const nieuw = (await t.api('POST', '/api/activiteiten', { topicId: topic.id, omschrijving: 'Offerte nakijken' })).json();
+    expect(nieuw.klantId).toBe(klant.id);
+    const alle = (await t.api('GET', `/api/activiteiten?klantId=${klant.id}`)).json();
+    expect(alle.map((a: any) => a.omschrijving).sort()).toEqual(['Offerte nakijken', 'Planning maken']);
+    expect((await t.api('GET', '/api/topics')).json()[0]).toMatchObject({ klantId: klant.id, klantNaam: 'Gemeente Goes' });
+    // Een klant wissen laat het onderwerp en zijn punten bestaan.
+    expect((await t.api('DELETE', `/api/klanten/${klant.id}`)).statusCode).toBe(200);
+    expect((await t.api('GET', '/api/topics')).json()[0].klantId).toBeNull();
+    expect((await t.api('GET', `/api/activiteiten?topicId=${topic.id}`)).json()).toHaveLength(2);
+  });
+});

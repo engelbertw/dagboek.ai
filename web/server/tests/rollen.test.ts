@@ -14,7 +14,7 @@ describe('rollen', () => {
     expect(magDoen('beheerder', 'DELETE', '/api/medewerkers/x')).toBe(true);
     expect(magDoen(undefined, 'GET', '/api/gebruikers')).toBe(true); // oude sessies zonder rol zijn beheerder
     for (const [m, p] of [['GET', '/api/activiteiten'], ['POST', '/api/activiteiten'], ['PATCH', `/api/activiteiten/${ID}`], ['POST', `/api/activiteiten/${ID}/controle`],
-      ['DELETE', `/api/activiteiten/${ID}`], ['GET', '/api/klanten'], ['PATCH', `/api/klanten/${ID}`], ['GET', '/api/employees']]) expect(magDoen('accountmanager', m, p), `${m} ${p}`).toBe(true);
+      ['DELETE', `/api/activiteiten/${ID}`], ['GET', '/api/klanten'], ['GET', '/api/klant-contacten'], ['PATCH', `/api/klant-contacten/${ID}`], ['PATCH', `/api/klanten/${ID}`], ['GET', '/api/employees']]) expect(magDoen('accountmanager', m, p), `${m} ${p}`).toBe(true);
     for (const [m, p] of [['POST', '/api/activiteiten/jira'], ['GET', '/api/gebruikers'], ['POST', '/api/gebruikers'], ['GET', '/api/gesprekken'], ['PUT', '/api/instellingen/jira'],
       ['GET', '/api/instellingen/jira'], ['POST', '/api/klanten/import'], ['DELETE', `/api/klanten/${ID}`], ['POST', `/api/klanten/${ID}/controle`], ['POST', '/api/employees'],
       ['GET', '/api/topics'], ['GET', '/api/dashboard'], ['PATCH', `/api/employees/${ID}`]]) expect(magDoen('accountmanager', m, p), `${m} ${p}`).toBe(false);

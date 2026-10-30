@@ -89,11 +89,11 @@ export async function voegAandachtspuntToe(db: Db, callId: string, naam: string,
   const m = await vindMedewerker(db, naam);
   if ('ok' in m) return m;
   const q = schoon(onderwerp, 200).toLowerCase();
-  const actief = await db.select({ id: topics.id, titel: topics.titel }).from(topics).where(and(eq(topics.eigenaarId, m.id), eq(topics.status, 'actief')));
+  const actief = await db.select({ id: topics.id, titel: topics.titel, klantId: topics.klantId }).from(topics).where(and(eq(topics.eigenaarId, m.id), eq(topics.status, 'actief')));
   const treffers = q ? actief.filter((t) => t.titel.toLowerCase().includes(q)) : [];
   if (treffers.length !== 1) return fout(treffers.length ? 'meerdere_onderwerpen' : 'onderwerp_niet_gevonden', { onderwerpen: actief.slice(0, 10).map((t) => schoon(t.titel, 100)) });
   await db.insert(activiteiten).values({
-    topicId: treffers[0].id, soort: 'intern', omschrijving: punt, callId, eigenaarId: m.id, bron: 'gesprek', controleNodig: true,
+    topicId: treffers[0].id, klantId: treffers[0].klantId, soort: 'intern', omschrijving: punt, callId, eigenaarId: m.id, bron: 'gesprek', controleNodig: true,
     controleReden: `Telefonisch toegevoegd door ${g.beller.naam} (codewoord genoemd)`,
   });
   await logGebeurtenis(db, callId, 'voice', 'tool:aandachtspunt_toegevoegd');
