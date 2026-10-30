@@ -20,3 +20,27 @@ describe('migratie 003 (e-mail)', () => {
     await h.close();
   }, 60_000);
 });
+
+describe('migratie 019 (verkoop-debrief)', () => {
+  it('laat bestaande medewerkers en gesprekken op hun oude soort en weigert onbekende waarden', async () => {
+    const h = await connectMemory();
+    await migrate(h);
+    await h.db.execute(`insert into employees (naam, telefoon) values ('A','1')` as any);
+    await h.db.execute(`insert into calls (employee_id) select id from employees` as any);
+    const r: any = await h.db.execute(`select e.rol, c.type from employees e join calls c on c.employee_id = e.id` as any);
+    expect((r.rows ?? r)[0]).toEqual({ rol: 'medewerker', type: 'dagboek' });
+    await expect(h.db.execute(`update employees set rol = 'baas'` as any)).rejects.toThrow();
+    await expect(h.db.execute(`update calls set type = 'iets'` as any)).rejects.toThrow();
+    await expect(h.db.execute(`insert into klanten (naam, status) values ('K', 'onzin')` as any)).rejects.toThrow();
+    // Eén bezoek per gesprek, en een activiteit zonder klant mag (wacht dan op controle).
+    await h.db.execute(`insert into klanten (naam) values ('K')` as any);
+    const klant: any = await h.db.execute(`select id from klanten` as any);
+    const call: any = await h.db.execute(`select id from calls` as any);
+    const kid = (klant.rows ?? klant)[0].id, cid = (call.rows ?? call)[0].id;
+    await h.db.execute(`insert into bezoeken (klant_id, call_id) values ('${kid}', '${cid}')` as any);
+    await expect(h.db.execute(`insert into bezoeken (klant_id, call_id) values ('${kid}', '${cid}')` as any)).rejects.toThrow();
+    await h.db.execute(`insert into klant_activiteiten (soort, omschrijving) values ('kans', 'x')` as any);
+    await expect(h.db.execute(`insert into klant_activiteiten (soort, omschrijving) values ('verzonnen', 'x')` as any)).rejects.toThrow();
+    await h.close();
+  }, 60_000);
+});

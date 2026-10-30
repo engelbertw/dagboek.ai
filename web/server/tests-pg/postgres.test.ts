@@ -38,8 +38,9 @@ describe('migraties op een echte Postgres', () => {
     const h = await connectPostgres(d.url); opruimen.push(h.close);
     await migrate(h, migratiesTot('009'));
     const db = h.db;
-    const [m1] = await db.insert(employees).values({ naam: 'Met', telefoon: '0612345678', toestemmingOp: new Date('2026-09-01T10:00:00Z') }).returning();
-    const [m2] = await db.insert(employees).values({ naam: 'Zonder', telefoon: '0687654321' }).returning();
+    // Platte SQL: op stand 009 bestaan de latere kolommen van het schema (zoals rol) nog niet, dus drizzle kan hier niet invoegen.
+    const [m1] = rijen(await db.execute(sql`insert into employees (naam, telefoon, toestemming_op) values ('Met', '0612345678', '2026-09-01T10:00:00Z') returning id`));
+    const [m2] = rijen(await db.execute(sql`insert into employees (naam, telefoon) values ('Zonder', '0687654321') returning id`));
     await h.exec(`INSERT INTO projects (naam) VALUES ('P')`);
     const t = rijen(await db.execute(sql`insert into topics (titel, eigenaar_id) values ('T', ${m1.id}) returning id`))[0].id;
     const [c] = await h.db.execute(sql`insert into calls (employee_id, status, transcript) values (${m1.id}, 'gesproken', '[{"role":"user","content":"hoi"}]'::jsonb) returning id`).then(rijen);
