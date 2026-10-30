@@ -7,6 +7,81 @@ const ROL_LABEL: Record<GebruikersRol, string> = { beheerder: 'Beheerder', accou
 
 interface Gebruiker { id: string; email: string; naam: string; rol: GebruikersRol; actief: boolean; mfa: boolean; aangemaakt: string | null }
 
+interface Kandidaat { id: string; naam: string; email: string; actief: boolean; status: 'kan' | 'heeft_account' | 'geen_email' }
+interface BulkRegel { id: string; naam: string; email: string; status: 'aangemaakt' | 'heeft_account' | 'geen_email' | 'ongeldig_email' | 'fout'; tijdelijkWachtwoord?: string; reden?: string }
+const BULK_STATUS: Record<BulkRegel['status'], string> = { aangemaakt: 'aangemaakt', heeft_account: 'had al een account', geen_email: 'geen e-mailadres', ongeldig_email: 'ongeldig e-mailadres', fout: 'mislukt' };
+
+/** Accounts maken voor medewerkers die al in het dagboek staan. Er gaat geen mail uit: de tijdelijke wachtwoorden geef je zelf door. */
+function UitMedewerkers({ klaar }: { klaar: () => void }) {
+  const kandidaten = useLaden(() => api<Kandidaat[]>('GET', '/gebruikers/kandidaten'));
+  const [gekozen, setGekozen] = useState<string[]>([]);
+  const [rol, setRol] = useState<GebruikersRol>('accountmanager');
+  const [resultaat, setResultaat] = useState<BulkRegel[] | null>(null);
+  const [fout, setFout] = useState<string | null>(null);
+  const kan = (kandidaten.data ?? []).filter((k) => k.status === 'kan');
+  const wissel = (id: string) => setGekozen((g) => (g.includes(id) ? g.filter((x) => x !== id) : [...g, id]));
+  async function maak() {
+    if (!window.confirm(`${gekozen.length} account${gekozen.length === 1 ? '' : 's'} aanmaken met de rol ${ROL_LABEL[rol].toLowerCase()}?`)) return;
+    try {
+      const r = await api<{ resultaat: BulkRegel[] }>('POST', '/gebruikers/uit-medewerkers', { employeeIds: gekozen, rol });
+      setResultaat(r.resultaat); setGekozen([]); setFout(null); klaar(); void kandidaten.ververs();
+    } catch (e) { setFout(foutTekst(e)); }
+  }
+  const nieuw = (resultaat ?? []).filter((r) => r.status === 'aangemaakt');
+  const kopieer = () => void navigator.clipboard?.writeText(nieuw.map((r) => `${r.naam}\t${r.email}\t${r.tijdelijkWachtwoord}`).join('\n'));
+  return (
+    <section className="paneel stapel" aria-label="Gebruikers uit medewerkers">
+      <h2>Medewerkers toegang geven</h2>
+      <p className="zacht klein">Maak in één keer accounts voor medewerkers uit de lijst Medewerkers. Alleen medewerkers met een e-mailadres komen in aanmerking. Er gaat geen e-mail uit: je krijgt tijdelijke wachtwoorden die je zelf doorgeeft. Bij de eerste login kiest iedereen een eigen wachtwoord en koppelt een authenticator-app.</p>
+      <Melding tekst={fout ?? kandidaten.fout} />
+      {kandidaten.data && (
+        <>
+          <div className="rij">
+            <button type="button" onClick={() => setGekozen(gekozen.length === kan.length ? [] : kan.map((k) => k.id))} disabled={!kan.length}>{gekozen.length === kan.length && kan.length > 0 ? 'Niemand kiezen' : `Alle ${kan.length} kiezen`}</button>
+            <select aria-label="Rol" value={rol} onChange={(e) => setRol(e.target.value as GebruikersRol)}>
+              {(Object.keys(ROL_LABEL) as GebruikersRol[]).map((r) => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
+            </select>
+            <button type="button" className="primair" disabled={!gekozen.length} onClick={() => void maak()}>{gekozen.length} account{gekozen.length === 1 ? '' : 's'} aanmaken</button>
+          </div>
+          {kandidaten.data.length === 0 && <Leeg>Nog geen medewerkers.</Leeg>}
+          <ul className="werk-lijst">
+            {kandidaten.data.map((k) => (
+              <li key={k.id} className="werk-regel">
+                <input type="checkbox" className="werk-vink" disabled={k.status !== 'kan'} checked={gekozen.includes(k.id)} onChange={() => wissel(k.id)} aria-label={`Account voor ${k.naam}`} />
+                <div className="werk-inhoud">
+                  <p className="werk-tekst">{k.naam}</p>
+                  <p className="werk-meta"><span>{k.email || 'geen e-mailadres'}</span>{k.status === 'heeft_account' && <Badge soort="afgerond">heeft al een account</Badge>}{k.status === 'geen_email' && <Badge soort="wacht">vul eerst een e-mailadres in bij Medewerkers</Badge>}{!k.actief && <Badge soort="wacht">niet actief</Badge>}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {resultaat && (
+        <div className="stapel" aria-live="polite">
+          <h3>Resultaat</h3>
+          {nieuw.length > 0 && <p className="zacht klein">De wachtwoorden worden maar één keer getoond. Geef ze veilig door; iedereen moet het wachtwoord bij de eerste login wijzigen.</p>}
+          <ul className="werk-lijst">
+            {resultaat.map((r) => (
+              <li key={r.id} className="werk-regel">
+                <div className="werk-inhoud">
+                  <p className="werk-tekst">{r.naam} <span className="zacht klein">{r.email}</span></p>
+                  <p className="werk-meta"><span>{BULK_STATUS[r.status]}{r.reden ? `: ${r.reden}` : ''}</span></p>
+                  {r.tijdelijkWachtwoord && <div className="wachtwoordvak">{r.tijdelijkWachtwoord}</div>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="rij">
+            {nieuw.length > 0 && <button type="button" onClick={kopieer}>Alles kopiëren</button>}
+            <button type="button" onClick={() => setResultaat(null)}>Klaar, verberg</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   const lijst = useLaden(() => api<Gebruiker[]>('GET', '/gebruikers'));
   const [fout, setFout] = useState<string | null>(null);
@@ -96,6 +171,8 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
           </div>
         )}
       </section>
+
+      <UitMedewerkers klaar={lijst.ververs} />
 
       <form className="paneel stapel" onSubmit={voegToe}>
         <h2>Gebruiker toevoegen</h2>

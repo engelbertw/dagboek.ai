@@ -201,7 +201,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     return sessie ? { ingelogd: true, email: sessie.email, naam: sessie.naam ?? sessie.email, rol: normaleRol(sessie.rol), ...opties } : { ingelogd: false, ...opties };
   });
 
-  registreerGebruikers(app, gebruikersbeheer, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
+  registreerGebruikers(app, gebruikersbeheer, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
 
   // ── Medewerkers ─────────────────────────────────────────────────────────
   app.get('/api/employees', async (req) => {

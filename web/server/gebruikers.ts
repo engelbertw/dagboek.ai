@@ -4,7 +4,10 @@
  */
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { asc } from 'drizzle-orm';
 import { z } from 'zod';
+import type { Db } from './db.js';
+import { employees } from './schema.js';
 import type { KeycloakConfig } from './config.js';
 import { ACCOUNTMANAGER_ROL, BEHEERDER_ROL, ROLLEN, type GebruikersRol } from './rollen.js';
 import { log } from './log.js';
@@ -135,7 +138,7 @@ const nieuweGebruiker = z.object({
 });
 
 /** `ikEmail` geeft het e-mailadres van wie ingelogd is, zodat je jezelf niet kunt uitzetten of verwijderen. */
-export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBeheer | undefined, ikEmail: (req: unknown) => string | null) {
+export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBeheer | undefined, db: Db, ikEmail: (req: unknown) => string | null) {
   const ontbreekt = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => reply.code(503).send({ fout: 'Gebruikersbeheer is niet ingesteld (Keycloak ontbreekt)' });
 
   const metFout = async (reply: any, taak: () => Promise<unknown>) => {
@@ -148,6 +151,45 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
   app.get('/api/gebruikers', async (_req, reply) => {
     if (!beheer) return ontbreekt(reply);
     return metFout(reply, () => beheer.lijst());
+  });
+
+  // Medewerkers die een account kunnen krijgen: met een e-mailadres en nog zonder account in Keycloak.
+  app.get('/api/gebruikers/kandidaten', async (_req, reply) => {
+    if (!beheer) return ontbreekt(reply);
+    return metFout(reply, async () => {
+      const bestaand = new Set((await beheer.lijst()).map((g) => g.email.toLowerCase()));
+      const rijen = await db.select({ id: employees.id, naam: employees.naam, email: employees.email, actief: employees.actief, rol: employees.rol }).from(employees).orderBy(asc(employees.naam));
+      return rijen.map((m) => ({ ...m, status: !m.email ? 'geen_email' : bestaand.has(m.email.toLowerCase()) ? 'heeft_account' : 'kan' }));
+    });
+  });
+
+  // Accounts maken voor geselecteerde medewerkers. Wie geen e-mailadres heeft of al een account heeft, wordt overgeslagen.
+  app.post('/api/gebruikers/uit-medewerkers', async (req, reply) => {
+    if (!beheer) return ontbreekt(reply);
+    const b = z.object({ employeeIds: z.array(uuid).min(1).max(100), rol: z.enum(ROLLEN).default(ACCOUNTMANAGER_ROL) }).parse(req.body);
+    return metFout(reply, async () => {
+      const bestaand = new Set((await beheer.lijst()).map((g) => g.email.toLowerCase()));
+      const rijen = await db.select({ id: employees.id, naam: employees.naam, email: employees.email }).from(employees).orderBy(asc(employees.naam));
+      const uitkomst: { id: string; naam: string; email: string; status: 'aangemaakt' | 'heeft_account' | 'geen_email' | 'ongeldig_email' | 'fout'; tijdelijkWachtwoord?: string; reden?: string }[] = [];
+      for (const m of rijen.filter((r) => b.employeeIds.includes(r.id))) {
+        const email = m.email.trim().toLowerCase();
+        if (!email) { uitkomst.push({ id: m.id, naam: m.naam, email, status: 'geen_email' }); continue; }
+        if (!z.string().email().safeParse(email).success) { uitkomst.push({ id: m.id, naam: m.naam, email, status: 'ongeldig_email' }); continue; }
+        if (bestaand.has(email)) { uitkomst.push({ id: m.id, naam: m.naam, email, status: 'heeft_account' }); continue; }
+        const wachtwoord = tijdelijkWachtwoord();
+        try {
+          await beheer.maak({ email, naam: m.naam, wachtwoord, rol: b.rol });
+          bestaand.add(email);
+          uitkomst.push({ id: m.id, naam: m.naam, email, status: 'aangemaakt', tijdelijkWachtwoord: wachtwoord });
+        } catch (e) {
+          if (!(e instanceof BeheerFout)) throw e;
+          uitkomst.push({ id: m.id, naam: m.naam, email, status: 'fout', reden: e.message });
+          if (e.status === 502 || e.message.includes('bestaat nog niet')) break; // Keycloak onbereikbaar of rol ontbreekt: doorgaan heeft geen zin
+        }
+      }
+      log('info', 'gebruikers.uit_medewerkers', { rol: b.rol, aangemaakt: uitkomst.filter((u) => u.status === 'aangemaakt').length });
+      return { rol: b.rol, resultaat: uitkomst };
+    });
   });
 
   app.post('/api/gebruikers', async (req, reply) => {

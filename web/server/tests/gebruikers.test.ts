@@ -98,6 +98,25 @@ describe('gebruikersbeheer (routes)', () => {
   });
 });
 
+describe('gebruikers uit medewerkers', () => {
+  it('maakt accounts voor gekozen medewerkers en slaat wie geen e-mail of al een account heeft over', async () => {
+    const beheer = geheugenBeheer();
+    const { api } = await metBeheer(beheer);
+    const maak = async (naam: string, email: string) => (await api('POST', '/api/employees', { naam, telefoon: String(Math.random()).slice(2, 12), email })).json();
+    const daan = await maak('Daan Dagboek', 'Daan@Test.nl'); const zonder = await maak('Zonder Mail', ''); const ruben = await maak('Ruben', 'ruben@test.nl');
+    const kand = (await api('GET', '/api/gebruikers/kandidaten')).json();
+    expect(kand.map((k: any) => [k.naam, k.status])).toEqual([['Daan Dagboek', 'kan'], ['Ruben', 'heeft_account'], ['Zonder Mail', 'geen_email']]);
+    const r = (await api('POST', '/api/gebruikers/uit-medewerkers', { employeeIds: [daan.id, zonder.id, ruben.id], rol: 'accountmanager' })).json();
+    expect(r.resultaat.map((x: any) => [x.naam, x.status])).toEqual([['Daan Dagboek', 'aangemaakt'], ['Ruben', 'heeft_account'], ['Zonder Mail', 'geen_email']]);
+    expect(r.resultaat[0].tijdelijkWachtwoord).toBe(beheer.wachtwoorden[0]);
+    expect(beheer.gebruikers.at(-1)).toMatchObject({ email: 'daan@test.nl', naam: 'Daan Dagboek', rol: 'accountmanager' });
+    // Opnieuw doen maakt niets dubbel.
+    const nogmaals = (await api('POST', '/api/gebruikers/uit-medewerkers', { employeeIds: [daan.id] })).json();
+    expect(nogmaals.resultaat[0].status).toBe('heeft_account');
+    expect((await api('POST', '/api/gebruikers/uit-medewerkers', { employeeIds: [] })).statusCode).toBe(400);
+  });
+});
+
 describe('gebruikersbeheer: rollen', () => {
   it('maakt een accountmanager aan en wijzigt de rol, maar niet bij jezelf of de laatste beheerder', async () => {
     const beheer = geheugenBeheer();
