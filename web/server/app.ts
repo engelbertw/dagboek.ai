@@ -30,6 +30,7 @@ import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
 import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
+import { beoordeelLijst } from './medewerkers-import.js';
 
 const COOKIE = 'dagboek_sessie';
 const uuid = z.string().uuid();
@@ -146,6 +147,20 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, ach
 
   // ── Medewerkers ─────────────────────────────────────────────────────────
   app.get('/api/employees', async () => db.select().from(employees).orderBy(asc(employees.naam)));
+  // Een geplakte lijst in één keer toevoegen. Met `voorbeeld` gebeurt er niets; zonder worden alleen de nieuwe, geldige regels toegevoegd.
+  app.post('/api/employees/import', async (req) => {
+    const b = z.object({ tekst: z.string().max(20_000), rol: z.enum(['medewerker', 'accountmanager']), voorbeeld: z.boolean().default(false) }).parse(req.body);
+    return db.transaction(async (tx) => {
+      // Vergrendelt de tabel tegen een tweede import op hetzelfde moment, zodat een nummer niet dubbel kan ontstaan.
+      await tx.execute(sql`lock table employees in share row exclusive mode`);
+      const regels = beoordeelLijst(b.tekst, await tx.select({ naam: employees.naam, telefoon: employees.telefoon }).from(employees));
+      const nieuw = regels.filter((r) => r.status === 'nieuw');
+      if (!b.voorbeeld && nieuw.length) {
+        await tx.insert(employees).values(nieuw.map((r) => ({ naam: r.naam, telefoon: r.telefoon, email: r.email, locgovGebruikersnaam: r.locgovGebruikersnaam, rol: b.rol })));
+      }
+      return { regels, toegevoegd: b.voorbeeld ? 0 : nieuw.length };
+    });
+  });
   app.post('/api/employees', async (req, reply) => {
     const b = medewerkerBody.parse(req.body);
     const rij = await db.transaction(async (tx) => {

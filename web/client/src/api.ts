@@ -1,4 +1,10 @@
 export type Rol = 'medewerker' | 'accountmanager';
+export interface ImportRegel { naam: string; telefoon: string; email: string; status: 'nieuw' | 'bestaat_al' | 'dubbel_in_lijst' | 'ongeldig'; reden?: string }
+export interface KlantenImportUitkomst {
+  gemeenten: { naam: string; status: 'nieuw' | 'bestaat_al'; contacten: { naam: string; functie: string; rol: string; status: 'nieuw' | 'bestaat_al' }[] }[];
+  fouten: string[]; toegevoegd: { gemeenten: number; contacten: number };
+}
+export interface ImportUitkomst { regels: ImportRegel[]; toegevoegd: number }
 export interface Medewerker { id: string; naam: string; telefoon: string; email: string; locgovGebruikersnaam: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string; rol: Rol }
 export interface Project { id: string; naam: string; omschrijving: string; status: 'actief' | 'afgerond' }
 export type TopicStatus = 'actief' | 'wacht' | 'afgerond';

@@ -1,13 +1,61 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, api, datum, type KlantRegel, type KlantStatus } from '../api';
+import { KLANT_STATUS_LABEL, api, datum, type KlantRegel, type KlantStatus, type KlantenImportUitkomst } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+
+function Importeren({ klaar }: { klaar: () => void }) {
+  const [tekst, setTekst] = useState('');
+  const [status, setStatus] = useState<'klant' | 'prospect'>('klant');
+  const [voorbeeld, setVoorbeeld] = useState<KlantenImportUitkomst | null>(null);
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  const nieuweContacten = voorbeeld?.gemeenten.reduce((n, g) => n + g.contacten.filter((c) => c.status === 'nieuw').length, 0) ?? 0;
+  const nieuweGemeenten = voorbeeld?.gemeenten.filter((g) => g.status === 'nieuw').length ?? 0;
+  async function toon() {
+    try { setVoorbeeld(await api<KlantenImportUitkomst>('POST', '/klanten/import', { tekst, status, voorbeeld: true })); setMelding(null); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  async function voegToe() {
+    try {
+      const r = await api<KlantenImportUitkomst>('POST', '/klanten/import', { tekst, status });
+      setMelding({ tekst: `${r.toegevoegd.gemeenten} gemeenten en ${r.toegevoegd.contacten} contactpersonen toegevoegd.`, soort: 'ok' });
+      setTekst(''); setVoorbeeld(null); klaar();
+    } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  return (
+    <section className="paneel stapel" aria-label="Lijst importeren">
+      <h2>Lijst importeren</h2>
+      <p className="zacht klein">Plak een lijst met per regel: <strong>Gemeente ; Contactpersoon ; Functie ; Rol</strong>, gescheiden door een tab (plakken uit Excel), een puntkomma of een verticale streep. Een lege eerste kolom betekent dezelfde gemeente als hierboven; een regel met alleen een gemeente voegt alleen de gemeente toe. Er worden alleen naam, functie en rol bewaard. Je ziet eerst een voorbeeld; bestaande gemeenten en contactpersonen worden niet dubbel toegevoegd.</p>
+      <Veld label="Lijst"><textarea rows={8} value={tekst} onChange={(e) => { setTekst(e.target.value); setVoorbeeld(null); }} placeholder={'Gemeente Voorbeeld; Jan Jansen; Teamleider ICT; Beslisser\n; Piet Pieters; Inkoper; Adviseur'} /></Veld>
+      <Veld label="Status van nieuwe gemeenten">
+        <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="klant">Klant</option><option value="prospect">Prospect</option></select>
+      </Veld>
+      {voorbeeld && (
+        <div className="stapel">
+          {voorbeeld.fouten.map((f) => <Melding key={f} tekst={f} />)}
+          {voorbeeld.gemeenten.map((g) => (
+            <div key={g.naam}>
+              <strong>{g.naam}</strong> <Badge soort={g.status === 'nieuw' ? '' : 'wacht'}>{g.status === 'nieuw' ? 'nieuwe gemeente' : 'bestaat al'}</Badge>
+              <ul className="klein" style={{ margin: '2px 0 0', paddingLeft: 20 }}>
+                {g.contacten.map((c, i) => <li key={i}>{c.naam}{(c.functie || c.rol) && <span className="zacht"> · {[c.functie, c.rol].filter(Boolean).join(' · ')}</span>} <span className="zacht">({c.status === 'nieuw' ? 'wordt toegevoegd' : 'staat er al'})</span></li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      <Melding tekst={melding?.tekst ?? null} soort={melding?.soort} />
+      <div className="rij">
+        <button type="button" onClick={() => void toon()} disabled={!tekst.trim()}>Voorbeeld tonen</button>
+        <button type="button" className="primair" onClick={() => void voegToe()} disabled={!voorbeeld || (nieuweGemeenten === 0 && nieuweContacten === 0)}>{voorbeeld ? `${nieuweGemeenten} gemeenten en ${nieuweContacten} contactpersonen toevoegen` : 'Toevoegen'}</button>
+      </div>
+    </section>
+  );
+}
 
 export function Klanten() {
   const lijst = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const [zoek, setZoek] = useState('');
   const [nieuw, setNieuw] = useState<{ naam: string; status: KlantStatus } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
+  const [importeer, setImporteer] = useState(false);
   const zichtbaar = (lijst.data ?? []).filter((k) => k.naam.toLowerCase().includes(zoek.trim().toLowerCase()));
   const voorgesteld = (lijst.data ?? []).filter((k) => k.status === 'voorgesteld');
 
@@ -19,8 +67,12 @@ export function Klanten() {
     <div className="stapel">
       <div className="rij spreid">
         <div><h1>Klanten</h1><p className="zacht">Klanten uit verkoop-debriefs, met bezoeken, afspraken en kansen. Een klant die alleen uit een gesprek komt is een voorstel tot jij hem bevestigt.</p></div>
-        <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', status: 'klant' })}>{nieuw ? 'Annuleren' : 'Nieuwe klant'}</button>
+        <div className="rij">
+          <button onClick={() => setImporteer(!importeer)} aria-expanded={importeer}>{importeer ? 'Importeren sluiten' : 'Lijst importeren'}</button>
+          <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', status: 'klant' })}>{nieuw ? 'Annuleren' : 'Nieuwe klant'}</button>
+        </div>
       </div>
+      {importeer && <Importeren klaar={lijst.ververs} />}
       {nieuw && (
         <form className="paneel stapel" onSubmit={maakAan}>
           <div className="raster">

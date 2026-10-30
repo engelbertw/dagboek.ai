@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { api, datum, MOTOR_LABEL, type Medewerker, type Motor, type Rol } from '../api';
+import { api, datum, MOTOR_LABEL, type ImportRegel, type ImportUitkomst, type Medewerker, type Motor, type Rol } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 function Overzichtsrol({ m, heeft, ververs }: { m: Medewerker; heeft: boolean; ververs: () => void }) {
@@ -96,11 +96,59 @@ function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: ()
   );
 }
 
+const IMPORT_STATUS: Record<ImportRegel['status'], string> = { nieuw: 'wordt toegevoegd', bestaat_al: 'overgeslagen', dubbel_in_lijst: 'overgeslagen', ongeldig: 'overgeslagen' };
+
+function Importeren({ klaar }: { klaar: () => void }) {
+  const [tekst, setTekst] = useState('');
+  const [rol, setRol] = useState<Rol>('accountmanager');
+  const [voorbeeld, setVoorbeeld] = useState<ImportRegel[] | null>(null);
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  const nieuw = voorbeeld?.filter((r) => r.status === 'nieuw').length ?? 0;
+  async function toon() {
+    try { setVoorbeeld((await api<ImportUitkomst>('POST', '/employees/import', { tekst, rol, voorbeeld: true })).regels); setMelding(null); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  async function voegToe() {
+    try {
+      const r = await api<ImportUitkomst>('POST', '/employees/import', { tekst, rol });
+      setMelding({ tekst: `${r.toegevoegd} ${r.toegevoegd === 1 ? 'medewerker' : 'medewerkers'} toegevoegd als ${rol === 'accountmanager' ? 'accountmanager' : 'medewerker'}.`, soort: 'ok' });
+      setTekst(''); setVoorbeeld(null); klaar();
+    } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  return (
+    <section className="paneel stapel" aria-label="Lijst importeren">
+      <h2>Lijst importeren</h2>
+      <p className="zacht klein">Plak een lijst met per regel een naam, een telefoonnummer en een e-mailadres, in elke volgorde. Je ziet eerst een voorbeeld; er wordt niets toegevoegd voordat je bevestigt. Een nummer of naam die al bestaat wordt overgeslagen. Toestemming voor het bewaren van gesprekken staat na het importeren nog uit.</p>
+      <Veld label="Lijst"><textarea rows={8} value={tekst} onChange={(e) => { setTekst(e.target.value); setVoorbeeld(null); }} placeholder={'Jan Jansen   +31 6 12345678   jan@voorbeeld.nl'} /></Veld>
+      <Veld label="Rol voor alle regels">
+        <select value={rol} onChange={(e) => setRol(e.target.value as Rol)}>
+          <option value="accountmanager">Accountmanager (verkoop-debrief)</option><option value="medewerker">Medewerker (dagboek)</option>
+        </select>
+      </Veld>
+      {voorbeeld && (
+        <table>
+          <thead><tr><th>Naam</th><th>Telefoon</th><th>E-mail</th><th>Resultaat</th></tr></thead>
+          <tbody>
+            {voorbeeld.map((r, i) => (
+              <tr key={i}><td>{r.naam}</td><td>{r.telefoon}</td><td>{r.email}</td><td>{IMPORT_STATUS[r.status]}{r.reden && <span className="zacht klein"> · {r.reden}</span>}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <Melding tekst={melding?.tekst ?? null} soort={melding?.soort} />
+      <div className="rij">
+        <button type="button" onClick={() => void toon()} disabled={!tekst.trim()}>Voorbeeld tonen</button>
+        <button type="button" className="primair" onClick={() => void voegToe()} disabled={!voorbeeld || nieuw === 0}>{nieuw ? `${nieuw} toevoegen` : 'Toevoegen'}</button>
+      </div>
+    </section>
+  );
+}
+
 export function Medewerkers() {
   const lijst = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const rollen = useLaden(() => api<string[]>('GET', '/overzicht-toegang'));
   const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string; rol: Rol } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
+  const [importeer, setImporteer] = useState(false);
 
   async function maakAan(e: FormEvent) {
     e.preventDefault();
@@ -110,8 +158,12 @@ export function Medewerkers() {
     <div className="stapel">
       <div className="rij spreid">
         <div><h1>Medewerkers</h1><p className="zacht">Collega’s die we bellen voor een update. Een accountmanager die inbelt krijgt een verkoop-debrief in plaats van het dagboek.</p></div>
-        <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '', rol: 'medewerker' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
+        <div className="rij">
+          <button onClick={() => setImporteer(!importeer)} aria-expanded={importeer}>{importeer ? 'Importeren sluiten' : 'Lijst importeren'}</button>
+          <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '', rol: 'medewerker' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
+        </div>
       </div>
+      {importeer && <Importeren klaar={lijst.ververs} />}
       {nieuw && (
         <form className="paneel stapel" onSubmit={maakAan}>
           <div className="raster">

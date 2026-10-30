@@ -6,6 +6,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
+import { beoordeelKlantenLijst } from './klanten-import.js';
 import { bewaarDebriefVragen, leesDebriefVragen, leesVorigeDebriefVragen } from './instellingen.js';
 import { bezoeken, employees, klantActiviteiten, klantContacten, klanten } from './schema.js';
 
@@ -35,6 +36,30 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     openActiviteiten: sql<number>`(select count(*)::int from ${klantActiviteiten} where ${klantActiviteiten.klantId} = ${klanten.id} and ${klantActiviteiten.status} = 'open')`,
     laatsteBezoek: sql<string | null>`(select max(${bezoeken.datum})::text from ${bezoeken} where ${bezoeken.klantId} = ${klanten.id})`,
   }).from(klanten).leftJoin(employees, eq(klanten.accountmanagerId, employees.id)).orderBy(asc(klanten.naam)));
+
+  // Een geplakte lijst gemeenten met contactpersonen. Met `voorbeeld` gebeurt er niets; zonder worden nieuwe gemeenten en nieuwe contactpersonen toegevoegd.
+  app.post('/api/klanten/import', async (req) => {
+    const b = z.object({ tekst: z.string().max(50_000), status: z.enum(['klant', 'prospect']).default('klant'), voorbeeld: z.boolean().default(false) }).parse(req.body);
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`lock table klanten in share row exclusive mode`);
+      const uitkomst = beoordeelKlantenLijst(b.tekst, await tx.select({ id: klanten.id, naam: klanten.naam }).from(klanten), await tx.select({ klantId: klantContacten.klantId, naam: klantContacten.naam }).from(klantContacten));
+      let gemeenten = 0, contacten = 0;
+      if (!b.voorbeeld) {
+        for (const g of uitkomst.gemeenten) {
+          let klantId = g.klantId;
+          if (!klantId) {
+            klantId = (await tx.insert(klanten).values({ naam: g.naam, status: b.status, bron: 'handmatig' }).returning({ id: klanten.id }))[0].id;
+            gemeenten++;
+          }
+          for (const c of g.contacten.filter((x) => x.status === 'nieuw')) {
+            await tx.insert(klantContacten).values({ klantId, naam: c.naam, functie: c.functie, rol: c.rol });
+            contacten++;
+          }
+        }
+      }
+      return { ...uitkomst, toegevoegd: { gemeenten, contacten } };
+    });
+  });
 
   app.post('/api/klanten', async (req, reply) => {
     const b = klantBody.partial({ status: true, accountmanagerId: true, omschrijving: true, contractEinde: true }).parse(req.body);
