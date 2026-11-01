@@ -322,3 +322,23 @@ def test_inkomend_zonder_type_blijft_het_dagboek(monkeypatch):
     monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, WEB_ANTWOORD))
     antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_e"})
     assert antw["dynamic_variables"]["prompt_version"] == "dagboek-v4"
+
+
+def test_inkomend_consultant_en_keuze_krijgen_eigen_prompt_versie_en_varianten(monkeypatch):
+    monkeypatch.setenv("INKOMEND_TOOLS", "true")
+    for nr, (soort, versie) in enumerate([("consultant_debrief", "consultant-debrief-v1"), ("debrief_keuze", "debrief-keuze-v1")]):
+        web = {**WEB_ANTWOORD, "callId": f"c-{nr}", "type": soort, "varianten": ["project"], "onderwerpen": [], "instructie": "Algemeen: wat is er bereikt?"}
+        monkeypatch.setattr(calls, "vraag_inkomend", lambda beller, w=web: (200, w))
+        conv = f"conv_c{nr}"
+        antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": conv})
+        prompt = antw["conversation_config_override"]["agent"]["prompt"]["prompt"]
+        assert antw["dynamic_variables"]["prompt_version"] == versie
+        assert "bevestig_codewoord" not in prompt and web["callId"] not in prompt and "een SamenVerder-dag" not in prompt
+        again = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": conv})
+        assert again["dynamic_variables"]["prompt_version"] == versie
+
+
+def test_inkomend_onbekend_type_valt_terug_op_het_dagboek(monkeypatch):
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, {**WEB_ANTWOORD, "type": "toekomstig_type"}))
+    antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_onb"})
+    assert antw["dynamic_variables"]["prompt_version"] == "dagboek-v4"

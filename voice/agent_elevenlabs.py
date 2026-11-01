@@ -16,7 +16,7 @@ from loguru import logger
 import calls
 import config
 from persoonsgegevens import maskeer
-from prompts import PROMPT_VERSION, SOORT_DEBRIEF, build_system_prompt, greeting_text, prompt_versie
+from prompts import PROMPT_VERSION, SOORT_DAGBOEK, build_system_prompt, greeting_text, kies_soort, prompt_versie
 
 API = os.getenv("ELEVENLABS_API_BASE", "https://api.elevenlabs.io")
 # Tolerantie voor de tijdstempel in de handtekening van een webhook.
@@ -85,20 +85,21 @@ def verwerk_init(verzoek: dict) -> dict:
         calls.maak_opdracht(
             calls.normaliseer_nl_nummer(str(verzoek.get("caller_id") or "")) or "", data["medewerker"], data.get("onderwerpen", []),
             bool(data.get("toestemmingNodig")), data["callId"], data.get("houding", ""), data.get("instructie", ""), call_id=call_id, engine="elevenlabs_agent",
-            soort=SOORT_DEBRIEF if data.get("type") == SOORT_DEBRIEF else "dagboek",
+            # Een onbekende soort (bijvoorbeeld van een nieuwere web-service) valt terug op het dagboek.
+            soort=kies_soort(data.get("type")), varianten=data.get("varianten") if isinstance(data.get("varianten"), list) else None,
         )
         calls.update_opdracht(call_id, status="gesprek", agent_conversation_id=verzoek.get("conversation_id") or None, inkomend=True)
     spec = calls.lees_opdracht(call_id) or {}
     cfg = config.get_config()
-    soort = SOORT_DEBRIEF if spec.get("soort") == SOORT_DEBRIEF else "dagboek"
+    soort = kies_soort(spec.get("soort"))
     prompt = build_system_prompt(
         cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), spec.get("onderwerpen", []),
         houding=spec.get("houding", ""), instructie=spec.get("instructie", ""), einde_tool="end_call", inkomend=True,
         # Een debrief schrijft alleen weg: de hulpmiddelen om collega's op te vragen horen daar niet bij.
-        hulp_id=data["callId"] if os.getenv("INKOMEND_TOOLS", "").lower() == "true" and soort == "dagboek" else "",
-        soort=soort,
+        hulp_id=data["callId"] if os.getenv("INKOMEND_TOOLS", "").lower() == "true" and soort == SOORT_DAGBOEK else "",
+        soort=soort, varianten=spec.get("varianten"),
     )
-    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True, soort=soort)
+    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True, soort=soort, varianten=spec.get("varianten"))
     logger.info(f"Inkomend gesprek gestart (opdracht {call_id}, soort {soort})")
     return _init_antwoord(call_id, prompt, groet, soort)
 

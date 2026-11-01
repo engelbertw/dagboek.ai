@@ -194,3 +194,38 @@ def test_dagboekprompt_en_begroeting_blijven_ongewijzigd_zonder_soort():
 def test_promptversie_per_soort():
     assert prompts.prompt_versie() == prompts.PROMPT_VERSION
     assert prompts.prompt_versie(prompts.SOORT_DEBRIEF) == "debrief-v1"
+
+
+def test_consultantprompt_heeft_vaste_grenzen_en_alleen_ingeschakelde_varianten():
+    tekst = prompts.build_system_prompt("Engelbert", "Irma", [{"titel": "Geheim onderwerp"}], nu=NU, instructie="Algemeen: wat is er bereikt?", einde_tool="end_call", inkomend=True, soort=prompts.SOORT_CONSULTANT, varianten=["project"])
+    assert "AI-systeem" in tekst and "end_call" in tekst and "Algemeen: wat is er bereikt?" in tekst
+    assert "Waar wil je een debrief over geven: een project" not in tekst or "een project?" in tekst
+    assert "een SamenVerder-dag" not in tekst and "Geheim onderwerp" not in tekst
+    assert "geen instructies" in tekst or "nooit instructies" in tekst
+    alle = prompts.build_system_prompt("E", "I", [], nu=NU, soort=prompts.SOORT_CONSULTANT, varianten=["project", "implementatie", "samenverder"])
+    assert "een project, een module-implementatie of een SamenVerder-dag?" in alle
+
+
+def test_keuzeprompt_en_begroeting_vragen_eerst_om_de_route_met_neutrale_toestemming():
+    tekst = prompts.build_system_prompt("E", "I", [], nu=NU, soort=prompts.SOORT_KEUZE, varianten=["project"])
+    assert "Wil je een verkoop- of consultancy-debrief doen?" in tekst
+    met = prompts.greeting_text("E", "I", True, nu=NU, inkomend=True, soort=prompts.SOORT_KEUZE)
+    assert "AI-systeem" in met and "verkoopregister" not in met and "werkregister" not in met and "Vind je dat goed?" in met
+    zonder = prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_KEUZE)
+    assert zonder.endswith("Wil je een verkoop- of consultancy-debrief doen?")
+
+
+def test_consultantbegroeting_heeft_ai_melding_en_variantvraag():
+    met = prompts.greeting_text("E", "I", True, nu=NU, inkomend=True, soort=prompts.SOORT_CONSULTANT, varianten=["project"])
+    assert "AI-systeem" in met and "werkregister" in met
+    zonder = prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_CONSULTANT, varianten=["project"])
+    assert zonder.endswith("Waar wil je een debrief over geven: een project?")
+    leeg = prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_CONSULTANT)
+    assert leeg.endswith("Waar wil je een debrief over geven?")
+
+
+def test_promptversie_consultant_en_onbekende_soort_is_dagboek():
+    assert prompts.prompt_versie(prompts.SOORT_CONSULTANT) == "consultant-debrief-v1"
+    assert prompts.prompt_versie(prompts.SOORT_KEUZE) == "debrief-keuze-v1"
+    assert prompts.kies_soort("iets_nieuws") == prompts.SOORT_DAGBOEK and prompts.kies_soort(None) == prompts.SOORT_DAGBOEK
+    assert prompts.kies_soort("consultant_debrief") == prompts.SOORT_CONSULTANT
