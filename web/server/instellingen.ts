@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { geldigProject, geldigTeamId, schoneSite, type JiraInstellingen } from './jira.js';
 import { instellingen } from './schema.js';
+import { leesWoordenlijstTekst, woordenlijstSchema, type Woord } from './woordenlijst.js';
 
 /** Dezelfde tekst als de terugvalwaarde van de voice-service (voice/prompts.py), zodat de beheerder hem kan zien en aanpassen. */
 export const STANDAARD_HOUDING = 'Je bent meedenkend, vooruitstrevend en ondersteunend. Je denkt mee over oplossingen en kijkt vooruit. '
@@ -68,6 +69,21 @@ export async function bewaarDebriefVragen(db: Db, waarde: string): Promise<void>
 /** De tekst van vóór de laatste wijziging, of leeg als er geen is. */
 export async function leesVorigeDebriefVragen(db: Db): Promise<string> {
   return (await lees(db, 'debrief_vragen_vorige', '')).waarde;
+}
+
+/** De woordenlijst met producten en afdelingen (JSON in de instellingen). De lijst van vóór de laatste wijziging blijft bewaard, zodat terugzetten kan. */
+export async function leesWoordenlijst(db: Db): Promise<Woord[]> {
+  return leesWoordenlijstTekst((await lees(db, 'woordenlijst', '[]')).waarde);
+}
+export async function leesVorigeWoordenlijst(db: Db): Promise<Woord[]> {
+  return leesWoordenlijstTekst((await lees(db, 'woordenlijst_vorige', '[]')).waarde);
+}
+/** Ongeldige invoer gooit een ZodError (HTTP 400). */
+export async function bewaarWoordenlijst(db: Db, ruw: unknown): Promise<void> {
+  const nieuw = woordenlijstSchema.parse(ruw);
+  const huidig = await leesWoordenlijst(db);
+  if (huidig.length && JSON.stringify(huidig) !== JSON.stringify(nieuw)) await bewaar(db, 'woordenlijst_vorige', JSON.stringify(huidig));
+  await bewaar(db, 'woordenlijst', JSON.stringify(nieuw));
 }
 
 export const MOTOREN = ['pipecat', 'elevenlabs_agent'] as const;

@@ -22,7 +22,9 @@ import { JiraFout, geldigProject, geldigTeamId, schoneSite, type JiraClient, typ
 import { startInkomendGesprek } from './inkomend.js';
 import { registreerMcp } from './mcp.js';
 import { normaliseerCodewoord } from './gesprek-tools.js';
-import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie } from './instellingen.js';
+import { corrigeerTranscript } from './woordenlijst.js';
+import type { Beurt } from './vertrouwen.js';
+import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie, bewaarWoordenlijst, leesWoordenlijst, leesVorigeWoordenlijst } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard } from './dashboard.js';
@@ -396,6 +398,12 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     await bewaarHouding(db, waarde);
     return leesHouding(db);
   });
+  app.get('/api/instellingen/woordenlijst', async () => ({ items: await leesWoordenlijst(db), vorige: await leesVorigeWoordenlijst(db) }));
+  app.put('/api/instellingen/woordenlijst', async (req) => {
+    const { items } = z.object({ items: z.unknown() }).parse(req.body);
+    await bewaarWoordenlijst(db, items);
+    return { items: await leesWoordenlijst(db), vorige: await leesVorigeWoordenlijst(db) };
+  });
   app.get('/api/instellingen/gespreksmotor', async () => ({ motor: await leesGespreksmotor(db) }));
   app.put('/api/instellingen/gespreksmotor', async (req) => {
     const { motor } = z.object({ motor: z.enum(MOTOREN) }).parse(req.body);
@@ -699,6 +707,8 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const id = uuid.parse((req.params as any).id);
     const b = resultaatBody.parse(req.body);
     const eind = EINDSTATUSSEN.includes(b.status);
+    // Bekende verkeerd-gehoorde producten en afdelingen worden al bij binnenkomst goed gezet (alleen wat de beller zei).
+    if (Array.isArray(b.transcript)) b.transcript = corrigeerTranscript(b.transcript as Beurt[], await leesWoordenlijst(db));
     const [bestaand] = await db.select({ id: calls.id }).from(calls).where(eq(calls.id, id));
     if (!bestaand) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
     // Eén voorwaardelijke UPDATE: een dubbele, te late of omgekeerde melding wordt genegeerd en kan een nieuwere status nooit overschrijven.

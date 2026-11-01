@@ -12,6 +12,8 @@ import { logGebeurtenis } from './call-log.js';
 import { log } from './log.js';
 import { leggToestemmingVast, TOESTEMMING_DEBRIEF } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, normaliseer, schoonVoorPrompt } from './vertrouwen.js';
+import { corrigeerTranscript, woordenlijstVoorPrompt, WOORDENLIJST_REGEL } from './woordenlijst.js';
+import { leesWoordenlijst } from './instellingen.js';
 import { selecteerBelangrijk } from './kwaliteit.js';
 import { vergelijkNamen } from './namen.js';
 import {
@@ -94,7 +96,7 @@ Regels:
     : '"toestemming": de accountmanager had al toestemming gegeven. Zet het op "niet_van_toepassing", tenzij de accountmanager in dit gesprek duidelijk zegt dat het gesprek niet mag worden vastgelegd: dan "ingetrokken", met in "toestemming_citaat" de letterlijke woorden.'}
 - Schrijf geen BSN, bankrekeningnummers of privégegevens op.`;
 
-export function bouwDebriefBericht(medewerker: string, klantNamen: string[], transcript: Bericht[], context: { vandaag?: string; collegas?: string[]; openPunten?: { nr: number; klant: string; soort: string; omschrijving: string }[] } = {}): string {
+export function bouwDebriefBericht(medewerker: string, klantNamen: string[], transcript: Bericht[], context: { vandaag?: string; collegas?: string[]; woordenlijst?: string; openPunten?: { nr: number; klant: string; soort: string; omschrijving: string }[] } = {}): string {
   const naam = schoonVoorPrompt(medewerker, 100) || 'de accountmanager';
   const lijst = klantNamen.map((k) => `- ${schoonVoorPrompt(k, 200)}`).join('\n');
   let gesprek = transcript.map((m) => `${m.role === 'assistant' ? 'Assistent' : naam}: ${schoonVoorPrompt(m.content, 2000)}`).join('\n');
@@ -102,6 +104,7 @@ export function bouwDebriefBericht(medewerker: string, klantNamen: string[], tra
   const kop = [`Accountmanager: ${naam}`];
   if (context.vandaag) kop.push(`Vandaag is het ${context.vandaag}.`);
   if (context.collegas?.length) kop.push(`Collega's: ${context.collegas.map((c) => schoonVoorPrompt(c, 100)).filter(Boolean).join(', ')}.`);
+  if (context.woordenlijst) kop.push(context.woordenlijst);
   const open = (context.openPunten ?? []).map((p) => `${p.nr}. [${schoonVoorPrompt(p.klant, 200)}] ${p.soort}: ${schoonVoorPrompt(p.omschrijving, 400)}`).join('\n');
   return `${kop.join('\n')}\n\n<klanten>\n${lijst || '(geen)'}\n</klanten>\n\n<open_punten>\n${open || '(geen)'}\n</open_punten>\n\n<transcript>\n${gesprek}\n</transcript>`;
 }
@@ -159,7 +162,9 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
   };
 
   try {
-    const transcript = (Array.isArray(call.transcript) ? call.transcript : []) as Bericht[];
+    const woorden = await leesWoordenlijst(db);
+    const transcript = corrigeerTranscript((Array.isArray(call.transcript) ? call.transcript : []) as Bericht[], woorden);
+    const hint = woordenlijstVoorPrompt(woorden);
     if (!transcript.some((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim())) {
       await eindig('geen_inhoud');
       return { status: 'geen_inhoud' };
@@ -178,8 +183,8 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
     const vandaag = vandaagNL();
     let ruw: string;
     try {
-      ruw = await llm(SYSTEEM_PROMPT_DEBRIEF(toestemmingNodig), bouwDebriefBericht(medewerker.naam, bekendeKlanten.map((k) => k.naam), transcript, {
-        vandaag, collegas: collegas.map((c) => c.naam),
+      ruw = await llm(SYSTEEM_PROMPT_DEBRIEF(toestemmingNodig) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''), bouwDebriefBericht(medewerker.naam, bekendeKlanten.map((k) => k.naam), transcript, {
+        vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint,
         openPunten: openRijen.map((r, i) => ({ nr: i + 1, klant: r.klant, soort: r.soort, omschrijving: r.omschrijving })),
       }));
     } catch (e) {

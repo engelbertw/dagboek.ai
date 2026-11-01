@@ -168,3 +168,7 @@ export interface KwaliteitBevinding {
 }
 export interface KwaliteitAntwoord { bevindingen: KwaliteitBevinding[]; perSoort: Partial<Record<KwaliteitSoort, number>>; totaal: number }
 export interface SamenvoegUitkomst { behouden: string; samengevoegd: number; aangevuld: string[]; conflicten: string[] }
+
+export type WoordSoort = 'product' | 'afdeling' | 'overig';
+export interface Woord { term: string; soort: WoordSoort; gehoordAls: string[]; toelichting: string }
+export interface Woordenlijst { items: Woord[]; vorige: Woord[] }

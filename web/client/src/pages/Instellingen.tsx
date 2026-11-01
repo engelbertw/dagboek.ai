@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, MOTOR_LABEL, type DebriefVragen, type Houding, type JiraInstelling, type Motor } from '../api';
+import { api, MOTOR_LABEL, type DebriefVragen, type Houding, type JiraInstelling, type Motor, type Woord, type Woordenlijst as WoordenlijstData } from '../api';
 import { Melding, Systeemstatus, Veld, foutTekst, useLaden } from '../ui';
 
 function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitleg: string; label: string; pad: string; rijen: number }) {
@@ -154,6 +154,52 @@ function Jira() {
   );
 }
 
+type WoordRij = { term: string; soort: Woord['soort']; gehoordAls: string; toelichting: string };
+const naarRij = (w: Woord): WoordRij => ({ term: w.term, soort: w.soort, gehoordAls: w.gehoordAls.join(', '), toelichting: w.toelichting });
+const naarWoord = (r: WoordRij): Woord => ({ term: r.term.trim(), soort: r.soort, gehoordAls: r.gehoordAls.split(/[,\n]/).map((v) => v.trim()).filter(Boolean), toelichting: r.toelichting.trim() });
+
+function Woordenlijst() {
+  const huidig = useLaden(() => api<WoordenlijstData>('GET', '/instellingen/woordenlijst'));
+  const [rijen, setRijen] = useState<WoordRij[]>([]);
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  useEffect(() => { if (huidig.data) setRijen(huidig.data.items.map(naarRij)); }, [huidig.data]);
+  const zet = (i: number, wijziging: Partial<WoordRij>) => setRijen((r) => r.map((x, j) => (j === i ? { ...x, ...wijziging } : x)));
+  async function bewaar() {
+    try {
+      const r = await api<WoordenlijstData>('PUT', '/instellingen/woordenlijst', { items: rijen.filter((x) => x.term.trim()).map(naarWoord) });
+      setRijen(r.items.map(naarRij));
+      setMelding({ tekst: 'Opgeslagen. Dit geldt vanaf het volgende gesprek en bij opnieuw verwerken.', soort: 'ok' });
+      huidig.ververs();
+    } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  return (
+    <form className="paneel stapel" onSubmit={(e) => { e.preventDefault(); void bewaar(); }}>
+      <h2>Woordenlijst</h2>
+      <p className="zacht klein">Producten en afdelingen die de spraakherkenning vaak fout verstaat. Zet bij “Ook gehoord als” de verkeerde varianten (kommagescheiden, bijvoorbeeld e-burgerzaken, eburgerzaken); die worden in het transcript door de juiste term vervangen, alleen als heel woord en alleen in wat de beller zei. De lijst gaat ook als hint mee naar het taalmodel dat het verslag schrijft. Een variant is minstens 3 tekens en hoort bij één term. Het bewaarde transcript wordt aangepast; bij opnieuw verwerken geldt de actuele lijst.</p>
+      {rijen.map((r, i) => (
+        <div key={i} className="rij" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <Veld label="Juiste term"><input value={r.term} onChange={(e) => zet(i, { term: e.target.value })} maxLength={100} placeholder="iBurgerzaken" /></Veld>
+          <Veld label="Soort">
+            <select value={r.soort} onChange={(e) => zet(i, { soort: e.target.value as Woord['soort'] })}>
+              <option value="product">Product</option><option value="afdeling">Afdeling</option><option value="overig">Overig</option>
+            </select>
+          </Veld>
+          <Veld label="Ook gehoord als"><input value={r.gehoordAls} onChange={(e) => zet(i, { gehoordAls: e.target.value })} placeholder="e-burgerzaken, eburgerzaken" /></Veld>
+          <Veld label="Toelichting"><input value={r.toelichting} onChange={(e) => zet(i, { toelichting: e.target.value })} maxLength={200} placeholder="bijv. business unit Proces & Services" /></Veld>
+          <button type="button" className="gevaar" onClick={() => setRijen((x) => x.filter((_, j) => j !== i))}>Verwijderen</button>
+        </div>
+      ))}
+      {rijen.length === 0 && <p className="zacht">Nog geen woorden.</p>}
+      <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
+      <div className="rij">
+        <button type="button" onClick={() => setRijen((r) => [...r, { term: '', soort: 'product', gehoordAls: '', toelichting: '' }])}>+ Woord toevoegen</button>
+        <button className="primair" type="submit">Opslaan</button>
+        <button type="button" onClick={() => { if (huidig.data?.vorige.length) setRijen(huidig.data.vorige.map(naarRij)); }} disabled={!huidig.data?.vorige.length}>Vorige versie terughalen</button>
+      </div>
+    </form>
+  );
+}
+
 export function Instellingen() {
   return (
     <div className="stapel">
@@ -164,6 +210,7 @@ export function Instellingen() {
       <Jira />
       <Debrief />
       <Consultant />
+      <Woordenlijst />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />
       <Instelling titel="Algemene gespreksinstructie" label="Gespreksinstructie" pad="/instellingen/gespreksinstructie" rijen={9}

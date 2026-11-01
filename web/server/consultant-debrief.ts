@@ -11,6 +11,8 @@ import { logGebeurtenis } from './call-log.js';
 import { log } from './log.js';
 import { leggToestemmingVast, toestemmingNodigVoorDoel, TOESTEMMING_CONSULTANT } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, normaliseer, schoonVoorPrompt } from './vertrouwen.js';
+import { corrigeerTranscript, woordenlijstVoorPrompt, WOORDENLIJST_REGEL } from './woordenlijst.js';
+import { leesWoordenlijst } from './instellingen.js';
 import { selecteerBelangrijk } from './kwaliteit.js';
 import {
   controleerKlantConsistentie, deadlineConcreet, kiesKlant, legContactenVast, verifieerKeuze, type Voorstel,
@@ -84,7 +86,7 @@ ${varianten.map((v) => `- Voor "variantdata" bij variant "${v.id}": ${v.aanvulli
     : '"toestemming": de consultant had al toestemming gegeven. Zet het op "niet_van_toepassing", tenzij de consultant in dit gesprek duidelijk zegt dat het gesprek niet mag worden vastgelegd: dan "ingetrokken", met in "toestemming_citaat" de letterlijke woorden.'}
 - Schrijf geen BSN, bankrekeningnummers, gezondheidsinformatie of privégegevens op.`;
 
-export function bouwConsultantBericht(medewerker: string, klantNamen: string[], transcript: Bericht[], context: { vandaag?: string; collegas?: string[]; onderwerpen?: { klant: string; titel: string }[]; openPunten?: { nr: number; klant: string; soort: string; omschrijving: string }[] } = {}): string {
+export function bouwConsultantBericht(medewerker: string, klantNamen: string[], transcript: Bericht[], context: { vandaag?: string; collegas?: string[]; woordenlijst?: string; onderwerpen?: { klant: string; titel: string }[]; openPunten?: { nr: number; klant: string; soort: string; omschrijving: string }[] } = {}): string {
   const naam = schoonVoorPrompt(medewerker, 100) || 'de consultant';
   const lijst = klantNamen.map((k) => `- ${schoonVoorPrompt(k, 200)}`).join('\n');
   let gesprek = transcript.map((m) => `${m.role === 'assistant' ? 'Assistent' : naam}: ${schoonVoorPrompt(m.content, 2000)}`).join('\n');
@@ -92,6 +94,7 @@ export function bouwConsultantBericht(medewerker: string, klantNamen: string[], 
   const kop = [`Consultant: ${naam}`];
   if (context.vandaag) kop.push(`Vandaag is het ${context.vandaag}.`);
   if (context.collegas?.length) kop.push(`Collega's: ${context.collegas.map((c) => schoonVoorPrompt(c, 100)).filter(Boolean).join(', ')}.`);
+  if (context.woordenlijst) kop.push(context.woordenlijst);
   const open = (context.openPunten ?? []).map((p) => `${p.nr}. [${schoonVoorPrompt(p.klant, 200)}] ${p.soort}: ${schoonVoorPrompt(p.omschrijving, 400)}`).join('\n');
   const onderwerpen = (context.onderwerpen ?? []).map((o) => `- [${schoonVoorPrompt(o.klant, 200) || 'geen klant'}] ${schoonVoorPrompt(o.titel, 200)}`).join('\n');
   return `${kop.join('\n')}\n\n<klanten>\n${lijst || '(geen)'}\n</klanten>\n\n<onderwerpen>\n${onderwerpen || '(geen)'}\n</onderwerpen>\n\n<open_punten>\n${open || '(geen)'}\n</open_punten>\n\n<transcript>\n${gesprek}\n</transcript>`;
@@ -136,7 +139,7 @@ export async function verwerkRouteKeuze(deps: { db: Db; llm: LlmClient }, callId
   const { db, llm } = deps;
   const [call] = await db.select().from(calls).where(eq(calls.id, callId));
   if (!call || call.type !== 'debrief_keuze' || call.status !== 'gesproken' || !['geen', 'mislukt', 'onduidelijk'].includes(call.samenvattingStatus)) return { status: 'overgeslagen' };
-  const transcript = (Array.isArray(call.transcript) ? call.transcript : []) as Bericht[];
+  const transcript = corrigeerTranscript((Array.isArray(call.transcript) ? call.transcript : []) as Bericht[], await leesWoordenlijst(db));
   if (!transcript.some((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim())) {
     await db.update(calls).set({ samenvattingStatus: 'geen_inhoud' }).where(eq(calls.id, callId));
     await logGebeurtenis(db, callId, 'web', 'samenvatting:geen_inhoud');
@@ -173,7 +176,9 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
   };
 
   try {
-    const transcript = (Array.isArray(call.transcript) ? call.transcript : []) as Bericht[];
+    const woorden = await leesWoordenlijst(db);
+    const transcript = corrigeerTranscript((Array.isArray(call.transcript) ? call.transcript : []) as Bericht[], woorden);
+    const hint = woordenlijstVoorPrompt(woorden);
     if (!transcript.some((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim())) {
       await eindig('geen_inhoud');
       return { status: 'geen_inhoud' };
@@ -204,9 +209,9 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
 
     let ruw: string;
     try {
-      ruw = await llm(SYSTEEM_PROMPT_CONSULTANT(toestemmingNodig, varianten.map((v) => ({ id: v.id, naam: v.naam, aanvulling: v.promptAanvulling }))),
+      ruw = await llm(SYSTEEM_PROMPT_CONSULTANT(toestemmingNodig, varianten.map((v) => ({ id: v.id, naam: v.naam, aanvulling: v.promptAanvulling }))) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''),
         bouwConsultantBericht(medewerker.naam, bekendeKlanten.map((k) => k.naam), transcript, {
-          vandaag, collegas: collegas.map((c) => c.naam), onderwerpen: bekendeOnderwerpen.map((o) => ({ klant: o.klant ?? '', titel: o.titel })), openPunten: openRijen.map((r, i) => ({ nr: i + 1, klant: r.klant, soort: r.soort, omschrijving: r.omschrijving })),
+          vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint, onderwerpen: bekendeOnderwerpen.map((o) => ({ klant: o.klant ?? '', titel: o.titel })), openPunten: openRijen.map((r, i) => ({ nr: i + 1, klant: r.klant, soort: r.soort, omschrijving: r.omschrijving })),
         }));
     } catch (e) {
       throw new Error(`Taalmodel niet bereikbaar: ${(e as Error).message}`);

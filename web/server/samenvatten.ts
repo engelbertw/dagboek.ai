@@ -6,6 +6,8 @@ import { activiteiten, calls, employees, suggesties, topics, updates, type Gespr
 import { logGebeurtenis } from './call-log.js';
 import { leggToestemmingVast } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, schoonVoorPrompt } from './vertrouwen.js';
+import { corrigeerTranscript, woordenlijstVoorPrompt, WOORDENLIJST_REGEL } from './woordenlijst.js';
+import { leesWoordenlijst } from './instellingen.js';
 
 export type SamenvattingStatus = 'klaar' | 'geen_inhoud' | 'geweigerd' | 'onduidelijk' | 'mislukt';
 export interface Uitkomst { status: SamenvattingStatus | 'overgeslagen'; updates?: number; nieuweOpenPunten?: number; afgerondePunten?: number; fout?: string }
@@ -62,7 +64,7 @@ Regels:
     : '"toestemming": de collega had al toestemming gegeven. Zet het op "niet_van_toepassing", tenzij de collega in dit gesprek duidelijk zegt dat hij of zij niet wil dat het gesprek wordt vastgelegd of samengevat: dan "ingetrokken", met in "toestemming_citaat" de letterlijke woorden van de collega.'}
 - Schrijf geen BSN, bankrekeningnummers of andere persoonsgegevens op.`;
 
-export function bouwGebruikersBericht(medewerker: string, onderwerpen: GespreksOnderwerp[], transcript: Bericht[], context: { vandaag?: string; collegas?: string[] } = {}): string {
+export function bouwGebruikersBericht(medewerker: string, onderwerpen: GespreksOnderwerp[], transcript: Bericht[], context: { vandaag?: string; collegas?: string[]; woordenlijst?: string } = {}): string {
   // Alles wat hieronder in de prompt komt is gegeven uit de database of het gesprek: zonder < en >, op één regel en begrensd.
   const naam = schoonVoorPrompt(medewerker, 100) || 'de collega';
   const lijst = onderwerpen.map((o, i) => {
@@ -74,6 +76,7 @@ export function bouwGebruikersBericht(medewerker: string, onderwerpen: GespreksO
   const kop = [`Collega: ${naam}`];
   if (context.vandaag) kop.push(`Vandaag is het ${context.vandaag} (${weekdag(context.vandaag)}).`);
   if (context.collegas?.length) kop.push(`Collega's in het team: ${context.collegas.map((c) => schoonVoorPrompt(c, 100)).filter(Boolean).join(', ')}.`);
+  if (context.woordenlijst) kop.push(context.woordenlijst);
   return `${kop.join('\n')}\n\n<onderwerpen>\n${lijst || 'Er waren geen onderwerpen.'}\n</onderwerpen>\n\n<transcript>\n${tekst}\n</transcript>`;
 }
 
@@ -208,7 +211,9 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
   };
 
   try {
-    const transcript = (Array.isArray(call.transcript) ? call.transcript : []) as Bericht[];
+    const woorden = await leesWoordenlijst(db);
+    const transcript = corrigeerTranscript((Array.isArray(call.transcript) ? call.transcript : []) as Bericht[], woorden);
+    const hint = woordenlijstVoorPrompt(woorden);
     if (!transcript.some((m) => m.role === 'user' && typeof m.content === 'string' && m.content.trim())) {
       await eindig('geen_inhoud');
       return { status: 'geen_inhoud' };
@@ -221,7 +226,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
     const vandaag = vandaagNL();
     let ruw: string;
     try {
-      ruw = await llm(SYSTEEM_PROMPT(toestemmingNodig), bouwGebruikersBericht(medewerker.naam, call.onderwerpen, transcript, { vandaag, collegas: collegas.map((c) => c.naam) }));
+      ruw = await llm(SYSTEEM_PROMPT(toestemmingNodig) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''), bouwGebruikersBericht(medewerker.naam, call.onderwerpen, transcript, { vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint }));
     } catch (e) {
       throw new Error(`Taalmodel niet bereikbaar: ${(e as Error).message}`);
     }
