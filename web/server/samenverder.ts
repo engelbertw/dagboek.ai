@@ -9,8 +9,9 @@ import { z } from 'zod';
 import type { Db } from './db.js';
 import {
   activiteiten, consultantDebriefs, employees, klantContacten, klanten, samenverderProgrammas, samenverderSessieConsultants, samenverderSessieOnderwerpen, samenverderSessies,
-  SESSIE_SOORTEN, ONDERWERP_STATUSSEN, topics,
+  SESSIE_SOORTEN, ONDERWERP_STATUSSEN, BUDGET_SOORTEN, samenverderBudgetmutaties, topics,
 } from './schema.js';
+import { berekenBudget } from './samenverder-budget.js';
 import { vandaagNL } from './samenvatten.js';
 
 const uuid = z.string().uuid();
@@ -39,6 +40,8 @@ const onderwerpVelden = { titel: tekst(300).min(1), topicId: uuid.nullable(), st
 const onderwerpWijziging = z.object(onderwerpVelden).partial();
 const onderwerpBody = z.object(onderwerpVelden).partial({ topicId: true, status: true, voorgesteldInSessieId: true }).transform((v) => ({ topicId: null, status: 'gepland' as const, voorgesteldInSessieId: null, ...v }));
 
+const budgetBody = z.object({ dagen: z.number().min(-999).max(999).multipleOf(0.01).refine((n) => n !== 0, 'Dagen mag niet nul zijn'), soort: z.enum(BUDGET_SOORTEN), reden: tekst(500).min(1) });
+
 type Fout = { code: 400 | 404 | 409; fout: string };
 const naarNum = (n: unknown) => Number(n);
 
@@ -61,6 +64,17 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
     return null;
   }
 
+  /** De afgesproken dagen en de berekende stand per programma: alles wordt hier uit de mutaties en de sessies afgeleid, nooit opgeslagen. */
+  async function budgetVan(programmaIds: string[]) {
+    if (!programmaIds.length) return new Map<string, ReturnType<typeof berekenBudget>>();
+    const [mutaties, sessies] = await Promise.all([
+      db.select({ programmaId: samenverderBudgetmutaties.programmaId, dagen: samenverderBudgetmutaties.dagen }).from(samenverderBudgetmutaties).where(inArray(samenverderBudgetmutaties.programmaId, programmaIds)),
+      db.select({ programmaId: samenverderSessies.programmaId, status: samenverderSessies.status, omvangDagen: samenverderSessies.omvangDagen, bevestigdOp: samenverderSessies.bevestigdOp })
+        .from(samenverderSessies).where(inArray(samenverderSessies.programmaId, programmaIds)),
+    ]);
+    return new Map(programmaIds.map((id) => [id, berekenBudget(mutaties.filter((m) => m.programmaId === id), sessies.filter((s) => s.programmaId === id))]));
+  }
+
   // ── Programma's ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   app.get('/api/samenverder/programmas', async (req) => {
     const q = z.object({ klantId: uuid.optional(), status: z.enum(['actief', 'afgerond']).optional() }).parse(req.query);
@@ -71,6 +85,7 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
     const sessies = rijen.length ? await db.select({ programmaId: samenverderSessies.programmaId, status: samenverderSessies.status, datum: samenverderSessies.datum })
       .from(samenverderSessies).where(inArray(samenverderSessies.programmaId, rijen.map((r) => r.p.id))) : [];
     const vandaag = vandaagNL();
+    const budgetten = await budgetVan(rijen.map((r) => r.p.id));
     return rijen.map(({ p, klantNaam, accountmanagerNaam }) => {
       const eigen = sessies.filter((s) => s.programmaId === p.id);
       const gepland = eigen.filter((s) => s.status === 'gepland' && s.datum).map((s) => s.datum!).sort();
@@ -78,6 +93,7 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
       return {
         ...p, klantNaam, accountmanagerNaam, aantalSessies: eigen.filter((s) => s.status !== 'geannuleerd' && s.status !== 'verplaatst').length,
         aantalGepland: gepland.length, aantalUitgevoerd: uitgevoerd.length, volgendeSessie: gepland.find((d) => d >= vandaag) ?? null, laatsteSessie: uitgevoerd.at(-1) ?? null,
+        budget: budgetten.get(p.id)!,
       };
     });
   });
@@ -103,18 +119,25 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
     const [consultants, onderwerpen, debriefs, punten] = ids.length ? await Promise.all([
       db.select({ sessieId: samenverderSessieConsultants.sessieId, id: employees.id, naam: employees.naam }).from(samenverderSessieConsultants).innerJoin(employees, eq(samenverderSessieConsultants.employeeId, employees.id)).where(inArray(samenverderSessieConsultants.sessieId, ids)).orderBy(asc(employees.naam)),
       db.select().from(samenverderSessieOnderwerpen).where(inArray(samenverderSessieOnderwerpen.sessieId, ids)).orderBy(asc(samenverderSessieOnderwerpen.createdAt)),
-      db.select({ sessieId: consultantDebriefs.sessieId, id: consultantDebriefs.id, samenvatting: consultantDebriefs.samenvatting, createdAt: consultantDebriefs.createdAt, door: employees.naam })
+      db.select({ sessieId: consultantDebriefs.sessieId, id: consultantDebriefs.id, samenvatting: consultantDebriefs.samenvatting, createdAt: consultantDebriefs.createdAt, door: employees.naam, variantdata: consultantDebriefs.variantdata })
         .from(consultantDebriefs).leftJoin(employees, eq(consultantDebriefs.employeeId, employees.id)).where(and(inArray(consultantDebriefs.sessieId, ids), eq(consultantDebriefs.controleNodig, false))).orderBy(asc(consultantDebriefs.createdAt)),
       db.select({ sessieId: activiteiten.samenverderSessieId, id: activiteiten.id, soort: activiteiten.soort, omschrijving: activiteiten.omschrijving, status: activiteiten.status, deadline: activiteiten.deadline, eigenaarNaam: employees.naam, eigenaarExtern: activiteiten.eigenaarExtern })
         .from(activiteiten).leftJoin(employees, eq(activiteiten.eigenaarId, employees.id)).where(and(inArray(activiteiten.samenverderSessieId, ids), eq(activiteiten.controleNodig, false))).orderBy(asc(activiteiten.createdAt)),
     ]) : [[], [], [], []] as const;
+    const budget = (await budgetVan([p.id])).get(p.id)!;
+    const mutaties = await db.select().from(samenverderBudgetmutaties).where(eq(samenverderBudgetmutaties.programmaId, p.id)).orderBy(asc(samenverderBudgetmutaties.op));
     return {
       programma: p, klant,
+      budget: { ...budget, mutaties: mutaties.map((m) => ({ id: m.id, dagen: naarNum(m.dagen), soort: m.soort, reden: m.reden, door: m.door, op: m.op })) },
       sessies: rijen.map(({ s, contactNaam }) => ({
         ...s, omvangDagen: naarNum(s.omvangDagen), contactpersoonNaam: contactNaam,
         consultants: consultants.filter((c) => c.sessieId === s.id).map(({ id, naam }) => ({ id, naam })),
         onderwerpen: onderwerpen.filter((o) => o.sessieId === s.id),
-        debriefs: debriefs.filter((d) => d.sessieId === s.id).map(({ id, samenvatting, createdAt, door }) => ({ id, samenvatting, createdAt, door })),
+        // Wat de consultant over de dag zei (uitgevoerd ja/nee, duur) is een voorstel voor de beheerder; het verandert niets aan de sessie of het budget.
+        debriefs: debriefs.filter((d) => d.sessieId === s.id).map(({ id, samenvatting, createdAt, door, variantdata }) => {
+          const v = (variantdata as { sessie_voorstel?: { uitgevoerd?: boolean | null; duur_dagen?: number | null; citaat?: string } } | null)?.sessie_voorstel;
+          return { id, samenvatting, createdAt, door, voorstel: v && (v.uitgevoerd != null || v.duur_dagen != null) ? { uitgevoerd: v.uitgevoerd ?? null, duurDagen: v.duur_dagen ?? null, citaat: v.citaat ?? '' } : null };
+        }),
         activiteiten: punten.filter((a) => a.sessieId === s.id).map(({ sessieId: _s, eigenaarNaam, eigenaarExtern, ...rest }) => ({ ...rest, eigenaar: eigenaarNaam ?? eigenaarExtern })),
       })),
     };
@@ -137,10 +160,33 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
     const id = idParam(req);
     const p = id.success ? await programmaVan(id.data) : undefined;
     if (!p) return reply.code(404).send({ fout: 'Programma niet gevonden' });
+    const [begroot] = await db.select({ id: samenverderBudgetmutaties.id }).from(samenverderBudgetmutaties).where(eq(samenverderBudgetmutaties.programmaId, p.id)).limit(1);
+    if (begroot) return reply.code(409).send({ fout: 'Dit programma heeft een dagenbudget en kan niet worden verwijderd; zet het op afgerond' });
     const [uitgevoerd] = await db.select({ id: samenverderSessies.id }).from(samenverderSessies).where(and(eq(samenverderSessies.programmaId, p.id), eq(samenverderSessies.status, 'uitgevoerd'))).limit(1);
     if (uitgevoerd) return reply.code(409).send({ fout: 'Dit programma heeft uitgevoerde sessies en kan niet worden verwijderd; zet het op afgerond' });
     await db.delete(samenverderProgrammas).where(eq(samenverderProgrammas.id, p.id));
     return { ok: true };
+  });
+
+  // ── Dagenbudget: alleen een beheerder legt afgesproken dagen vast; een correctie is een nieuwe regel, niets wordt gewijzigd of verwijderd. ──
+  app.post('/api/samenverder/programmas/:id/budget', async (req, reply) => {
+    const id = idParam(req);
+    const p = id.success ? await programmaVan(id.data) : undefined;
+    if (!p) return reply.code(404).send({ fout: 'Programma niet gevonden' });
+    const b = budgetBody.parse(req.body);
+    if (b.soort !== 'correctie' && b.dagen < 0) return reply.code(400).send({ fout: 'Een start of uitbreiding voegt dagen toe; gebruik een correctie om dagen af te halen' });
+    const uitkomst = await db.transaction(async (tx): Promise<Fout | { ok: true }> => {
+      // Vergrendel het programma, zodat twee gelijktijdige mutaties het totaal niet onder nul kunnen brengen.
+      await tx.select({ id: samenverderProgrammas.id }).from(samenverderProgrammas).where(eq(samenverderProgrammas.id, p.id)).for('update');
+      const bestaand = await tx.select({ dagen: samenverderBudgetmutaties.dagen, soort: samenverderBudgetmutaties.soort }).from(samenverderBudgetmutaties).where(eq(samenverderBudgetmutaties.programmaId, p.id));
+      if (b.soort === 'start' && bestaand.some((m) => m.soort === 'start')) return { code: 409, fout: 'Dit programma heeft al een startbudget; leg meer dagen vast als uitbreiding' };
+      const totaal = bestaand.reduce((som, m) => som + Math.round(Number(m.dagen) * 100), 0) + Math.round(b.dagen * 100);
+      if (totaal < 0) return { code: 400, fout: 'Het totaal aantal afgesproken dagen kan niet onder nul komen' };
+      await tx.insert(samenverderBudgetmutaties).values({ programmaId: p.id, dagen: b.dagen.toFixed(2), soort: b.soort, reden: b.reden, door: wie(req) ?? 'beheerder' });
+      return { ok: true };
+    });
+    if ('code' in uitkomst) return reply.code(uitkomst.code).send({ fout: uitkomst.fout });
+    return reply.code(201).send((await budgetVan([p.id])).get(p.id));
   });
 
   // ── Sessies ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────

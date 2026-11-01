@@ -1,9 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ONDERWERP_STATUS_LABEL, SESSIE_SOORT_LABEL, SESSIE_STATUS_LABEL, SOORT_LABEL, api, datum, type ActiviteitSoort, type KlantDetail, type Medewerker, type SamenverderProgramma, type SamenverderSessie, type SessieSoort,
+  BUDGET_SOORT_LABEL, ONDERWERP_STATUS_LABEL, SESSIE_SOORT_LABEL, SESSIE_STATUS_LABEL, SOORT_LABEL, api, datum, type ActiviteitSoort, type BudgetSoort, type KlantDetail, type Medewerker, type SamenverderProgramma, type SamenverderSessie, type SessieSoort,
 } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+import { BudgetRegel, dagen } from './Budget';
 
 type SessieWaarden = { soort: SessieSoort; dagnummer: string; onderwerp: string; doel: string; datum: string; omvangDagen: string; extra: boolean; contactpersoonId: string; consultantIds: string[] };
 const LEEG: SessieWaarden = { soort: 'uitvoering', dagnummer: '', onderwerp: '', doel: '', datum: '', omvangDagen: '1', extra: false, contactpersoonId: '', consultantIds: [] };
@@ -15,7 +16,6 @@ const naarBody = (w: SessieWaarden) => ({
   soort: w.soort, dagnummer: w.dagnummer.trim() ? Number(w.dagnummer) : null, onderwerp: w.onderwerp, doel: w.doel.trim() ? w.doel : null, datum: w.datum || null,
   omvangDagen: Number(w.omvangDagen.replace(',', '.')), extra: w.extra, contactpersoonId: w.contactpersoonId || null, consultantIds: w.consultantIds,
 });
-const dagen = (n: number) => `${String(n).replace('.', ',')} ${n === 1 ? 'dag' : 'dagen'}`;
 
 function SessieFormulier({ waarden, zet, klant, medewerkers, opslaan, annuleer, knop }: {
   waarden: SessieWaarden; zet: (w: SessieWaarden) => void; klant: KlantDetail | null; medewerkers: Medewerker[]; opslaan: (e: FormEvent) => void; annuleer?: () => void; knop: string;
@@ -64,7 +64,14 @@ function Sessie({ s, alleenLezen, klant, medewerkers, ververs, fout }: { s: Same
         <li key={o.id}>{o.titel} <span className="zacht klein">({ONDERWERP_STATUS_LABEL[o.status]})</span>
           {!alleenLezen && <> <button type="button" className="tekstknop gevaar" onClick={() => doe(() => api('DELETE', `/samenverder/onderwerpen/${o.id}`))}>Verwijderen</button></>}</li>
       ))}</ul>}
-      {s.debriefs.map((d) => <p key={d.id}><strong>Debrief ({datum(d.createdAt)}{d.door ? `, ${d.door}` : ''}):</strong> {d.samenvatting}</p>)}
+      {s.debriefs.map((d) => (
+        <div key={d.id}>
+          <p><strong>Debrief ({datum(d.createdAt)}{d.door ? `, ${d.door}` : ''}):</strong> {d.samenvatting}</p>
+          {d.voorstel && s.status === 'gepland' && (
+            <p className="zacht klein" role="note">Voorstel uit het gesprek (nog niet overgenomen): {d.voorstel.uitgevoerd === true ? 'de sessie is uitgevoerd' : d.voorstel.uitgevoerd === false ? 'de sessie is niet uitgevoerd' : 'geen oordeel over uitvoering'}{d.voorstel.duurDagen !== null && `, genoemde duur ${dagen(d.voorstel.duurDagen)}`}{d.voorstel.citaat && ` — “${d.voorstel.citaat}”`}. Controleer en bevestig zelf; het budget verandert pas na jouw bevestiging.</p>
+          )}
+        </div>
+      ))}
       {[...punten.entries()].map(([soort, lijst]) => (
         <div key={soort}><strong>{SOORT_LABEL[soort as ActiviteitSoort] ?? soort}</strong>
           <ul>{lijst.map((a) => <li key={a.id}>{a.omschrijving}<span className="zacht klein">{a.eigenaar && ` · ${a.eigenaar}`}{a.deadline && ` · uiterlijk ${datum(a.deadline)}`}{a.status === 'afgerond' && ' · afgerond'}</span></li>)}</ul></div>
@@ -93,7 +100,40 @@ function Sessie({ s, alleenLezen, klant, medewerkers, ververs, fout }: { s: Same
   );
 }
 
-/** Tijdlijn van één programma: de sessies op datum, met wat er per sessie is vastgelegd. Administratie en planning; het dagenbudget volgt later. */
+function BudgetPaneel({ id, budget, alleenLezen, ververs, fout }: { id: string; budget: SamenverderProgramma['budget']; alleenLezen: boolean; ververs: () => void; fout: (e: unknown) => void }) {
+  const [nieuw, setNieuw] = useState({ soort: (budget.mutaties.some((m) => m.soort === 'start') ? 'uitbreiding' : 'start') as BudgetSoort, dagen: '', reden: '' });
+  async function leggVast(e: FormEvent) {
+    e.preventDefault();
+    const n = Number(nieuw.dagen.replace(',', '.'));
+    try {
+      await api('POST', `/samenverder/programmas/${id}/budget`, { soort: nieuw.soort, dagen: nieuw.soort === 'correctie' ? n : Math.abs(n), reden: nieuw.reden });
+      setNieuw({ soort: 'uitbreiding', dagen: '', reden: '' }); ververs();
+    } catch (er) { fout(er); }
+  }
+  return (
+    <section className="paneel stapel" aria-label="Dagenbudget">
+      <h2>Dagenbudget</h2>
+      <p><BudgetRegel budget={budget} /></p>
+      <p className="zacht klein">Afgesproken is wat is vastgelegd; uitgevoerd (alleen bevestigde sessies), gepland en nog niet gepland worden berekend uit de sessies. Geannuleerde en verplaatste sessies tellen niet mee.</p>
+      {budget.mutaties.length > 0 && (
+        <ul>{budget.mutaties.map((m) => <li key={m.id}>{datum(m.op)} · {BUDGET_SOORT_LABEL[m.soort]} · {m.dagen > 0 ? '+' : ''}{dagen(m.dagen)} · {m.reden}<span className="zacht klein"> ({m.door})</span></li>)}</ul>
+      )}
+      {!alleenLezen && (
+        <form className="stapel" onSubmit={leggVast}>
+          <div className="raster">
+            <Veld label="Soort"><select value={nieuw.soort} onChange={(e) => setNieuw({ ...nieuw, soort: e.target.value as BudgetSoort })}>{Object.entries(BUDGET_SOORT_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Veld>
+            <Veld label={nieuw.soort === 'correctie' ? 'Dagen (min om af te halen)' : 'Dagen'}><input inputMode="decimal" value={nieuw.dagen} onChange={(e) => setNieuw({ ...nieuw, dagen: e.target.value })} required /></Veld>
+          </div>
+          <Veld label="Reden"><input value={nieuw.reden} onChange={(e) => setNieuw({ ...nieuw, reden: e.target.value })} required maxLength={500} /></Veld>
+          <button className="primair" type="submit">Vastleggen</button>
+          <p className="zacht klein">Een regel kan niet worden gewijzigd of verwijderd; corrigeer met een nieuwe regel.</p>
+        </form>
+      )}
+    </section>
+  );
+}
+
+/** Tijdlijn van één programma: de sessies op datum, met wat er per sessie is vastgelegd, en het dagenbudget. */
 export function SamenVerderProgramma({ alleenLezen = false }: { alleenLezen?: boolean }) {
   const { id = '' } = useParams();
   const navigeer = useNavigate();
@@ -106,7 +146,7 @@ export function SamenVerderProgramma({ alleenLezen = false }: { alleenLezen?: bo
   const [bewerkProgramma, setBewerkProgramma] = useState<{ pakket: string; periodeVan: string; periodeTot: string; status: string; opmerking: string } | null>(null);
   if (data.fout) return <div className="stapel"><Melding tekst={data.fout} /><Link to="/samenverder">Terug naar SamenVerder</Link></div>;
   if (!data.data) return null;
-  const { programma: p, klant: k, sessies } = data.data;
+  const { programma: p, klant: k, sessies, budget } = data.data;
   const fout = (e: unknown) => setMelding(foutTekst(e));
   const ververs = () => { setMelding(null); void data.ververs(); };
   return (
@@ -132,6 +172,7 @@ export function SamenVerderProgramma({ alleenLezen = false }: { alleenLezen?: bo
           <button type="button" className="gevaar" onClick={async () => { if (!confirm('Dit programma met al zijn sessies verwijderen?')) return; try { await api('DELETE', `/samenverder/programmas/${id}`); navigeer('/samenverder'); } catch (er) { fout(er); } }}>Verwijderen</button>
         </div>
       ))}
+      <BudgetPaneel id={id} budget={budget} alleenLezen={alleenLezen} ververs={ververs} fout={fout} />
       <h2>Sessies ({sessies.length})</h2>
       {sessies.length === 0 ? <Leeg>Nog geen sessies.</Leeg> : <ul className="lijst-kaarten">{sessies.map((s) => <Sessie key={s.id} s={s} alleenLezen={alleenLezen} klant={klant.data} medewerkers={medewerkers.data ?? []} ververs={ververs} fout={fout} />)}</ul>}
       {!alleenLezen && (

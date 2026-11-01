@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, datum, type KlantRegel, type SamenverderProgrammaRegel } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+import { BudgetRegel } from './Budget';
 
 const periode = (p: { periodeVan: string; periodeTot: string | null }) => `${datum(p.periodeVan)}${p.periodeTot ? ` – ${datum(p.periodeTot)}` : ' –'}`;
 
@@ -37,6 +38,7 @@ export function SamenVerder({ alleenLezen = false }: { alleenLezen?: boolean }) 
               <Link to={`/samenverder/${p.id}`}><strong>{p.klantNaam}</strong></Link> <Badge soort={p.status === 'afgerond' ? 'wacht' : ''}>{p.status === 'actief' ? 'Actief' : 'Afgerond'}</Badge>
               <p className="zacht klein">{p.pakket || 'Geen pakket'} · {periode(p)}</p>
               <p>{p.aantalUitgevoerd} uitgevoerd · {p.aantalGepland} gepland{p.volgendeSessie ? ` · volgende sessie ${datum(p.volgendeSessie)}` : ' · geen volgende sessie gepland'}</p>
+              <p><BudgetRegel budget={p.budget} /></p>
             </li>
           ))}
         </ul>

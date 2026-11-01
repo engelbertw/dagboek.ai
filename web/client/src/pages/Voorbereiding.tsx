@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { IMPLEMENTATIE_FASE_LABEL, KLANT_STATUS_LABEL, SOORT_LABEL, TEST_STATUS_LABEL, api, datum, type ActiviteitSoort, type Voorbereiding as VoorbereidingData } from '../api';
 import { Badge, Leeg, Melding, useLaden } from '../ui';
 import { REDEN } from './ActiviteitenLijst';
+import { BudgetRegel } from './Budget';
 
 const GESPREK_LABEL: Record<VoorbereidingData['gesprekken'][number]['soort'], string> = {
   bezoek: 'Klantbezoek', project: 'Projectdebrief', implementatie: 'Implementatiedebrief', samenverder: 'SamenVerder-debrief', consultant: 'Consultantdebrief',
@@ -90,6 +91,7 @@ export function VoorbereidingWeergave({ data }: { data: VoorbereidingData }) {
             {data.samenverder.map((p) => (
               <li key={p.id}><Link to={`/samenverder/${p.id}`}>{p.pakket || 'Programma'}</Link> <Badge soort={p.status === 'afgerond' ? 'wacht' : ''}>{p.status === 'actief' ? 'Actief' : 'Afgerond'}</Badge>
                 <span className="subtiel"> · {datum(p.periodeVan)}{p.periodeTot ? ` – ${datum(p.periodeTot)}` : ' –'} · {p.aantalUitgevoerd} uitgevoerd, {p.aantalGepland} gepland{p.volgendeSessie ? ` · volgende sessie ${datum(p.volgendeSessie)}` : ' · geen volgende sessie gepland'}{p.laatsteSessie && ` · laatste sessie ${datum(p.laatsteSessie)}`} · {BRON_LABEL[p.bron]}</span>
+                <div><BudgetRegel budget={p.budget} /></div>
                 {p.laatsteSamenvatting && <p>{p.laatsteSamenvatting.tekst}<span className="subtiel"> ({datum(p.laatsteSamenvatting.datum)}, laatste debrief)</span></p>}</li>
             ))}
           </ul>

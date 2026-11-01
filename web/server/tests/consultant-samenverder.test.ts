@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { activiteiten, calls, consultantDebriefs, employees, klanten, samenverderProgrammas, samenverderSessieConsultants, samenverderSessieOnderwerpen, samenverderSessies } from '../schema.js';
+import { activiteiten, calls, consultantDebriefs, employees, klanten, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessieConsultants, samenverderSessieOnderwerpen, samenverderSessies } from '../schema.js';
 import { registreerVariant, verwijderVariant } from '../consultant-varianten.js';
 import { SAMENVERDER_VARIANT, controleerSamenverderData } from '../consultant-samenverder.js';
 import { vandaagNL } from '../samenvatten.js';
@@ -77,7 +77,14 @@ describe('SamenVerder-debrief', () => {
   it('koppelt aan de geplande sessie en laat de planning ongemoeid', async () => {
     const { t, klant, karin } = await maakT();
     const { programma, sessies } = await zetOp(t, klant.id, karin.id, { volgende: true });
+    await t.db.insert(samenverderBudgetmutaties).values({ programmaId: programma!.id, dagen: '10.00', soort: 'start', reden: 'Contract', door: 'beheerder' });
+    const voor = (await t.api('GET', `/api/samenverder/programmas/${programma!.id}`)).json().budget;
     const { debrief } = await bel(t);
+    // Het gesprek zegt dat de dag een hele dag duurde en is uitgevoerd, maar het budget en de sessie veranderen daar niet door; het is een voorstel voor de beheerder.
+    const na = (await t.api('GET', `/api/samenverder/programmas/${programma!.id}`)).json();
+    expect(na.budget).toEqual(voor);
+    expect(na.budget).toMatchObject({ uitgevoerd: 0, beschikbaar: 10 });
+    expect(na.sessies.find((s: { id: string }) => s.id === sessies[0].id).debriefs[0].voorstel).toMatchObject({ uitgevoerd: true, duurDagen: 1, citaat: expect.stringContaining('hele dag') });
     expect(debrief).toMatchObject({ variant: 'samenverder', programmaId: programma!.id, sessieId: sessies[0].id, controleNodig: false, promptVersie: 'consultant-samenverder-v1' });
     const [sessie] = await t.db.select().from(samenverderSessies).where(eq(samenverderSessies.id, sessies[0].id));
     expect(sessie).toMatchObject({ status: 'gepland', bevestigdOp: null, doel: null, omvangDagen: '1.00' });

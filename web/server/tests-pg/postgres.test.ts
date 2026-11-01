@@ -6,7 +6,7 @@ import { startGesprek } from '../gesprek-starten.js';
 import { zetStatus } from '../gesprek-status.js';
 import { leggToestemmingVast } from '../toestemming.js';
 import { tik } from '../scheduler.js';
-import { calls, employees, activiteiten, implementaties, klanten, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
+import { calls, employees, activiteiten, implementaties, klanten, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
 import { maakDatabase, maakHandles, migratieMap, migratiesTot, pool } from './helpers.js';
 
 const rijen = (r: unknown) => ((r as { rows?: any[] }).rows ?? (r as any[]));
@@ -118,6 +118,32 @@ describe('SamenVerder (migratie 025)', () => {
       await db.update(samenverderSessies).set({ status: 'uitgevoerd', bevestigdOp: new Date() }).where(eq(samenverderSessies.id, s.id));
       await db.delete(samenverderProgrammas).where(eq(samenverderProgrammas.id, p.id)); // sessies gaan mee
       expect(await db.select().from(samenverderSessies)).toHaveLength(0);
+    } finally { await h.close(); await d.verwijder(); }
+  });
+});
+
+describe('SamenVerder-budget (migratie 027)', () => {
+  it('bewaart afgesproken dagen als register dat niet te wijzigen is', async () => {
+    const d = await maakDatabase();
+    const h = await connectPostgres(d.url);
+    try {
+      await migrate(h);
+      const { db } = h;
+      const kapot = (q: ReturnType<typeof sql>) => expect(db.execute(q)).rejects.toThrow();
+      const [k] = await db.insert(klanten).values({ naam: 'Gemeente' }).returning();
+      const [p] = await db.insert(samenverderProgrammas).values({ klantId: k.id, periodeVan: '2026-01-01' }).returning();
+      const [m] = await db.insert(samenverderBudgetmutaties).values({ programmaId: p.id, dagen: '10.50', soort: 'start', reden: 'Contract', door: 'beheerder' }).returning();
+      expect(m.dagen).toBe('10.50');
+      await kapot(sql`update samenverder_budgetmutaties set dagen = 99 where id = ${m.id}`);
+      await kapot(sql`delete from samenverder_budgetmutaties where id = ${m.id}`);
+      await kapot(sql`insert into samenverder_budgetmutaties (programma_id, dagen, soort, reden, door) values (${p.id}, 2, 'start', 'nog een start', 'x')`); // hooguit één start
+      await kapot(sql`insert into samenverder_budgetmutaties (programma_id, dagen, soort, reden, door) values (${p.id}, -1, 'uitbreiding', 'min', 'x')`); // alleen een correctie haalt dagen af
+      await kapot(sql`insert into samenverder_budgetmutaties (programma_id, dagen, soort, reden, door) values (${p.id}, 0, 'correctie', 'nul', 'x')`);
+      await kapot(sql`insert into samenverder_budgetmutaties (programma_id, dagen, soort, reden, door) values (${p.id}, 1, 'uitbreiding', '  ', 'x')`);
+      await kapot(sql`insert into samenverder_budgetmutaties (programma_id, dagen, soort, reden, door) values (${p.id}, 1, 'bonus', 'x', 'x')`);
+      await db.insert(samenverderBudgetmutaties).values({ programmaId: p.id, dagen: '-2.00', soort: 'correctie', reden: 'Fout in contract', door: 'beheerder' });
+      await kapot(sql`delete from samenverder_programmas where id = ${p.id}`); // restrict: een programma met budget blijft bestaan
+      expect(await db.select().from(samenverderBudgetmutaties)).toHaveLength(2);
     } finally { await h.close(); await d.verwijder(); }
   });
 });

@@ -394,6 +394,20 @@ export const samenverderSessieOnderwerpen = pgTable('samenverder_sessie_onderwer
   createdAt: createdAt(),
 }, (t) => [index('samenverder_sessie_onderwerpen_sessie').on(t.sessieId)]);
 
+export const BUDGET_SOORTEN = ['start', 'uitbreiding', 'correctie'] as const;
+export type BudgetSoort = (typeof BUDGET_SOORTEN)[number];
+
+/** Register van afgesproken dagen per programma; wordt nooit gewijzigd of verwijderd (een correctie is een nieuwe regel). Wat uitgevoerd of gepland is, wordt berekend. */
+export const samenverderBudgetmutaties = pgTable('samenverder_budgetmutaties', {
+  id: id(),
+  programmaId: uuid('programma_id').notNull().references(() => samenverderProgrammas.id, { onDelete: 'restrict' }),
+  dagen: numeric('dagen', { precision: 5, scale: 2 }).notNull(),
+  soort: text('soort', { enum: BUDGET_SOORTEN }).notNull(),
+  reden: text('reden').notNull(),
+  door: text('door').notNull(),
+  op: timestamp('op', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('samenverder_budgetmutaties_programma').on(t.programmaId, t.op)]);
+
 /** Beoordelingen in de datakwaliteit: een melding die een accountmanager als "geen probleem" heeft aangemerkt. */
 export const kwaliteitBesluiten = pgTable('kwaliteit_besluiten', {
   sleutel: text('sleutel').primaryKey(),

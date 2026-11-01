@@ -86,7 +86,7 @@ export interface Voorbereiding {
   klant: { id: string; naam: string; status: string; samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null; accountmanagerNaam: string | null; omschrijving: string };
   contacten: { id: string; naam: string; functie: string; rol: string; laatstGesproken: string | null }[];
   onderwerpen: { id: string; titel: string; type: string; status: string; eigenaarNaam: string | null; laatsteUpdate: { datum: string; samenvatting: string; besluiten: string } | null; bron: string }[];
-  samenverder: { id: string; pakket: string; periodeVan: string; periodeTot: string | null; status: string; aantalGepland: number; aantalUitgevoerd: number; volgendeSessie: string | null; laatsteSessie: string | null; laatsteSamenvatting: { datum: string; tekst: string } | null; bron: string }[];
+  samenverder: { id: string; pakket: string; periodeVan: string; periodeTot: string | null; status: string; aantalGepland: number; aantalUitgevoerd: number; volgendeSessie: string | null; laatsteSessie: string | null; budget: SamenverderBudget; laatsteSamenvatting: { datum: string; tekst: string } | null; bron: string }[];
   implementaties: { topicId: string; titel: string; module: string; fase: string; testStatus: string; status: string; geplandeLivegang: string | null; werkelijkeLivegang: string | null; bron: string }[];
   gesprekken: { soort: 'bezoek' | 'project' | 'implementatie' | 'samenverder' | 'consultant'; datum: string | null; samenvatting: string; door: string | null; bron: string }[];
   openPunten: { id: string; soort: string; omschrijving: string; eigenaar: string; deadline: string | null; teLaat: boolean; onderwerp: string | null; datum: string; bron: string }[];
@@ -108,21 +108,25 @@ export type SessieSoort = keyof typeof SESSIE_SOORT_LABEL;
 export const SESSIE_STATUS_LABEL = { gepland: 'Gepland', uitgevoerd: 'Uitgevoerd', geannuleerd: 'Geannuleerd', verplaatst: 'Verplaatst' } as const;
 export type SessieStatus = keyof typeof SESSIE_STATUS_LABEL;
 export const ONDERWERP_STATUS_LABEL = { voorgesteld: 'Voorgesteld', gepland: 'Gepland', afgehandeld: 'Afgehandeld', afgewezen: 'Afgewezen' } as const;
+export interface SamenverderBudget { beschikbaar: number; uitgevoerd: number; gepland: number; nogNietGepland: number; overschrijding: boolean }
+export const BUDGET_SOORT_LABEL = { start: 'Start', uitbreiding: 'Uitbreiding', correctie: 'Correctie' } as const;
+export type BudgetSoort = keyof typeof BUDGET_SOORT_LABEL;
 export interface SamenverderProgrammaRegel {
   id: string; klantId: string; klantNaam: string; pakket: string; periodeVan: string; periodeTot: string | null; status: 'actief' | 'afgerond'; accountmanagerId: string | null; accountmanagerNaam: string | null;
-  opmerking: string; aantalSessies: number; aantalGepland: number; aantalUitgevoerd: number; volgendeSessie: string | null; laatsteSessie: string | null;
+  opmerking: string; aantalSessies: number; aantalGepland: number; aantalUitgevoerd: number; volgendeSessie: string | null; laatsteSessie: string | null; budget: SamenverderBudget;
 }
 export interface SamenverderSessie {
   id: string; programmaId: string; soort: SessieSoort; dagnummer: number | null; onderwerp: string; doel: string | null; datum: string | null; omvangDagen: number; status: SessieStatus;
   verplaatstNaarId: string | null; extra: boolean; contactpersoonId: string | null; contactpersoonNaam: string | null; bevestigdDoor: string | null; bevestigdOp: string | null;
   consultants: { id: string; naam: string }[];
   onderwerpen: { id: string; titel: string; topicId: string | null; status: keyof typeof ONDERWERP_STATUS_LABEL; voorgesteldInSessieId: string | null }[];
-  debriefs: { id: string; samenvatting: string; createdAt: string; door: string | null }[];
+  debriefs: { id: string; samenvatting: string; createdAt: string; door: string | null; voorstel: { uitgevoerd: boolean | null; duurDagen: number | null; citaat: string } | null }[];
   activiteiten: { id: string; soort: string; omschrijving: string; status: string; deadline: string | null; eigenaar: string }[];
 }
 export interface SamenverderProgramma {
-  programma: Omit<SamenverderProgrammaRegel, 'klantNaam' | 'accountmanagerNaam' | 'aantalSessies' | 'aantalGepland' | 'aantalUitgevoerd' | 'volgendeSessie' | 'laatsteSessie'>;
+  programma: Omit<SamenverderProgrammaRegel, 'klantNaam' | 'accountmanagerNaam' | 'aantalSessies' | 'aantalGepland' | 'aantalUitgevoerd' | 'volgendeSessie' | 'laatsteSessie' | 'budget'>;
   klant: { id: string; naam: string }; sessies: SamenverderSessie[];
+  budget: SamenverderBudget & { mutaties: { id: string; dagen: number; soort: BudgetSoort; reden: string; door: string; op: string }[] };
 }
 
 /**
