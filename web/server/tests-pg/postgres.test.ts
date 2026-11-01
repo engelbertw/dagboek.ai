@@ -174,6 +174,22 @@ describe('opvolging (migratie 029)', () => {
   });
 });
 
+describe('Sales AM weg (migratie 028)', () => {
+  it('haalt de kolom weg en laat bestaande klanten staan', async () => {
+    const d = await maakDatabase();
+    const h = await connectPostgres(d.url);
+    try {
+      await migrate(h, migratiesTot('027'));
+      const kolom = async () => rijen(await h.db.execute(sql`select 1 as x from information_schema.columns where table_name = 'klanten' and column_name = 'sales_am'`)).length;
+      expect(await kolom()).toBe(1);
+      await h.db.execute(sql`insert into klanten (naam, sales_am) values ('Gemeente X', 'Anouk')`);
+      await migrate(h);
+      expect(await kolom()).toBe(0);
+      expect(rijen(await h.db.execute(sql`select naam from klanten`)).map((r) => r.naam)).toEqual(['Gemeente X']);
+    } finally { await h.close(); await d.verwijder(); }
+  });
+});
+
 describe('gelijktijdigheid', () => {
   let d: Awaited<ReturnType<typeof maakDatabase>>;
   let handles: DbHandle[];
