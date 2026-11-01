@@ -47,7 +47,7 @@ export function Details({ a }: { a: Pick<Activiteit, 'details'> }) {
 }
 
 export interface Acties {
-  fout: string | null; jiraKlaar: boolean;
+  fout: string | null; jiraKlaar: boolean; alleenLezen: boolean;
   zet(a: Pick<Activiteit, 'id' | 'status'>): Promise<void>;
   wijzig(id: string, wijziging: Record<string, unknown>): Promise<boolean>;
   besluit(a: Pick<Activiteit, 'id'>, b: 'goedkeuren' | 'afwijzen'): Promise<void>;
@@ -60,7 +60,7 @@ export interface Acties {
 }
 
 /** Alles wat je met een punt kunt doen, met één plek voor de foutmelding. Na elke wijziging wordt de lijst ververst. */
-export function useActies(ververs: () => void, punten: Pick<Activiteit, 'id' | 'omschrijving'>[]): Acties {
+export function useActies(ververs: () => void, punten: Pick<Activiteit, 'id' | 'omschrijving'>[], alleenLezen = false): Acties {
   const [fout, setFout] = useState<string | null>(null);
   const [jiraMelding, setJiraMelding] = useState<string | null>(null);
   const [voorbeeld, setVoorbeeld] = useState<JiraUitkomst[] | null>(null);
@@ -119,7 +119,7 @@ export function useActies(ververs: () => void, punten: Pick<Activiteit, 'id' | '
   ) : null;
 
   return {
-    fout, jiraKlaar: !!jira.data?.geconfigureerd, jiraPaneel, jiraVoorbeeld,
+    fout, alleenLezen, jiraKlaar: !!jira.data?.geconfigureerd && !alleenLezen, jiraPaneel, jiraVoorbeeld,
     zet: async (a) => { await doe(() => api('PATCH', `/activiteiten/${a.id}`, { status: a.status === 'open' ? 'afgerond' : 'open' })); },
     wijzig: (id, wijziging) => doe(() => api('PATCH', `/activiteiten/${id}`, wijziging)),
     besluit: async (a, b) => { await doe(() => api('POST', `/activiteiten/${a.id}/controle`, { besluit: b })); },
@@ -173,7 +173,7 @@ export function Regel({ a, acties, medewerkers, vandaag, toonKlant = false }: { 
 
   return (
     <li className={`werk-regel${klaar ? ' klaar' : ''}`}>
-      <input type="checkbox" className="werk-vink" checked={klaar} onChange={() => void acties.zet(a)} aria-label={`Afgerond: ${a.omschrijving}`} />
+      <input type="checkbox" className="werk-vink" checked={klaar} disabled={acties.alleenLezen} onChange={() => void acties.zet(a)} aria-label={`Afgerond: ${a.omschrijving}`} />
       <div className="werk-inhoud">
         <p className="werk-tekst">{a.omschrijving}</p>
         <p className="werk-meta">
@@ -187,7 +187,7 @@ export function Regel({ a, acties, medewerkers, vandaag, toonKlant = false }: { 
           {a.jiraSleutel && (a.jiraUrl?.startsWith('https://') ? <a href={a.jiraUrl} target="_blank" rel="noreferrer">{a.jiraSleutel}</a> : <span>{a.jiraSleutel}</span>)}
         </p>
       </div>
-      <details className="werk-menu" ref={menu}>
+      {!acties.alleenLezen && <details className="werk-menu" ref={menu}>
         <summary aria-label={`Meer acties voor: ${a.omschrijving}`}>⋯</summary>
         <div className="werk-menu-lijst">
           <button type="button" onClick={doeActie(async () => setBewerk(true))}>Bewerken</button>
@@ -196,7 +196,7 @@ export function Regel({ a, acties, medewerkers, vandaag, toonKlant = false }: { 
           {acties.jiraKlaar && !klaar && !a.jiraSleutel && <button type="button" onClick={doeActie(() => acties.jiraVoorbeeld([a.id]))}>Naar Jira…</button>}
           <button type="button" className="gevaar" onClick={doeActie(() => acties.verwijder(a))}>Verwijderen</button>
         </div>
-      </details>
+      </details>}
     </li>
   );
 }
@@ -247,10 +247,10 @@ export function ControleBanner({ punten, acties }: { punten: Activiteit[]; actie
               </p>
               <p className="werk-meta"><span>{REDEN[a.controleReden ?? ''] ?? a.controleReden ?? 'Controle nodig'}</span></p>
             </div>
-            <div className="werk-controle-knoppen">
+            {!acties.alleenLezen && <div className="werk-controle-knoppen">
               <button type="button" className="primair" onClick={() => void acties.besluit(a, 'goedkeuren')}>{a.controleReden === 'mogelijk_afgerond' ? 'Afgerond' : 'Klopt'}</button>
               <button type="button" onClick={() => void acties.besluit(a, 'afwijzen')}>{a.controleReden === 'mogelijk_afgerond' ? 'Nog open' : 'Verwijderen'}</button>
-            </div>
+            </div>}
           </li>
         ))}
       </ul>

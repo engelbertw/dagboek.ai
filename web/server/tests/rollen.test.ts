@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { maakSessie } from '../auth.js';
-import { magDoen, magInwonersWijzigen, normaleRol } from '../rollen.js';
+import { magAndereKlantveldenWijzigen, magDoen, magInwonersWijzigen, normaleRol } from '../rollen.js';
 import { klanten } from '../schema.js';
 import { maakTestApp } from './helpers.js';
 
@@ -30,13 +30,28 @@ describe('rollen', () => {
     expect((await doe('GET', '/api/activiteiten')).statusCode).toBe(200);
     expect((await doe('POST', '/api/activiteiten', { omschrijving: 'Offerte opvolgen', soort: 'intern' })).statusCode).toBe(201);
     const namen = (await doe('GET', '/api/employees')).json();
-    expect(namen[0]).toEqual({ id: expect.any(String), naam: 'Daan', rol: 'medewerker', actief: true }); // geen telefoonnummer
+    expect(namen[0]).toEqual({ id: expect.any(String), naam: 'Daan', rol: 'medewerker', actief: true, consultant: false }); // geen telefoonnummer
     for (const [m, u] of [['GET', '/api/topics'], ['GET', '/api/gebruikers'], ['GET', '/api/instellingen/jira'], ['POST', '/api/activiteiten/jira'], ['GET', '/api/dashboard']]) {
       expect((await doe(m, u, m === 'POST' ? { ids: [ID] } : undefined)).statusCode, `${m} ${u}`).toBe(403);
     }
     expect((await doe('GET', '/api/me')).json()).toMatchObject({ ingelogd: true, rol: 'accountmanager' });
     // Een beheerder ziet de volledige medewerkers.
     expect((await t.api('GET', '/api/employees')).json()[0].telefoon).toBeTruthy();
+  });
+});
+
+describe('rol consultant', () => {
+  it('leest alleen het consultancywerk en wijzigt niets', () => {
+    for (const [m, p] of [['GET', '/api/activiteiten'], ['GET', '/api/klanten'], ['GET', `/api/klanten/${ID}`], ['GET', `/api/klanten/${ID}/voorbereiding`], ['GET', '/api/topics'], ['GET', '/api/consultancy'],
+      ['GET', '/api/samenverder/programmas'], ['GET', `/api/samenverder/programmas/${ID}`], ['GET', '/api/employees']]) expect(magDoen('consultant', m, p), `${m} ${p}`).toBe(true);
+    for (const [m, p] of [['POST', '/api/activiteiten'], ['PATCH', `/api/activiteiten/${ID}`], ['DELETE', `/api/activiteiten/${ID}`], ['POST', `/api/activiteiten/${ID}/opvolging`], ['POST', `/api/activiteiten/${ID}/controle`],
+      ['PATCH', `/api/klanten/${ID}`], ['POST', '/api/klanten'], ['GET', '/api/klant-contacten'], ['GET', '/api/kwaliteit'], ['POST', `/api/samenverder/programmas/${ID}/budget`], ['POST', '/api/samenverder/programmas'],
+      ['GET', '/api/gesprekken'], ['GET', '/api/gebruikers'], ['PUT', '/api/instellingen/jira']]) expect(magDoen('consultant', m, p), `${m} ${p}`).toBe(false);
+  });
+  it('is een eigen rol en mag niets aan klantgegevens wijzigen', () => {
+    expect(normaleRol('consultant')).toBe('consultant');
+    expect(magInwonersWijzigen('consultant')).toBe(false);
+    expect(magAndereKlantveldenWijzigen('consultant')).toBe(false);
   });
 });
 

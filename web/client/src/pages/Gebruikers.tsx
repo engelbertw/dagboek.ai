@@ -2,8 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
-type GebruikersRol = 'beheerder' | 'accountmanager' | 'administratie';
-const ROL_LABEL: Record<GebruikersRol, string> = { beheerder: 'Beheerder', accountmanager: 'Accountmanager', administratie: 'Administratie' };
+type GebruikersRol = 'beheerder' | 'accountmanager' | 'administratie' | 'consultant';
+const ROL_LABEL: Record<GebruikersRol, string> = { beheerder: 'Beheerder', accountmanager: 'Accountmanager', administratie: 'Administratie', consultant: 'Consultant' };
 
 interface Gebruiker { id: string; email: string; naam: string; rol: GebruikersRol; actief: boolean; mfa: boolean; aangemaakt: string | null }
 

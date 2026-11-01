@@ -14,6 +14,7 @@ import { ACCOUNTMANAGER_ROL, BEHEERDER_ROL, ROLLEN, type GebruikersRol } from '.
 const ROL_OMSCHRIJVING: Record<GebruikersRol, string> = {
   beheerder: 'Beheerder van dagboek.ai: ziet alle gegevens en beheert gebruikers.',
   accountmanager: 'Accountmanager: ziet alleen het werkregister en de klanten van dagboek.ai.',
+  consultant: 'Consultant: leest alleen het consultancywerk (werkregister, klanten, Consultancy en SamenVerder) van dagboek.ai.',
   administratie: 'Administratie: beheert de stamgegevens van klanten (inwoners, contactpersonen) van dagboek.ai.',
 };
 import { log } from './log.js';

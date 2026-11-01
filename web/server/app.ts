@@ -216,7 +216,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const rijen = await db.select().from(employees).orderBy(asc(employees.naam));
     // Een accountmanager heeft de namen nodig om een eigenaar te kiezen, geen telefoonnummers of notities.
     if (normaleRol(leesSessie(req.cookies[COOKIE], config.sessionSecret)?.rol) === BEHEERDER_ROL) return rijen;
-    return rijen.map((m) => ({ id: m.id, naam: m.naam, rol: m.rol, actief: m.actief }));
+    return rijen.map((m) => ({ id: m.id, naam: m.naam, rol: m.rol, actief: m.actief, consultant: m.consultant }));
   });
   // Een geplakte lijst in één keer toevoegen. Met `voorbeeld` gebeurt er niets; zonder worden alleen de nieuwe, geldige regels toegevoegd.
   app.post('/api/employees/import', async (req) => {

@@ -7,8 +7,9 @@ import { ControleBanner, PuntToevoegen, Secties, useActies } from './Activiteite
 export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
   // Administratie past alleen inwoners aan en ziet het werkregister niet; de accountmanager past inwoners niet aan (de server dwingt dat af).
   const administratie = rol === 'administratie';
-  const magInwoners = rol !== 'accountmanager';
-  const magAnder = !administratie;
+  const consultant = rol === 'consultant'; // alleen lezen; de server weigert elke wijziging
+  const magInwoners = rol === 'beheerder' || administratie;
+  const magAnder = rol === 'beheerder' || rol === 'accountmanager';
   const { id } = useParams();
   const navigeer = useNavigate();
   const kaart = useLaden(() => api<KlantDetail>('GET', `/klanten/${id}`), [id]);
@@ -16,7 +17,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const onderwerpen = useLaden(() => (administratie ? Promise.resolve([] as TopicRegel[]) : api<TopicRegel[]>('GET', '/topics?status=alle')));
   const punten = useLaden(() => (administratie ? Promise.resolve([] as Activiteit[]) : api<Activiteit[]>('GET', `/activiteiten?klantId=${id}`)), [id]);
-  const acties = useActies(() => { void punten.ververs(); void kaart.ververs(); }, punten.data ?? []);
+  const acties = useActies(() => { void punten.ververs(); void kaart.ververs(); }, punten.data ?? [], consultant);
   const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '', samenwerkingsverband: '', inwoners: '' });
   const [samenvoegMet, setSamenvoegMet] = useState('');
   const [contact, setContact] = useState({ naam: '', functie: '', rol: '', email: '', telefoon: '' });
@@ -60,7 +61,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
   return (
     <div className="stapel">
       <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> {!administratie && <> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link></>} · <Link to={`/kwaliteit?klant=${k.id}`}>Kwaliteit</Link></div>
-      {k.status === 'voorgesteld' && (
+      {k.status === 'voorgesteld' && !consultant && (
         <section className="paneel stapel" aria-label="Klant bevestigen">
           <h2>Bevestig deze klant</h2>
           <p className="zacht klein">Deze klant is door een gesprek voorgesteld. Is het een bestaande klant onder een andere naam? Voeg hem dan samen om dubbelen te voorkomen.</p>
@@ -91,7 +92,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
             <Secties punten={(punten.data ?? []).filter((p) => p.status === 'afgerond')} acties={acties} medewerkers={medewerkers.data ?? []} />
           </details>
         )}
-        <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} vast={{ klantId: id }} />
+        {!consultant && <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} vast={{ klantId: id }} />}
       </section>}
 
       {(onderwerpen.data ?? []).some((t) => t.klantId === id) && (
@@ -125,17 +126,17 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
         {kaart.data.contacten.map((c) => (
           <div key={c.id} className="punt">
             <span style={{ flex: 1 }}>{c.naam} <span className="zacht klein">{[c.functie, c.rol, c.email, c.telefoon].filter(Boolean).join(' · ')}</span></span>
-            <button type="button" onClick={() => void wisContact(c.id)}>Verwijderen</button>
+            {!consultant && <button type="button" onClick={() => void wisContact(c.id)}>Verwijderen</button>}
           </div>
         ))}
-        <form className="rij" onSubmit={voegContactToe}>
+        {!consultant && <form className="rij" onSubmit={voegContactToe}>
           <input value={contact.naam} onChange={(e) => setContact({ ...contact, naam: e.target.value })} placeholder="Naam" required maxLength={100} aria-label="Naam contactpersoon" />
           <input value={contact.functie} onChange={(e) => setContact({ ...contact, functie: e.target.value })} placeholder="Functie" maxLength={100} aria-label="Functie" />
           <input value={contact.rol} onChange={(e) => setContact({ ...contact, rol: e.target.value })} placeholder="Rol (bijv. beslisser)" maxLength={100} aria-label="Rol" />
           <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="E-mailadres" maxLength={200} aria-label="E-mailadres" />
           <input value={contact.telefoon} onChange={(e) => setContact({ ...contact, telefoon: e.target.value })} placeholder="Telefoon" maxLength={30} aria-label="Telefoon" />
           <button type="submit">Toevoegen</button>
-        </form>
+        </form>}
       </section>
 
       <form className="paneel stapel" onSubmit={bewaar}>
@@ -158,10 +159,10 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
           <Veld label="Inwoners"><input type="number" min={0} value={bewerk.inwoners} onChange={(e) => setBewerk({ ...bewerk, inwoners: e.target.value })} disabled={!magInwoners} title={magInwoners ? undefined : 'Alleen administratie of beheer past het aantal inwoners aan'} /></Veld>
         </div>
         <Veld label="Omschrijving"><textarea value={bewerk.omschrijving} disabled={!magAnder} onChange={(e) => setBewerk({ ...bewerk, omschrijving: e.target.value })} maxLength={2000} /></Veld>
-        <div className="rij">
+        {!consultant && <div className="rij">
           <button className="primair" type="submit">Opslaan</button>
           {rol === 'beheerder' && <button type="button" className="gevaar" onClick={() => void wis()}>Klant wissen</button>}
-        </div>
+        </div>}
       </form>
     </div>
   );

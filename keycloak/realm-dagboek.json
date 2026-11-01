@@ -31,6 +31,7 @@
     "realm": [
       { "name": "beheerder", "description": "Beheerder van dagboek.ai: ziet alle gegevens en beheert gebruikers. Maak beheerders aan met de vereiste actie CONFIGURE_TOTP, zodat MFA verplicht is." },
       { "name": "accountmanager", "description": "Accountmanager: ziet alleen het werkregister en de klanten van dagboek.ai. Ook met verplichte MFA." },
+      { "name": "consultant", "description": "Consultant: leest alleen het consultancywerk (werkregister, klanten, Consultancy en SamenVerder) van dagboek.ai. Ook met verplichte MFA." },
       { "name": "administratie", "description": "Administratie: beheert de stamgegevens van klanten (inwoners, contactpersonen) van dagboek.ai. Ook met verplichte MFA." }
     ]
   },

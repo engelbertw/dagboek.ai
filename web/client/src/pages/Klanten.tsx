@@ -70,7 +70,7 @@ export function Klanten({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
         <div><h1>Klanten</h1><p className="zacht">Klanten uit verkoop-debriefs, met bezoeken, afspraken en kansen. Een klant die alleen uit een gesprek komt is een voorstel tot jij hem bevestigt.</p></div>
         <div className="rij">
           {rol === 'beheerder' && <button onClick={() => setImporteer(!importeer)} aria-expanded={importeer}>{importeer ? 'Importeren sluiten' : 'Lijst importeren'}</button>}
-          {rol !== 'administratie' && <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', status: 'klant' })}>{nieuw ? 'Annuleren' : 'Nieuwe klant'}</button>}
+          {(rol === 'beheerder' || rol === 'accountmanager') && <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', status: 'klant' })}>{nieuw ? 'Annuleren' : 'Nieuwe klant'}</button>}
         </div>
       </div>
       {importeer && <Importeren klaar={lijst.ververs} />}

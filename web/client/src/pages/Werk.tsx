@@ -9,7 +9,7 @@ type Status = 'open' | 'afgerond' | 'alle';
 
 interface Groep { sleutel: string; klantId: string | null; naam: string; punten: Activiteit[]; open: number; teLaat: number; eerste: string | null }
 
-export function Werk() {
+export function Werk({ alleenLezen = false }: { alleenLezen?: boolean }) {
   const [programmaId, setProgrammaId] = useState('');
   const [variant, setVariant] = useState('');
   const [consultantId, setConsultantId] = useState('');
@@ -25,7 +25,7 @@ export function Werk() {
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const alle = useMemo(() => lijst.data ?? [], [lijst.data]);
-  const acties = useActies(lijst.ververs, alle);
+  const acties = useActies(lijst.ververs, alle, alleenLezen);
   const [weergave, setWeergave] = useState<Weergave>('klant');
   const [status, setStatus] = useState<Status>('open');
   const [alleenTeLaat, setAlleenTeLaat] = useState(false);
@@ -109,7 +109,7 @@ export function Werk() {
       {acties.jiraPaneel}
       <div id="werk-controle"><ControleBanner punten={teControleren} acties={acties} /></div>
 
-      <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} klanten={klanten.data ?? []} />
+      {!alleenLezen && <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} klanten={klanten.data ?? []} />}
       {acties.jiraKlaar && naarJira.length > 0 && !acties.jiraPaneel && (
         <div><button type="button" onClick={() => void acties.jiraVoorbeeld(naarJira.map((a) => a.id))}>Alle {naarJira.length} zichtbare open punten naar Jira…</button></div>
       )}

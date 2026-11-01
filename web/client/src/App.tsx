@@ -26,7 +26,7 @@ import { Gebruikers } from './pages/Gebruikers';
 interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: GebruikersRol; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean }
 
 const INLOGFOUT: Record<string, string> = {
-  geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om je de rol beheerder, accountmanager of administratie te geven.',
+  geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om je de rol beheerder, accountmanager, administratie of consultant te geven.',
   ongeldig: 'De inlogpoging is verlopen of ongeldig. Probeer het opnieuw.',
   keycloak: 'Keycloak is nu niet bereikbaar. Probeer het later opnieuw.',
 };
@@ -71,6 +71,9 @@ const MENU: MenuGroep[] = [
 ];
 
 /** Administratie beheert alleen de stamgegevens van klanten: geen werkregister, gesprekken of instellingen. */
+/** Een consultant leest alleen het consultancywerk. */
+const MENU_CONSULTANT: MenuGroep[] = [{ titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/consultancy', label: 'Consultancy' }, { naar: '/samenverder', label: 'SamenVerder' }] }];
+
 const MENU_ADMINISTRATIE: MenuGroep[] = [{ titel: 'Klantgegevens', items: [{ naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/kwaliteit', label: 'Kwaliteit' }] }];
 
 export function App() {
@@ -85,7 +88,8 @@ export function App() {
   const rol: GebruikersRol = me.rol ?? 'beheerder';
   const beheerder = rol === 'beheerder';
   const administratie = rol === 'administratie';
-  const groepen = administratie ? MENU_ADMINISTRATIE : MENU.filter((g) => beheerder || !g.alleenBeheerder);
+  const consultant = rol === 'consultant';
+  const groepen = administratie ? MENU_ADMINISTRATIE : consultant ? MENU_CONSULTANT : MENU.filter((g) => beheerder || !g.alleenBeheerder);
   const actief = (naar: string, ook?: string) => (naar === '/' ? pathname === '/' : pathname === naar || pathname.startsWith(`${naar}/`)) || (!!ook && pathname.startsWith(ook));
   return (
     <div className="app">
@@ -127,7 +131,7 @@ export function App() {
           ) : <Route path="*" element={<Navigate to={administratie ? '/klanten' : '/werk'} replace />} />}
           {!administratie && (
             <>
-              <Route path="/werk" element={<Werk />} />
+              <Route path="/werk" element={<Werk alleenLezen={consultant} />} />
               <Route path="/acties" element={<Navigate to="/werk" replace />} />
               <Route path="/verkoopregister" element={<Navigate to="/werk" replace />} />
             </>
@@ -135,8 +139,12 @@ export function App() {
           <Route path="/klanten" element={<Klanten rol={rol} />} />
           <Route path="/klanten/:id" element={<Klant rol={rol} />} />
           <Route path="/klanten/:id/voorbereiding" element={<Voorbereiding />} />
-          <Route path="/contactpersonen" element={<Contactpersonen />} />
-          <Route path="/kwaliteit" element={<Kwaliteit />} />
+          {!consultant && (
+            <>
+              <Route path="/contactpersonen" element={<Contactpersonen />} />
+              <Route path="/kwaliteit" element={<Kwaliteit />} />
+            </>
+          )}
           {!administratie && (
             <>
               <Route path="/consultancy" element={<Consultancy alleenLezen={!beheerder} />} />

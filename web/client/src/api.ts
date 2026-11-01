@@ -1,6 +1,6 @@
 export type Rol = 'medewerker' | 'accountmanager';
 /** De rol van de ingelogde gebruiker (Keycloak), niet te verwarren met `Rol` van een medewerker. */
-export type GebruikersRol = 'beheerder' | 'accountmanager' | 'administratie';
+export type GebruikersRol = 'beheerder' | 'accountmanager' | 'administratie' | 'consultant';
 export interface ImportRegel { naam: string; telefoon: string; email: string; status: 'nieuw' | 'bestaat_al' | 'dubbel_in_lijst' | 'ongeldig'; reden?: string }
 export interface KlantenImportUitkomst {
   gemeenten: { naam: string; status: 'nieuw' | 'bestaat_al'; velden: { samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null }; contacten: { naam: string; functie: string; rol: string; email: string; telefoon: string; status: 'nieuw' | 'bestaat_al' }[] }[];

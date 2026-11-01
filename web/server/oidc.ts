@@ -96,7 +96,7 @@ export function maakOidc(cfg: KeycloakConfig, haal: Haal = fetch): Oidc {
       // De rollen staan in het access token (Keycloak zet realm_access daar, niet in het ID-token).
       const toegang = await controleer(antwoord.access_token, {});
       const rollen = (toegang as { realm_access?: { roles?: unknown } }).realm_access?.roles;
-      // Wie meer rollen heeft, krijgt de eerste uit ROLLEN (beheerder, dan accountmanager, dan administratie).
+      // Wie meer rollen heeft, krijgt de eerste uit ROLLEN (beheerder, dan accountmanager, dan administratie, dan consultant).
       const rol: GebruikersRol | null = !Array.isArray(rollen) ? null : ROLLEN.find((r) => rollen.includes(r)) ?? null;
       if (!rol) throw new OidcFout('geen_toegang', 'Geen rol in dagboek.ai');
       const email = String(id.email ?? '').trim().toLowerCase();
