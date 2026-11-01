@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, SOORT_LABEL, api, datum, type ActiviteitSoort, type Voorbereiding as VoorbereidingData } from '../api';
+import { IMPLEMENTATIE_FASE_LABEL, KLANT_STATUS_LABEL, SOORT_LABEL, TEST_STATUS_LABEL, api, datum, type ActiviteitSoort, type Voorbereiding as VoorbereidingData } from '../api';
 import { Badge, Leeg, Melding, useLaden } from '../ui';
 import { REDEN } from './ActiviteitenLijst';
 
@@ -70,6 +70,18 @@ export function VoorbereidingWeergave({ data }: { data: VoorbereidingData }) {
           </ul>
         )}
       </details>
+
+      {data.implementaties.length > 0 && (
+        <details className="paneel" open>
+          <summary><h2>Implementaties ({data.implementaties.length})</h2></summary>
+          <ul className="lijst">
+            {data.implementaties.map((i) => (
+              <li key={i.topicId}><Link to={`/onderwerp/${i.topicId}`}>{i.titel}</Link> <span className="zacht">· {i.module}</span> <Badge soort={i.status === 'wacht' ? 'wacht' : ''}>{IMPLEMENTATIE_FASE_LABEL[i.fase as keyof typeof IMPLEMENTATIE_FASE_LABEL] ?? i.fase}</Badge>
+                <span className="subtiel"> · test: {(TEST_STATUS_LABEL[i.testStatus] ?? i.testStatus).toLowerCase()}{i.geplandeLivegang && ` · livegang gepland ${datum(i.geplandeLivegang)}`}{i.werkelijkeLivegang && ` · live sinds ${datum(i.werkelijkeLivegang)}`} · {BRON_LABEL[i.bron]}</span></li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <details className="paneel" open>
         <summary><h2>Laatste bezoeken en debriefs ({data.gesprekken.length})</h2></summary>

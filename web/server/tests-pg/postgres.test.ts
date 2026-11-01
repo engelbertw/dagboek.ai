@@ -6,7 +6,7 @@ import { startGesprek } from '../gesprek-starten.js';
 import { zetStatus } from '../gesprek-status.js';
 import { leggToestemmingVast } from '../toestemming.js';
 import { tik } from '../scheduler.js';
-import { calls, employees, activiteiten, scheduleEmployees, schedules, toestemmingen } from '../schema.js';
+import { calls, employees, activiteiten, implementaties, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
 import { maakDatabase, maakHandles, migratieMap, migratiesTot, pool } from './helpers.js';
 
 const rijen = (r: unknown) => ((r as { rows?: any[] }).rows ?? (r as any[]));
@@ -67,6 +67,30 @@ describe('migraties op een echte Postgres', () => {
     await expect(db.update(calls).set({ status: 'mislukt' }).where(eq(calls.id, c.id))).rejects.toThrow(); // 'gesproken' blijft staan
     await expect(db.execute(sql`update toestemmingen set besluit = 'ingetrokken'`)).rejects.toThrow();
     expect(m2.id).toBeTruthy();
+  });
+});
+
+describe('implementaties (migratie 024)', () => {
+  it('bewaakt fase, teststatus, module en koppelingen, en raakt bestaande onderwerpen niet', async () => {
+    const d = await maakDatabase();
+    const h = await connectPostgres(d.url);
+    try {
+      await migrate(h);
+      const { db } = h;
+      const [t] = await db.insert(topics).values({ titel: 'Uitrol' }).returning();
+      const [boven] = await db.insert(topics).values({ titel: 'Project', type: 'project' }).returning();
+      expect(await db.select().from(implementaties)).toHaveLength(0); // geen onderwerp wordt automatisch een implementatie
+      await db.insert(implementaties).values({ topicId: t.id, module: 'Zaken', bovenliggendTopicId: boven.id });
+      const kapot = (q: ReturnType<typeof sql>) => expect(db.execute(q)).rejects.toThrow();
+      await kapot(sql`update implementaties set fase = 'bijna' where topic_id = ${t.id}`);
+      await kapot(sql`update implementaties set test_status = 'klaar' where topic_id = ${t.id}`);
+      await kapot(sql`update implementaties set module = '  ' where topic_id = ${t.id}`);
+      await kapot(sql`update implementaties set bovenliggend_topic_id = topic_id where topic_id = ${t.id}`);
+      await db.delete(topics).where(eq(topics.id, boven.id)); // bovenliggend project weg: koppeling vervalt, implementatie blijft
+      expect((await db.select().from(implementaties))[0]).toMatchObject({ module: 'Zaken', bovenliggendTopicId: null, fase: 'voorbereiding', testStatus: 'niet_gestart' });
+      await db.delete(topics).where(eq(topics.id, t.id)); // onderwerp weg: implementatie mee
+      expect(await db.select().from(implementaties)).toHaveLength(0);
+    } finally { await h.close(); await d.verwijder(); }
   });
 });
 

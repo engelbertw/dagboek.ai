@@ -7,7 +7,7 @@ import { and, asc, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
-import { activiteiten, bezoeken, consultantDebriefContacten, consultantDebriefs, employees, klantContacten, klanten, topics, updates } from './schema.js';
+import { activiteiten, bezoeken, consultantDebriefContacten, consultantDebriefs, employees, implementaties, klantContacten, klanten, topics, updates } from './schema.js';
 
 const uuid = z.string().uuid();
 
@@ -18,6 +18,7 @@ export interface Voorbereiding {
   klant: { id: string; naam: string; status: string; samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null; accountmanagerNaam: string | null; omschrijving: string };
   contacten: { id: string; naam: string; functie: string; rol: string; laatstGesproken: string | null }[];
   onderwerpen: { id: string; titel: string; type: string; status: string; eigenaarNaam: string | null; laatsteUpdate: { datum: string; samenvatting: string; besluiten: string } | null; bron: Bron }[];
+  implementaties: { topicId: string; titel: string; module: string; fase: string; testStatus: string; status: string; geplandeLivegang: string | null; werkelijkeLivegang: string | null; bron: Bron }[];
   gesprekken: { soort: 'bezoek' | 'project' | 'implementatie' | 'samenverder' | 'consultant'; datum: string | null; samenvatting: string; door: string | null; bron: Bron }[];
   openPunten: { id: string; soort: string; omschrijving: string; eigenaar: string; deadline: string | null; teLaat: boolean; onderwerp: string | null; datum: string; bron: Bron }[];
   nietBevestigd: { soort: 'punt' | 'debrief'; omschrijving: string; reden: string | null; datum: string; bron: Bron }[];
@@ -34,7 +35,9 @@ export async function bouwVoorbereiding(db: Db, klantId: string): Promise<Voorbe
   }).from(klanten).leftJoin(employees, eq(klanten.accountmanagerId, employees.id)).where(eq(klanten.id, klantId));
   if (!klant) return null;
 
-  const [contactRijen, laatstRijen, topicRijen, bezoekRijen, debriefRijen, puntRijen] = await Promise.all([
+  const [implementatieRijen, contactRijen, laatstRijen, topicRijen, bezoekRijen, debriefRijen, puntRijen] = await Promise.all([
+    db.select({ topicId: implementaties.topicId, titel: topics.titel, module: implementaties.module, fase: implementaties.fase, testStatus: implementaties.testStatus, status: topics.status, geplandeLivegang: implementaties.geplandeLivegang, werkelijkeLivegang: implementaties.werkelijkeLivegang })
+      .from(implementaties).innerJoin(topics, eq(implementaties.topicId, topics.id)).where(eq(topics.klantId, klantId)).orderBy(desc(topics.updatedAt)),
     db.select({ id: klantContacten.id, naam: klantContacten.naam, functie: klantContacten.functie, rol: klantContacten.rol }).from(klantContacten).where(eq(klantContacten.klantId, klantId)).orderBy(asc(klantContacten.naam)),
     // "Laatst gesproken" wordt berekend uit de debriefs waarin de persoon genoemd werd; het wordt nergens opgeslagen.
     db.select({ contactId: consultantDebriefContacten.contactId, laatst: max(consultantDebriefs.createdAt) }).from(consultantDebriefContacten)
@@ -77,6 +80,7 @@ export async function bouwVoorbereiding(db: Db, klantId: string): Promise<Voorbe
       const u = laatsteUpdate.get(t.id);
       return { ...t, laatsteUpdate: u ? { datum: iso(u.createdAt)!, samenvatting: u.samenvatting, besluiten: u.besluiten } : null, bron: 'dagboek' as const };
     }),
+    implementaties: implementatieRijen.map((i) => ({ ...i, bron: 'werkregister' as const })),
     gesprekken,
     openPunten: bevestigd.map((p) => ({
       id: p.id, soort: p.soort, omschrijving: p.omschrijving, eigenaar: p.eigenaarNaam ?? p.eigenaarExtern, deadline: p.deadline, teLaat: !!p.deadline && p.deadline < vandaag,

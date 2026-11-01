@@ -314,3 +314,23 @@ export const consultantDebriefContacten = pgTable('consultant_debrief_contacten'
   debriefId: uuid('debrief_id').notNull().references(() => consultantDebriefs.id, { onDelete: 'cascade' }),
   contactId: uuid('contact_id').notNull().references(() => klantContacten.id, { onDelete: 'cascade' }),
 }, (t) => [primaryKey({ columns: [t.debriefId, t.contactId] })]);
+
+export const IMPLEMENTATIE_FASEN = ['voorbereiding', 'inrichting', 'test', 'acceptatie', 'ingebruikname', 'nazorg', 'afgerond'] as const;
+export type ImplementatieFase = (typeof IMPLEMENTATIE_FASEN)[number];
+export const TEST_STATUSSEN = ['niet_gestart', 'bezig', 'afgerond'] as const;
+
+/** Levenscyclus van een module-implementatie. Het onderwerp (`topics`) blijft de identiteit; een onderwerp is een implementatie zodra er een rij is. */
+export const implementaties = pgTable('implementaties', {
+  topicId: uuid('topic_id').primaryKey().references(() => topics.id, { onDelete: 'cascade' }),
+  module: text('module').notNull(),
+  bovenliggendTopicId: uuid('bovenliggend_topic_id').references(() => topics.id, { onDelete: 'set null' }),
+  contactpersoonId: uuid('contactpersoon_id').references(() => klantContacten.id, { onDelete: 'set null' }),
+  fase: text('fase', { enum: IMPLEMENTATIE_FASEN }).notNull().default('voorbereiding'),
+  geplandeLivegang: date('geplande_livegang'),
+  werkelijkeLivegang: date('werkelijke_livegang'),
+  testStatus: text('test_status', { enum: TEST_STATUSSEN }).notNull().default('niet_gestart'),
+  acceptatieOp: date('acceptatie_op'),
+  acceptatieCitaat: text('acceptatie_citaat').notNull().default(''),
+  nazorgTot: date('nazorg_tot'),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('implementaties_module').on(t.module), index('implementaties_fase').on(t.fase)]);

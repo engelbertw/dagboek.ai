@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, datumTijd, type Activiteit, type KlantRegel, type Historie, type Medewerker, type Project, type TopicDetail, type Update } from '../api';
+import { api, datumTijd, type Activiteit, type KlantRegel, type Historie, type Medewerker, type Project, type TopicDetail, type TopicRegel, type Update } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 import { Punten, PuntToevoegen, useActies } from './ActiviteitenLijst';
 import { TopicVelden, type TopicWaarden } from './TopicVelden';
+import { ImplementatiePaneel } from './Implementatie';
 
 function UpdateRegel({ u, ververs }: { u: Update; ververs: () => void }) {
   const [bewerk, setBewerk] = useState(false);
@@ -69,6 +70,7 @@ export function Onderwerp() {
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const projecten = useLaden(() => api<Project[]>('GET', '/projects'));
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
+  const alleTopics = useLaden(() => api<TopicRegel[]>('GET', '/topics?status=alle'));
   const [waarden, setWaarden] = useState<TopicWaarden | null>(null);
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [nieuweUpdate, setNieuweUpdate] = useState('');
@@ -115,6 +117,8 @@ export function Onderwerp() {
       </section>
 
       <OpenPunten topicId={id} medewerkers={medewerkers.data ?? []} />
+
+      <ImplementatiePaneel topicId={id} klantId={topic.data.klantId} topics={alleTopics.data ?? []} />
 
       <form className="paneel stapel" onSubmit={bewaar}>
         <h2>Gegevens van dit onderwerp</h2>

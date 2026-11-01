@@ -7,8 +7,11 @@
  * Een variant bestaat pas als hij hier is geregistreerd. Zolang er geen enkele is, is de consultantroute niet beschikbaar.
  */
 import type { z } from 'zod';
+import type { Db } from './db.js';
 import type { DebriefVariant } from './schema.js';
 import type { Beurt } from './vertrouwen.js';
+
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface VariantConfig {
   id: DebriefVariant;
@@ -26,7 +29,9 @@ export interface VariantConfig {
   /** Het soort onderwerp (topics.type) waaraan deze debrief gekoppeld kan worden. Zonder waarde koppelt de variant geen onderwerp. */
   /** Haalt uit het antwoord van het model weg wat niet met een citaat uit het gesprek te bewijzen is. */
   controleer?: (data: Record<string, unknown>, transcript: Beurt[]) => Record<string, unknown>;
-  onderwerpType?: 'project' | 'thema' | 'taak';
+  onderwerpType?: 'project' | 'implementatie';
+  /** Past, binnen dezelfde transactie, de bewezen gegevens toe op het gekoppelde onderwerp. Alleen aangeroepen met een gekoppeld onderwerp. */
+  toepassen?: (tx: Tx, onderwerpId: string, data: Record<string, unknown>) => Promise<void>;
 }
 
 const register: Partial<Record<DebriefVariant, VariantConfig>> = {};

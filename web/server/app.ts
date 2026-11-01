@@ -11,7 +11,7 @@ import { OidcFout, type Oidc } from './oidc.js';
 import { registreerGebruikers, type KeycloakBeheer } from './gebruikers.js';
 import { noodloginAan, ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
-import { callLog, calls, consultantDebriefs, employees, activiteiten, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, consultantDebriefs, employees, activiteiten, implementaties, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
 import { foutcode, log } from './log.js';
@@ -34,6 +34,7 @@ import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
 import { registreerConsultantRoutes } from './consultant-routes.js';
 import { registreerVoorbereiding } from './voorbereiding.js';
+import { registreerImplementaties } from './implementaties.js';
 import { actieRijen, registreerActiviteiten } from './activiteiten.js';
 import { ACCOUNTMANAGER_ROL, magDoen, normaleRol } from './rollen.js';
 import { beoordeelLijst } from './medewerkers-import.js';
@@ -319,7 +320,10 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     if (b.status) waarden.afgerondOp = b.status === 'afgerond' ? new Date() : null;
     if (b.klantId && !(await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.klantId))).length) return reply.code(400).send({ fout: 'Klant niet gevonden' });
     const rij = await db.transaction(async (tx) => {
+      const [vorig] = await tx.select({ klantId: topics.klantId }).from(topics).where(eq(topics.id, id));
       const [bijgewerkt] = await tx.update(topics).set(waarden).where(eq(topics.id, id)).returning();
+      // Een implementatie hoort samen met haar contactpersoon en bovenliggend project bij één gemeente: wisselt de gemeente, dan vervallen die koppelingen.
+      if (bijgewerkt && vorig && b.klantId !== undefined && b.klantId !== vorig.klantId) await tx.update(implementaties).set({ contactpersoonId: null, bovenliggendTopicId: null }).where(eq(implementaties.topicId, id));
       // De punten van dit onderwerp horen bij dezelfde klant, zodat ze in het werkregister onder die klant staan.
       if (bijgewerkt && b.klantId !== undefined) await tx.update(activiteiten).set({ klantId: b.klantId }).where(eq(activiteiten.topicId, id));
       return bijgewerkt;
@@ -543,6 +547,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerVerkoop(app, db);
   registreerConsultantRoutes(app, db, llm);
   registreerVoorbereiding(app, db);
+  registreerImplementaties(app, db);
   registreerActiviteiten(app, db);
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.

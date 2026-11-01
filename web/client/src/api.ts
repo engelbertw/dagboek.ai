@@ -84,7 +84,18 @@ export interface Voorbereiding {
   klant: { id: string; naam: string; status: string; samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null; accountmanagerNaam: string | null; omschrijving: string };
   contacten: { id: string; naam: string; functie: string; rol: string; laatstGesproken: string | null }[];
   onderwerpen: { id: string; titel: string; type: string; status: string; eigenaarNaam: string | null; laatsteUpdate: { datum: string; samenvatting: string; besluiten: string } | null; bron: string }[];
+  implementaties: { topicId: string; titel: string; module: string; fase: string; testStatus: string; status: string; geplandeLivegang: string | null; werkelijkeLivegang: string | null; bron: string }[];
   gesprekken: { soort: 'bezoek' | 'project' | 'implementatie' | 'samenverder' | 'consultant'; datum: string | null; samenvatting: string; door: string | null; bron: string }[];
   openPunten: { id: string; soort: string; omschrijving: string; eigenaar: string; deadline: string | null; teLaat: boolean; onderwerp: string | null; datum: string; bron: string }[];
   nietBevestigd: { soort: 'punt' | 'debrief'; omschrijving: string; reden: string | null; datum: string; bron: string }[];
 }
+
+export const IMPLEMENTATIE_FASEN = ['voorbereiding', 'inrichting', 'test', 'acceptatie', 'ingebruikname', 'nazorg', 'afgerond'] as const;
+export const IMPLEMENTATIE_FASE_LABEL: Record<(typeof IMPLEMENTATIE_FASEN)[number], string> = { voorbereiding: 'Voorbereiding', inrichting: 'Inrichting', test: 'Test', acceptatie: 'Acceptatie', ingebruikname: 'Ingebruikname', nazorg: 'Nazorg', afgerond: 'Afgerond' };
+export const TEST_STATUS_LABEL: Record<string, string> = { niet_gestart: 'Niet gestart', bezig: 'Bezig', afgerond: 'Afgerond' };
+export interface Implementatie {
+  topicId: string; module: string; bovenliggendTopicId: string | null; contactpersoonId: string | null; fase: (typeof IMPLEMENTATIE_FASEN)[number]; testStatus: string;
+  geplandeLivegang: string | null; werkelijkeLivegang: string | null; acceptatieOp: string | null; acceptatieCitaat: string; nazorgTot: string | null;
+}
+export interface ImplementatieVoorstel { veld: 'werkelijkeLivegang' | 'acceptatieOp' | 'nazorgTot'; waarde: string; citaat: string; debriefId: string; datum: string }
+export interface ImplementatieAntwoord { implementatie: Implementatie | null; voorstellen: ImplementatieVoorstel[] }

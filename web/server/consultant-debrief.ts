@@ -18,7 +18,7 @@ import {
 import { ingeschakeldeVarianten, variantConfig, variantTrefwoorden } from './consultant-varianten.js';
 import { ROUTE_TREFWOORDEN, routeNaarType, type Route } from './routering.js';
 import {
-  activiteiten, calls, consultantDebriefContacten, consultantDebriefs, employees, klantContacten, klanten, topics, type ActiviteitSoort, type Herkomst,
+  activiteiten, calls, consultantDebriefContacten, consultantDebriefs, employees, implementaties, klantContacten, klanten, topics, type ActiviteitSoort, type Herkomst,
 } from './schema.js';
 import {
   bepaalEigenaar, geldigeDeadline, gewistVelden, toestemmingsPoort, ToestemmingIngetrokken, vandaagNL,
@@ -193,9 +193,13 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
     const vandaag = vandaagNL();
     // Onderwerpen (projecten) waaraan een debrief gekoppeld kan worden; nooit nieuwe aangemaakt.
     const onderwerpTypes = [...new Set(varianten.map((v) => v.onderwerpType).filter((t): t is NonNullable<typeof t> => !!t))];
+    // Een onderwerp met een rij in `implementaties` is een implementatie en wordt nooit als project aangeboden.
     const bekendeOnderwerpen = onderwerpTypes.length
-      ? await db.select({ id: topics.id, titel: topics.titel, type: topics.type, klantId: topics.klantId, klant: klanten.naam })
-        .from(topics).leftJoin(klanten, eq(topics.klantId, klanten.id)).where(and(inArray(topics.type, onderwerpTypes), inArray(topics.status, ['actief', 'wacht']))).orderBy(desc(topics.updatedAt)).limit(100)
+      ? (await db.select({ id: topics.id, titel: topics.titel, type: topics.type, klantId: topics.klantId, klant: klanten.naam, module: implementaties.module })
+        .from(topics).leftJoin(klanten, eq(topics.klantId, klanten.id)).leftJoin(implementaties, eq(implementaties.topicId, topics.id))
+        .where(inArray(topics.status, ['actief', 'wacht'])).orderBy(desc(topics.updatedAt)).limit(300))
+        .map((t) => ({ ...t, soort: t.module !== null ? 'implementatie' as const : t.type === 'project' ? 'project' as const : null }))
+        .filter((t) => t.soort !== null && onderwerpTypes.includes(t.soort)).slice(0, 100)
       : [];
 
     let ruw: string;
@@ -253,7 +257,7 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
           const o = (variantdata.data.onderwerp ?? {}) as { genoemd?: string; bestaand?: string };
           genoemdOnderwerp = (o.genoemd ?? '').trim();
           const sleutel = normaliseer(o.bestaand || genoemdOnderwerp);
-          const kandidaten = bekendeOnderwerpen.filter((t) => t.type === variant.onderwerpType && !!sleutel && normaliseer(t.titel) === sleutel);
+          const kandidaten = bekendeOnderwerpen.filter((t) => t.soort === variant.onderwerpType && !!sleutel && normaliseer(t.titel) === sleutel);
           if (kandidaten.length === 1 && komtVoorInGesprek(genoemdOnderwerp || o.bestaand || '', transcript)) {
             const gevonden = kandidaten[0];
             const { afwijkend } = controleerKlantConsistentie(klantId, [{ soort: 'onderwerp', klantId: gevonden.klantId }]);
@@ -275,6 +279,7 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
           controleNodig: !!debriefReden, controleReden: debriefReden,
         }).onConflictDoNothing().returning({ id: consultantDebriefs.id });
         if (!debrief) throw new Error('Dit gesprek is al verwerkt');
+        if (topicId && variant?.toepassen && variantdata?.success) await variant.toepassen(tx, topicId, variantdata.data);
         tellers.updates++;
         if (debriefReden) tellers.teControleren++;
         for (const contactId of contacten.gekoppeld) await tx.insert(consultantDebriefContacten).values({ debriefId: debrief.id, contactId }).onConflictDoNothing();
