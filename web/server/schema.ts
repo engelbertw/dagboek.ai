@@ -129,27 +129,6 @@ export const updateHistorie = pgTable('update_historie', {
   gewijzigdOp: timestamp('gewijzigd_op', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const openItems = pgTable('open_items', {
-  id: id(),
-  topicId: uuid('topic_id').notNull().references(() => topics.id, { onDelete: 'cascade' }),
-  tekst: text('tekst').notNull(),
-  callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
-  eigenaarId: uuid('eigenaar_id').references(() => employees.id, { onDelete: 'set null' }),
-  eigenaarExtern: text('eigenaar_extern').notNull().default(''),
-  deadline: date('deadline'),
-  bron: text('bron', { enum: ['handmatig', 'gesprek'] }).notNull().default('handmatig'),
-  controleNodig: boolean('controle_nodig').notNull().default(false),
-  controleReden: text('controle_reden'),
-  deadlineOorspronkelijk: date('deadline_oorspronkelijk'),
-  deadlineGewijzigdAantal: integer('deadline_gewijzigd_aantal').notNull().default(0),
-  jiraSleutel: text('jira_sleutel'),
-  jiraUrl: text('jira_url'),
-  jiraAangemaaktOp: timestamp('jira_aangemaakt_op', { withTimezone: true }),
-  status: text('status', { enum: ['open', 'afgerond'] }).notNull().default('open'),
-  createdAt: createdAt(),
-  afgerondOp: timestamp('afgerond_op', { withTimezone: true }),
-});
-
 // ── Verkoop-debrief: klantenadministratie en verkoopregister ────────────────
 export const klanten = pgTable('klanten', {
   id: id(),

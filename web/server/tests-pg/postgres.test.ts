@@ -49,7 +49,8 @@ describe('migraties op een echte Postgres', () => {
     const nieuw = await migrate(h);
     expect(nieuw).toEqual(migratieNamen().filter((n) => n.slice(0, 3) > '009'));
 
-    // niets kwijt
+    // niets kwijt; open_items is opgeruimd en zijn rijen staan in activiteiten
+    expect(rijen(await db.execute(sql`select to_regclass('open_items') as t`))[0].t).toBeNull();
     expect(rijen(await db.execute(sql`select count(*)::int as n from employees`))[0].n).toBe(2);
     expect(rijen(await db.execute(sql`select transcript from calls`))[0].transcript).toEqual([{ role: 'user', content: 'hoi' }]);
     // aanvullingen en backfills

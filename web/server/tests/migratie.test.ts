@@ -74,9 +74,9 @@ describe('migratie 020 (één register)', () => {
       expect(na.map((r: any) => [r.id, r.omschrijving])).toEqual(voor.map((r: any) => [r.id, r.tekst]));
       expect(na[0]).toMatchObject({ soort: 'intern', topic_id: topic, status: 'open', deadline: '2026-11-06', oorspronkelijk: '2026-11-01', aantal: 2, jira_sleutel: 'PROJ-1', jira_url: 'https://j/PROJ-1', controle_nodig: true, controle_reden: 'eigenaar_onzeker', bron: 'gesprek' });
       expect(na[1]).toMatchObject({ omschrijving: 'Planning maken', status: 'afgerond', afgerond: true, bron: 'handmatig' });
-      // De bestaande klantpunten blijven staan, en open_items blijft ongemoeid tot een latere migratie.
+      // De bestaande klantpunten blijven staan, en open_items is door 030 opgeruimd nadat alles in activiteiten staat.
       expect((await rijen(`select soort from activiteiten where topic_id is null`)).map((r: any) => r.soort)).toEqual(['kans']);
-      expect((await rijen(`select count(*)::int as n from open_items`))[0].n).toBe(2);
+      expect((await rijen(`select to_regclass('open_items') as t`))[0].t).toBeNull();
       await h.db.execute(`insert into activiteiten (soort, omschrijving) values ('intern', 'x')` as any);
       await expect(h.db.execute(`insert into activiteiten (soort, omschrijving) values ('verzonnen', 'x')` as any)).rejects.toThrow();
     } finally {
