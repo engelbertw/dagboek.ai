@@ -86,6 +86,16 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
       .from(samenverderSessies).where(inArray(samenverderSessies.programmaId, rijen.map((r) => r.p.id))) : [];
     const vandaag = vandaagNL();
     const budgetten = await budgetVan(rijen.map((r) => r.p.id));
+    // Feiten per programma uit het werkregister en de debriefs (alleen gecontroleerde punten); geen scores of oordelen.
+    const ids = rijen.map((r) => r.p.id);
+    const [punten, debriefs, evaluaties] = ids.length ? await Promise.all([
+      db.select({ programmaId: activiteiten.samenverderProgrammaId, soort: activiteiten.soort }).from(activiteiten)
+        .where(and(inArray(activiteiten.samenverderProgrammaId, ids), eq(activiteiten.status, 'open'), eq(activiteiten.controleNodig, false))),
+      db.select({ programmaId: consultantDebriefs.programmaId, createdAt: consultantDebriefs.createdAt }).from(consultantDebriefs)
+        .where(and(inArray(consultantDebriefs.programmaId, ids), eq(consultantDebriefs.controleNodig, false))).orderBy(desc(consultantDebriefs.createdAt)),
+      db.select({ programmaId: samenverderSessies.programmaId, soort: samenverderSessies.soort, status: samenverderSessies.status, datum: samenverderSessies.datum }).from(samenverderSessies)
+        .where(and(inArray(samenverderSessies.programmaId, ids), inArray(samenverderSessies.soort, ['tussenevaluatie', 'eindevaluatie']))),
+    ]) : [[], [], []] as const;
     return rijen.map(({ p, klantNaam, accountmanagerNaam }) => {
       const eigen = sessies.filter((s) => s.programmaId === p.id);
       const gepland = eigen.filter((s) => s.status === 'gepland' && s.datum).map((s) => s.datum!).sort();
@@ -94,6 +104,12 @@ export function registreerSamenverder(app: FastifyInstance, db: Db, wie: (req: F
         ...p, klantNaam, accountmanagerNaam, aantalSessies: eigen.filter((s) => s.status !== 'geannuleerd' && s.status !== 'verplaatst').length,
         aantalGepland: gepland.length, aantalUitgevoerd: uitgevoerd.length, volgendeSessie: gepland.find((d) => d >= vandaag) ?? null, laatsteSessie: uitgevoerd.at(-1) ?? null,
         budget: budgetten.get(p.id)!,
+        openActies: punten.filter((x) => x.programmaId === p.id && ['actie', 'afspraak', 'intern'].includes(x.soort)).length,
+        openBlokkades: punten.filter((x) => x.programmaId === p.id && ['blokkade', 'afhankelijkheid'].includes(x.soort)).length,
+        openSignalen: punten.filter((x) => x.programmaId === p.id && x.soort === 'vervolgsignaal').length,
+        laatsteDebrief: debriefs.find((d) => d.programmaId === p.id)?.createdAt ?? null,
+        evaluatiesUitgevoerd: evaluaties.filter((e) => e.programmaId === p.id && e.status === 'uitgevoerd').length,
+        volgendeEvaluatie: evaluaties.filter((e) => e.programmaId === p.id && e.status === 'gepland' && e.datum && e.datum >= vandaag).map((e) => e.datum!).sort()[0] ?? null,
       };
     });
   });

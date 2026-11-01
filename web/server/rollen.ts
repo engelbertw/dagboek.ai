@@ -25,6 +25,8 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET'], pad: /^\/api\/kwaliteit$/ },
   { methode: ['POST'], pad: /^\/api\/kwaliteit\/besluiten(\/terugdraaien)?$/ },
   { methode: ['POST'], pad: /^\/api\/klant-contacten\/samenvoegen$/ },
+  // Overzicht Consultancy: alleen lezen
+  { methode: ['GET'], pad: /^\/api\/consultancy$/ },
   // SamenVerder: alleen lezen
   { methode: ['GET'], pad: /^\/api\/samenverder\/programmas$/ },
   { methode: ['GET'], pad: new RegExp(`^/api/samenverder/programmas/${ID}$`) },

@@ -79,6 +79,11 @@ export interface Activiteit {
   /** Het vervolgsignaal waaruit deze kans na een besluit is ontstaan. */
   bronActiviteitId?: string | null;
 }
+export interface ConsultancyOverzicht {
+  tellingen: { projecten: number; implementaties: number; programmas: number; openBlokkades: number; openVervolgsignalen: number };
+  projecten: { topicId: string; titel: string; klantId: string | null; klantNaam: string | null; eigenaarNaam: string | null; status: string; openBlokkades: number; openRisicos: number; laatsteDebrief: string | null }[];
+  implementaties: { topicId: string; titel: string; klantId: string | null; klantNaam: string | null; module: string; fase: string; testStatus: string; status: string; geplandeLivegang: string | null; werkelijkeLivegang: string | null; openBlokkades: number; laatsteDebrief: string | null }[];
+}
 export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam' | 'topicTitel'> & { bezoekId: string | null })[] }
 export interface DebriefVragen extends Houding { vorige: string }
 export interface ContactRegel extends KlantContact { klantId: string; klantNaam: string }
@@ -116,6 +121,7 @@ export type BudgetSoort = keyof typeof BUDGET_SOORT_LABEL;
 export interface SamenverderProgrammaRegel {
   id: string; klantId: string; klantNaam: string; pakket: string; periodeVan: string; periodeTot: string | null; status: 'actief' | 'afgerond'; accountmanagerId: string | null; accountmanagerNaam: string | null;
   opmerking: string; aantalSessies: number; aantalGepland: number; aantalUitgevoerd: number; volgendeSessie: string | null; laatsteSessie: string | null; budget: SamenverderBudget;
+  openActies: number; openBlokkades: number; openSignalen: number; laatsteDebrief: string | null; evaluatiesUitgevoerd: number; volgendeEvaluatie: string | null;
 }
 export interface SamenverderSessie {
   id: string; programmaId: string; soort: SessieSoort; dagnummer: number | null; onderwerp: string; doel: string | null; datum: string | null; omvangDagen: number; status: SessieStatus;
@@ -126,7 +132,7 @@ export interface SamenverderSessie {
   activiteiten: { id: string; soort: string; omschrijving: string; status: string; deadline: string | null; eigenaar: string }[];
 }
 export interface SamenverderProgramma {
-  programma: Omit<SamenverderProgrammaRegel, 'klantNaam' | 'accountmanagerNaam' | 'aantalSessies' | 'aantalGepland' | 'aantalUitgevoerd' | 'volgendeSessie' | 'laatsteSessie' | 'budget'>;
+  programma: Omit<SamenverderProgrammaRegel, 'klantNaam' | 'accountmanagerNaam' | 'aantalSessies' | 'aantalGepland' | 'aantalUitgevoerd' | 'volgendeSessie' | 'laatsteSessie' | 'budget' | 'openActies' | 'openBlokkades' | 'openSignalen' | 'laatsteDebrief' | 'evaluatiesUitgevoerd' | 'volgendeEvaluatie'>;
   klant: { id: string; naam: string }; sessies: SamenverderSessie[];
   budget: SamenverderBudget & { mutaties: { id: string; dagen: number; soort: BudgetSoort; reden: string; door: string; op: string }[] };
 }

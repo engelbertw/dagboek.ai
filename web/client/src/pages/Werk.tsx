@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { SOORT_LABEL, api, deadlineTekst, vandaagIso, type Activiteit, type ActiviteitSoort, type KlantRegel, type Medewerker } from '../api';
+import { SOORT_LABEL, api, deadlineTekst, vandaagIso, type Activiteit, type ActiviteitSoort, type KlantRegel, type Medewerker, type SamenverderProgrammaRegel } from '../api';
 import { Leeg, Melding, useLaden } from '../ui';
 import { ControleBanner, Punten, PuntToevoegen, SOORT_VOLGORDE, Secties, TE_DOEN, isTeLaat, useActies } from './ActiviteitenLijst';
 
@@ -10,7 +10,18 @@ type Status = 'open' | 'afgerond' | 'alle';
 interface Groep { sleutel: string; klantId: string | null; naam: string; punten: Activiteit[]; open: number; teLaat: number; eerste: string | null }
 
 export function Werk() {
-  const lijst = useLaden(() => api<Activiteit[]>('GET', '/activiteiten'));
+  const [programmaId, setProgrammaId] = useState('');
+  const [variant, setVariant] = useState('');
+  const [consultantId, setConsultantId] = useState('');
+  const lijst = useLaden(() => {
+    const q = new URLSearchParams();
+    if (programmaId) q.set('programmaId', programmaId);
+    if (variant) q.set('variant', variant);
+    if (consultantId) q.set('consultantId', consultantId);
+    const s = q.toString();
+    return api<Activiteit[]>('GET', `/activiteiten${s ? `?${s}` : ''}`);
+  }, [programmaId, variant, consultantId]);
+  const programmas = useLaden(() => api<SamenverderProgrammaRegel[]>('GET', '/samenverder/programmas').catch(() => []));
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const alle = useMemo(() => lijst.data ?? [], [lijst.data]);
@@ -73,6 +84,18 @@ export function Werk() {
         <select value={eigenaar} onChange={(e) => setEigenaar(e.target.value)} aria-label="Eigenaar">
           <option value="">Alle eigenaren</option>
           {medewerkers.data?.map((m) => <option key={m.id} value={m.id}>{m.naam}</option>)}
+        </select>
+        <select value={programmaId} onChange={(e) => setProgrammaId(e.target.value)} aria-label="Programma">
+          <option value="">Alle programma’s</option>
+          {programmas.data?.map((p) => <option key={p.id} value={p.id}>{p.klantNaam}</option>)}
+        </select>
+        <select value={variant} onChange={(e) => setVariant(e.target.value)} aria-label="Soort debrief">
+          <option value="">Alle debriefs</option>
+          <option value="project">Project</option><option value="implementatie">Implementatie</option><option value="samenverder">SamenVerder</option>
+        </select>
+        <select value={consultantId} onChange={(e) => setConsultantId(e.target.value)} aria-label="Consultant">
+          <option value="">Alle consultants</option>
+          {medewerkers.data?.filter((m) => m.consultant).map((m) => <option key={m.id} value={m.id}>{m.naam}</option>)}
         </select>
         <select value={status} onChange={(e) => setStatus(e.target.value as Status)} aria-label="Status">
           <option value="open">Open</option><option value="afgerond">Afgerond</option><option value="alle">Alle</option>

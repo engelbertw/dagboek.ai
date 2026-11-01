@@ -7,7 +7,7 @@ import { BudgetRegel } from './Budget';
 const periode = (p: { periodeVan: string; periodeTot: string | null }) => `${datum(p.periodeVan)}${p.periodeTot ? ` – ${datum(p.periodeTot)}` : ' –'}`;
 
 /** Overzicht van de SamenVerder-programma's per gemeente. Een accountmanager kan lezen; een beheerder maakt programma's aan. */
-export function SamenVerder({ alleenLezen = false }: { alleenLezen?: boolean }) {
+export function SamenVerder({ alleenLezen = false, zonderKop = false }: { alleenLezen?: boolean; zonderKop?: boolean }) {
   const [status, setStatus] = useState<'actief' | 'afgerond' | ''>('actief');
   const [zoek] = useSearchParams();
   const klantFilter = zoek.get('klant') ?? '';
@@ -25,7 +25,7 @@ export function SamenVerder({ alleenLezen = false }: { alleenLezen?: boolean }) 
   }
   return (
     <div className="stapel">
-      <h1>SamenVerder</h1>
+      {!zonderKop && <h1>SamenVerder</h1>}
       <Melding tekst={lijst.fout} />
       <div className="rij">
         {klantFilter && <Link to="/samenverder">Alle gemeenten tonen</Link>}
@@ -39,6 +39,12 @@ export function SamenVerder({ alleenLezen = false }: { alleenLezen?: boolean }) 
               <p className="zacht klein">{p.pakket || 'Geen pakket'} · {periode(p)}</p>
               <p>{p.aantalUitgevoerd} uitgevoerd · {p.aantalGepland} gepland{p.volgendeSessie ? ` · volgende sessie ${datum(p.volgendeSessie)}` : ' · geen volgende sessie gepland'}</p>
               <p><BudgetRegel budget={p.budget} /></p>
+              <p className="zacht klein">
+                {p.status === 'actief' && !p.volgendeSessie && <strong>Geen volgende sessie gepland · </strong>}
+                {p.openActies} open {p.openActies === 1 ? 'actie' : 'acties'} · {p.openBlokkades} {p.openBlokkades === 1 ? 'blokkade' : 'blokkades'} · {p.openSignalen} {p.openSignalen === 1 ? 'vervolgsignaal' : 'vervolgsignalen'}
+                {p.laatsteDebrief ? ` · laatste debrief ${datum(p.laatsteDebrief)}` : ' · nog geen debrief'}
+                {p.evaluatiesUitgevoerd > 0 && ` · ${p.evaluatiesUitgevoerd} ${p.evaluatiesUitgevoerd === 1 ? 'evaluatie' : 'evaluaties'} uitgevoerd`}{p.volgendeEvaluatie && ` · volgende evaluatie ${datum(p.volgendeEvaluatie)}`}
+              </p>
             </li>
           ))}
         </ul>

@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ActieRij } from './dashboard.js';
 import type { Db } from './db.js';
-import { activiteiten, employees, klanten, opvolgingen, topics } from './schema.js';
+import { activiteiten, consultantDebriefs, DEBRIEF_VARIANTEN, employees, klanten, opvolgingen, topics } from './schema.js';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -27,9 +27,17 @@ const kolommen = {
 };
 
 /** Alle punten, open eerst en dan op deadline. Het filteren gebeurt aan de clientkant. */
-export const lijstActiviteiten = (db: Db, filter: { klantId?: string; topicId?: string } = {}) => db.select(kolommen).from(activiteiten)
+export interface WerkFilter { klantId?: string; topicId?: string; programmaId?: string; sessieId?: string; variant?: string; consultantId?: string }
+
+export const lijstActiviteiten = (db: Db, filter: WerkFilter = {}) => db.select(kolommen).from(activiteiten)
   .leftJoin(klanten, eq(activiteiten.klantId, klanten.id)).leftJoin(topics, eq(activiteiten.topicId, topics.id)).leftJoin(employees, eq(activiteiten.eigenaarId, employees.id))
-  .where(and(filter.klantId ? eq(activiteiten.klantId, filter.klantId) : undefined, filter.topicId ? eq(activiteiten.topicId, filter.topicId) : undefined))
+  .where(and(
+    filter.klantId ? eq(activiteiten.klantId, filter.klantId) : undefined, filter.topicId ? eq(activiteiten.topicId, filter.topicId) : undefined,
+    filter.programmaId ? eq(activiteiten.samenverderProgrammaId, filter.programmaId) : undefined, filter.sessieId ? eq(activiteiten.samenverderSessieId, filter.sessieId) : undefined,
+    // Variant en consultant volgen de debrief waaruit het punt kwam.
+    filter.variant || filter.consultantId ? inArray(activiteiten.callId, db.select({ id: consultantDebriefs.callId }).from(consultantDebriefs).where(and(
+      filter.variant ? eq(consultantDebriefs.variant, filter.variant as 'project') : undefined, filter.consultantId ? eq(consultantDebriefs.employeeId, filter.consultantId) : undefined))) : undefined,
+  ))
   .orderBy(asc(activiteiten.status), sql`${activiteiten.deadline} asc nulls last`, desc(activiteiten.createdAt));
 
 /** De rijen voor het dashboard: alleen wat iemand moet doen. */
@@ -45,7 +53,7 @@ const velden = {
 
 export function registreerActiviteiten(app: FastifyInstance, db: Db) {
   app.get('/api/activiteiten', async (req) => {
-    const q = z.object({ klantId: uuid.optional(), topicId: uuid.optional() }).parse(req.query);
+    const q = z.object({ klantId: uuid.optional(), topicId: uuid.optional(), programmaId: uuid.optional(), sessieId: uuid.optional(), variant: z.enum(DEBRIEF_VARIANTEN).optional(), consultantId: uuid.optional() }).parse(req.query);
     return lijstActiviteiten(db, q);
   });
 
