@@ -1,10 +1,13 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { logGebeurtenis } from './call-log.js';
-import { leesDebriefVragen, leesHouding, leesInstructie, type Motor } from './instellingen.js';
+import { leesConsultantDebrief, leesConsultantVragen, leesDebriefVragen, leesHouding, leesInstructie, STANDAARD_CONSULTANT_VRAGEN, type Motor } from './instellingen.js';
+import { ingeschakeldeVarianten } from './consultant-varianten.js';
+import { bepaalRoute } from './routering.js';
+import { toestemmingNodigVoorDoel, TOESTEMMING_CONSULTANT } from './toestemming.js';
 import { stelOnderwerpenSamen } from './gesprek-starten.js';
 import { log } from './log.js';
-import { calls, employees } from './schema.js';
+import { calls, employees, type DebriefVariant, type GesprekType } from './schema.js';
 import type { Onderwerp } from './voice.js';
 
 /** Zoveel inkomende gesprekken per medewerker per uur; daarboven weigeren we, tegen misbruik van een vervalst nummer en tegen kosten. */
@@ -17,10 +20,10 @@ export function normaliseerNummer(ruw: string): string {
   return m ? `+31${m[1]}` : '';
 }
 
-export type GesprekType = 'dagboek' | 'verkoop_debrief';
+export type { GesprekType };
 
 export type InkomendUitkomst =
-  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType }
+  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType; varianten: DebriefVariant[] }
   | { ok: false; reden: 'onbekend_nummer' | 'te_vaak' };
 
 /** Start de administratie van een gesprek waarbij de medewerker zelf belt. De beller wordt alleen herkend aan het nummer; er wordt geen nummer bewaard. */
@@ -34,14 +37,28 @@ export async function startInkomendGesprek(db: Db, beller: string, motor: Motor)
   const [{ n }] = await db.select({ n: sql<number>`count(*)::int` }).from(calls)
     .where(and(eq(calls.employeeId, m.id), eq(calls.bron, 'inkomend'), gt(calls.createdAt, new Date(Date.now() - 3600_000))));
   if (n >= INKOMEND_MAX_PER_UUR) return { ok: false, reden: 'te_vaak' };
-  // Een accountmanager belt voor een verkoop-debrief: geen onderwerpen van het dagboek, wel de vragen voor de debrief. Voor ieder ander blijft alles zoals het was.
-  const type: GesprekType = m.rol === 'accountmanager' ? 'verkoop_debrief' : 'dagboek';
-  const { onderwerpen, momentopname } = type === 'verkoop_debrief' ? { onderwerpen: [], momentopname: [] } : await stelOnderwerpenSamen(db, m.id);
-  const instructie = (type === 'verkoop_debrief' ? await leesDebriefVragen(db) : await leesInstructie(db)).waarde;
+  // Een accountmanager belt voor een verkoop-debrief, een consultant voor een consultantdebrief; wie beide is kiest in het gesprek (en dat wordt achteraf bewezen).
+  // Voor ieder ander, en zolang de consultantroute uit staat of nog geen variant heeft, blijft alles zoals het was.
+  const varianten = (await leesConsultantDebrief(db)) ? ingeschakeldeVarianten() : [];
+  const type = bepaalRoute(m.rol, m.consultant, varianten.length > 0);
+  const debrief = type !== 'dagboek';
+  const { onderwerpen, momentopname } = debrief ? { onderwerpen: [], momentopname: [] } : await stelOnderwerpenSamen(db, m.id);
+  const consultantTekst = async () => {
+    const algemeen = (await leesConsultantVragen(db, 'algemeen', STANDAARD_CONSULTANT_VRAGEN)).waarde;
+    const perVariant = await Promise.all(varianten.map(async (v) => `## ${v.naam}\n${(await leesConsultantVragen(db, v.id, v.standaardVragen)).waarde}`));
+    return [`## Algemeen\n${algemeen}`, ...perVariant].join('\n\n');
+  };
+  const instructie = type === 'verkoop_debrief' ? (await leesDebriefVragen(db)).waarde
+    : type === 'consultant_debrief' ? await consultantTekst()
+      : type === 'debrief_keuze' ? `# Verkoop-debrief\n${(await leesDebriefVragen(db)).waarde}\n\n# Consultancy-debrief\n${await consultantTekst()}`
+        : (await leesInstructie(db)).waarde;
+  // Toestemming is per doel: voor de consultantdebrief staat die in het register, voor de dubbele rol is hij nodig zolang één van beide ontbreekt.
+  const toestemmingNodig = type === 'consultant_debrief' ? await toestemmingNodigVoorDoel(db, m.id, TOESTEMMING_CONSULTANT.doel)
+    : type === 'debrief_keuze' ? !m.toestemmingOp || (await toestemmingNodigVoorDoel(db, m.id, TOESTEMMING_CONSULTANT.doel)) : !m.toestemmingOp;
   const [call] = await db.insert(calls).values({
     employeeId: m.id, status: 'gesprek', bron: 'inkomend', type, onderwerpen: momentopname, instructie, engine: motor, gestartOp: new Date(),
   }).returning();
   await logGebeurtenis(db, call.id, 'voice', 'claim:inkomend');
   log('info', 'gesprek.inkomend', { correlatieId: call.id, type });
-  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig: !m.toestemmingOp, houding: (await leesHouding(db)).waarde, instructie, type };
+  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig, houding: (await leesHouding(db)).waarde, instructie, type, varianten: varianten.map((v) => v.id) };
 }

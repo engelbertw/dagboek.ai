@@ -29,7 +29,7 @@ function Overzichtsrol({ m, heeft, ververs }: { m: Medewerker; heeft: boolean; v
 
 function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: () => void; overzicht: { heeft: boolean; ververs: () => void } }) {
   const [open, setOpen] = useState(false);
-  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie, rol: m.rol });
+  const [bewerk, setBewerk] = useState({ naam: m.naam, telefoon: m.telefoon, email: m.email, locgovGebruikersnaam: m.locgovGebruikersnaam, notitie: m.notitie, rol: m.rol, consultant: !!m.consultant });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const [bezig, setBezig] = useState(false);
   const sleutel = `motor-${m.id}`;
@@ -54,7 +54,7 @@ function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: ()
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{m.naam} {m.rol === 'accountmanager' && <Badge soort="wacht">accountmanager</Badge>} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
+        <div><h3>{m.naam} {m.rol === 'accountmanager' && <Badge soort="wacht">accountmanager</Badge>} {m.consultant && <Badge soort="wacht">consultant</Badge>} {!m.actief && <Badge>niet actief</Badge>}</h3><span className="zacht klein">{m.telefoon}{m.email && ` · ${m.email}`}{m.locgovGebruikersnaam && ` · ${m.locgovGebruikersnaam}@LOCGOV.NL`}</span></div>
         <div className="rij">
           <select aria-label="Gespreksmotor voor dit gesprek" value={motor} onChange={(e) => setMotor(e.target.value as '' | Motor)}>
             <option value="">Motor: standaard (zie Instellingen)</option>
@@ -76,6 +76,9 @@ function MedewerkerKaart({ m, ververs, overzicht }: { m: Medewerker; ververs: ()
               <select value={bewerk.rol} onChange={(e) => setBewerk({ ...bewerk, rol: e.target.value as Rol })}>
                 <option value="medewerker">Medewerker (dagboek)</option><option value="accountmanager">Accountmanager (verkoop-debrief)</option>
               </select>
+            </Veld>
+            <Veld label="Consultant">
+              <label className="rij"><input type="checkbox" style={{ width: 20, minHeight: 20 }} checked={bewerk.consultant} onChange={(e) => setBewerk({ ...bewerk, consultant: e.target.checked })} /><span>Belt in voor een consultantdebrief</span></label>
             </Veld>
             <Veld label="Telefoonnummer"><input value={bewerk.telefoon} onChange={(e) => setBewerk({ ...bewerk, telefoon: e.target.value })} required /></Veld>
           </div>
@@ -146,7 +149,7 @@ function Importeren({ klaar }: { klaar: () => void }) {
 export function Medewerkers() {
   const lijst = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const rollen = useLaden(() => api<string[]>('GET', '/overzicht-toegang'));
-  const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string; rol: Rol } | null>(null);
+  const [nieuw, setNieuw] = useState<{ naam: string; telefoon: string; email: string; rol: Rol; consultant: boolean } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [importeer, setImporteer] = useState(false);
 
@@ -157,10 +160,10 @@ export function Medewerkers() {
   return (
     <div className="stapel">
       <div className="rij spreid">
-        <div><h1>Medewerkers</h1><p className="zacht">Collega’s die we bellen voor een update. Een accountmanager die inbelt krijgt een verkoop-debrief in plaats van het dagboek.</p></div>
+        <div><h1>Medewerkers</h1><p className="zacht">Collega’s die we bellen voor een update. Een accountmanager die inbelt krijgt een verkoop-debrief, een consultant een consultantdebrief (zodra die onder Instellingen aan staat); wie beide is kiest in het gesprek. Iedereen anders krijgt het dagboek.</p></div>
         <div className="rij">
           <button onClick={() => setImporteer(!importeer)} aria-expanded={importeer}>{importeer ? 'Importeren sluiten' : 'Lijst importeren'}</button>
-          <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '', rol: 'medewerker' })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
+          <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', telefoon: '', email: '', rol: 'medewerker', consultant: false })}>{nieuw ? 'Annuleren' : 'Nieuwe medewerker'}</button>
         </div>
       </div>
       {importeer && <Importeren klaar={lijst.ververs} />}
@@ -173,6 +176,9 @@ export function Medewerkers() {
               <select value={nieuw.rol} onChange={(e) => setNieuw({ ...nieuw, rol: e.target.value as Rol })}>
                 <option value="medewerker">Medewerker (dagboek)</option><option value="accountmanager">Accountmanager (verkoop-debrief)</option>
               </select>
+            </Veld>
+            <Veld label="Consultant">
+              <label className="rij"><input type="checkbox" style={{ width: 20, minHeight: 20 }} checked={nieuw.consultant} onChange={(e) => setNieuw({ ...nieuw, consultant: e.target.checked })} /><span>Belt in voor een consultantdebrief</span></label>
             </Veld>
             <Veld label="E-mailadres (niet verplicht)"><input type="email" value={nieuw.email} onChange={(e) => setNieuw({ ...nieuw, email: e.target.value })} /></Veld>
           </div>

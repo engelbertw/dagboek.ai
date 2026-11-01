@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { Config } from './config.js';
 import type { Db } from './db.js';
 import { calls, employees, toestemmingen } from './schema.js';
@@ -8,6 +8,12 @@ export const TOESTEMMING_VERSIE = 'dagboek-v1';
 export const TOESTEMMING_DOEL = 'samenvatting_dagboek';
 /** De verkoop-debrief legt zijn toestemming onder een eigen doel en versie vast (voice/prompts.py: greeting_text met soort 'verkoop_debrief'). */
 export const TOESTEMMING_DEBRIEF = { doel: 'verkoop_debrief', versie: 'debrief-v1' } as const;
+
+/**
+ * De consultantdebrief heeft één eigen doel voor alle varianten (de verwerking is overal gelijk; alleen de promptversie verschilt per variant).
+ * `afgeleideStand: false`: dit doel raakt `employees.toestemming_op` niet, zodat toestemming voor het dagboek niet stilzwijgend ook hiervoor geldt (en andersom).
+ */
+export const TOESTEMMING_CONSULTANT = { doel: 'consultant_debrief', versie: 'consultant-debrief-v1', afgeleideStand: false } as const;
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
@@ -20,6 +26,16 @@ export interface Besluit {
   /** Standaard het dagboek; zie TOESTEMMING_DEBRIEF. */
   doel?: string;
   versie?: string;
+  /** Standaard true: het besluit past ook `employees.toestemming_op` aan. Een doel met een eigen register zet dit op false. */
+  afgeleideStand?: boolean;
+}
+
+/** Is er voor dit doel nog toestemming nodig? Uit het register: het laatste besluit voor dit doel moet 'gegeven' zijn. */
+export async function toestemmingNodigVoorDoel(db: Db | Tx, employeeId: string, doel: string): Promise<boolean> {
+  const [laatste] = await db.select({ besluit: toestemmingen.besluit }).from(toestemmingen)
+    .where(and(eq(toestemmingen.employeeId, employeeId), eq(toestemmingen.doel, doel)))
+    .orderBy(desc(toestemmingen.vastgelegdOp)).limit(1);
+  return laatste?.besluit !== 'gegeven';
 }
 
 /**
@@ -31,7 +47,7 @@ export async function leggToestemmingVast(tx: Db | Tx, b: Besluit, nu = new Date
     employeeId: b.employeeId, besluit: b.besluit, bron: b.bron, callId: b.callId ?? null, versie: b.versie ?? TOESTEMMING_VERSIE, doel: b.doel ?? TOESTEMMING_DOEL,
     citaat: b.besluit === 'gegeven' ? (b.citaat ?? '').slice(0, 300) || null : null, vastgelegdOp: nu,
   }).onConflictDoNothing().returning({ id: toestemmingen.id });
-  if (!ingevoegd.length) return;
+  if (!ingevoegd.length || b.afgeleideStand === false) return;
   if (b.besluit === 'gegeven') {
     const [m] = await tx.select({ op: employees.toestemmingOp }).from(employees).where(eq(employees.id, b.employeeId));
     if (m && !m.op) await tx.update(employees).set({ toestemmingOp: nu }).where(eq(employees.id, b.employeeId));

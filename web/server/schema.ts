@@ -20,6 +20,8 @@ export const employees = pgTable('employees', {
   actief: boolean('actief').notNull().default(true),
   /** Een accountmanager krijgt bij het inbellen de verkoop-debrief in plaats van het dagboekgesprek. */
   rol: text('rol', { enum: ['medewerker', 'accountmanager'] }).notNull().default('medewerker'),
+  /** Een consultant belt in voor een consultantdebrief (project, implementatie of SamenVerder); los van de rol en van de rechten in de webapplicatie. */
+  consultant: boolean('consultant').notNull().default(false),
   toestemmingOp: timestamp('toestemming_op', { withTimezone: true }),
   notitie: text('notitie').notNull().default(''),
   createdAt: createdAt(),
@@ -53,6 +55,15 @@ export const topics = pgTable('topics', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('topics_eigenaar').on(t.eigenaarId), index('topics_project').on(t.projectId)]);
 
+/** `debrief_keuze` is tijdelijk: wie accountmanager én consultant is kiest de route in het gesprek, die achteraf wordt geverifieerd. */
+export const GESPREKSTYPEN = ['dagboek', 'verkoop_debrief', 'consultant_debrief', 'debrief_keuze'] as const;
+export type GesprekType = (typeof GESPREKSTYPEN)[number];
+/** Hoe een route of variant is bepaald. Alleen 'onbekend' is zonder bewijs. */
+export const HERKOMSTEN = ['context_bevestigd', 'mondeling_gekozen', 'mondeling_gecorrigeerd', 'onbekend'] as const;
+export type Herkomst = (typeof HERKOMSTEN)[number];
+/** Een route kan ook door een beheerder zijn gekozen als de keuze uit het gesprek niet te bewijzen was. */
+export const ROUTE_HERKOMSTEN = [...HERKOMSTEN, 'beheerder'] as const;
+
 export const calls = pgTable('calls', {
   id: id(),
   employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
@@ -60,7 +71,11 @@ export const calls = pgTable('calls', {
     enum: ['gepland', 'verzenden', 'belt', 'gesprek', 'gesproken', 'niet_bereikt', 'voicemail', 'mislukt', 'onderbroken'],
   }).notNull().default('gepland'),
   bron: text('bron', { enum: ['handmatig', 'schema', 'inkomend'] }).notNull().default('handmatig'),
-  type: text('type', { enum: ['dagboek', 'verkoop_debrief'] }).notNull().default('dagboek'),
+  type: text('type', { enum: GESPREKSTYPEN }).notNull().default('dagboek'),
+  /** Wat vooraf bekend was (bijvoorbeeld een voorstel uit de planning); alleen een voorstel, nooit een bewijs. */
+  context: jsonb('context').$type<Record<string, unknown>>(),
+  routeBron: text('route_bron', { enum: ROUTE_HERKOMSTEN }),
+  routeCitaat: text('route_citaat'),
   scheduleId: uuid('schedule_id'),
   slotStart: timestamp('slot_start', { withTimezone: true }),
   poging: integer('poging').notNull().default(1),
@@ -177,7 +192,7 @@ export const bezoeken = pgTable('bezoeken', {
   createdAt: createdAt(),
 });
 
-export const ACTIVITEIT_SOORTEN = ['doel', 'resultaat', 'afspraak', 'actie', 'kans', 'risico', 'intern'] as const;
+export const ACTIVITEIT_SOORTEN = ['doel', 'resultaat', 'afspraak', 'actie', 'kans', 'risico', 'intern', 'besluit', 'blokkade', 'afhankelijkheid', 'vervolgsignaal'] as const;
 export type ActiviteitSoort = (typeof ACTIVITEIT_SOORTEN)[number];
 
 /** Alles wat gedaan of bijgehouden moet worden, per klant en/of per onderwerp. `intern` is wat wij zelf intern moeten doen. */
@@ -197,6 +212,8 @@ export const activiteiten = pgTable('activiteiten', {
   controleNodig: boolean('controle_nodig').notNull().default(false),
   controleReden: text('controle_reden'),
   callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
+  /** De herkende contactpersoon bij de klant, als de eigenaar van een klantactie. */
+  contactId: uuid('contact_id').references(() => klantContacten.id, { onDelete: 'set null' }),
   bron: text('bron', { enum: ['handmatig', 'gesprek'] }).notNull().default('gesprek'),
   deadlineOorspronkelijk: date('deadline_oorspronkelijk'),
   deadlineGewijzigdAantal: integer('deadline_gewijzigd_aantal').notNull().default(0),
@@ -270,3 +287,30 @@ export const schedules = pgTable('schedules', {
   maxPogingen: integer('max_pogingen').notNull().default(2),
   createdAt: createdAt(),
 });
+
+export const DEBRIEF_VARIANTEN = ['project', 'implementatie', 'samenverder'] as const;
+export type DebriefVariant = (typeof DEBRIEF_VARIANTEN)[number];
+
+/** Eén record per consultantgesprek: de variant met de herkomst van die keuze, en wat per variant verschilt. */
+export const consultantDebriefs = pgTable('consultant_debriefs', {
+  id: id(),
+  callId: uuid('call_id').notNull().unique().references(() => calls.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  variant: text('variant', { enum: DEBRIEF_VARIANTEN }),
+  variantBron: text('variant_bron', { enum: HERKOMSTEN }).notNull().default('onbekend'),
+  variantCitaat: text('variant_citaat').notNull().default(''),
+  klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'set null' }),
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'set null' }),
+  samenvatting: text('samenvatting').notNull().default(''),
+  werkzaamheden: jsonb('werkzaamheden').$type<string[]>().notNull().default([]),
+  variantdata: jsonb('variantdata').$type<Record<string, unknown>>().notNull().default({}),
+  promptVersie: text('prompt_versie').notNull().default(''),
+  controleNodig: boolean('controle_nodig').notNull().default(false),
+  controleReden: text('controle_reden'),
+  createdAt: createdAt(),
+}, (t) => [index('consultant_debriefs_klant').on(t.klantId, t.createdAt)]);
+
+export const consultantDebriefContacten = pgTable('consultant_debrief_contacten', {
+  debriefId: uuid('debrief_id').notNull().references(() => consultantDebriefs.id, { onDelete: 'cascade' }),
+  contactId: uuid('contact_id').notNull().references(() => klantContacten.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.debriefId, t.contactId] })]);

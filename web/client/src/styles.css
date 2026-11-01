@@ -105,6 +105,8 @@ button.werk-soort[aria-pressed="true"] { border-color: currentColor; box-shadow:
 .werk-soort.intern { background: rgba(244, 241, 250, .12); color: #F4F1FA; } .werk-soort.kans { background: var(--ok-bg); color: var(--ok); }
 .werk-soort.risico { background: var(--fout-bg); color: var(--fout); } .werk-soort.doel { background: var(--waarschuwing-bg); color: var(--waarschuwing); }
 .werk-soort.resultaat { background: rgba(226, 0, 122, .16); color: #FF8AC8; }
+.werk-soort.besluit { background: rgba(139, 92, 246, .22); color: #C4B0FB; } .werk-soort.blokkade { background: var(--fout-bg); color: var(--fout); }
+.werk-soort.afhankelijkheid { background: var(--waarschuwing-bg); color: var(--waarschuwing); } .werk-soort.vervolgsignaal { background: var(--ok-bg); color: var(--ok); }
 
 .werk-lijst { list-style: none; margin: 0; padding: 0; }
 .werk-regel { display: flex; gap: .75rem; align-items: flex-start; padding: .65rem 0; border-bottom: 1px solid rgba(139, 92, 246, .16); position: relative; }

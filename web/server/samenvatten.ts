@@ -135,7 +135,7 @@ export interface PoortInvoer {
   transcript: Bericht[];
   eindig: (status: SamenvattingStatus, extra?: Partial<typeof calls.$inferInsert>) => Promise<void>;
   /** Voor de toestemmingsregistratie van een ander gesprekstype (de verkoop-debrief heeft een eigen doel en versie). */
-  register?: { doel: string; versie: string };
+  register?: { doel: string; versie: string; afgeleideStand?: boolean };
 }
 
 /**
@@ -184,6 +184,15 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
   if (soort?.type === 'verkoop_debrief') {
     const { verwerkDebrief } = await import('./debrief.js');
     return verwerkDebrief({ db, llm }, callId);
+  }
+  // Een consultantdebrief heeft dezelfde opzet met een eigen verwerking. Bij een dubbele rol (accountmanager én consultant) volgt de route uit het gesprek:
+  // die wordt eerst bewezen en daarna gaat het gesprek naar de verwerking van die route.
+  if (soort?.type === 'consultant_debrief' || soort?.type === 'debrief_keuze') {
+    const consultant = await import('./consultant-debrief.js');
+    if (soort.type === 'consultant_debrief') return consultant.verwerkConsultantDebrief({ db, llm }, callId);
+    return consultant.verwerkRouteKeuze({ db, llm }, callId, async (type) => (type === 'verkoop_debrief'
+      ? (await import('./debrief.js')).verwerkDebrief({ db, llm }, callId)
+      : consultant.verwerkConsultantDebrief({ db, llm }, callId)));
   }
   // Alleen één run tegelijk, en alleen vanuit een stand waarin opnieuw proberen zinvol is.
   const geclaimd = await db.update(calls)

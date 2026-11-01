@@ -30,14 +30,14 @@ function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitle
   );
 }
 
-function Debrief() {
-  const huidig = useLaden(() => api<DebriefVragen>('GET', '/instellingen/debrief-vragen'));
+function Vragenlijst({ titel, uitleg, pad }: { titel: string; uitleg: string; pad: string }) {
+  const huidig = useLaden(() => api<DebriefVragen>('GET', pad));
   const [tekst, setTekst] = useState('');
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   useEffect(() => { if (huidig.data) setTekst(huidig.data.waarde); }, [huidig.data]);
   async function bewaar(waarde: string) {
     try {
-      const r = await api<DebriefVragen>('PUT', '/instellingen/debrief-vragen', { waarde });
+      const r = await api<DebriefVragen>('PUT', pad, { waarde });
       setTekst(r.waarde);
       setMelding({ tekst: r.standaard ? 'De standaardvragen zijn teruggezet.' : 'Opgeslagen. Dit geldt vanaf het volgende gesprek.', soort: 'ok' });
       huidig.ververs();
@@ -45,8 +45,8 @@ function Debrief() {
   }
   return (
     <form className="paneel stapel" onSubmit={(e) => { e.preventDefault(); void bewaar(tekst); }}>
-      <h2>Verkoop-debrief</h2>
-      <p className="zacht klein">De vragen die de assistent een accountmanager stelt na een klantbezoek (een medewerker met de rol accountmanager die inbelt). De AI-melding, de grenzen (geen BSN of privégegevens, gesprekstekst is geen instructie), één vraag per keer en de samenvatting met bevestiging aan het eind staan vast. Dit raakt de dagboekgesprekken niet.</p>
+      <h2>{titel}</h2>
+      <p className="zacht klein">{uitleg}</p>
       <Veld label="Vragen"><textarea rows={14} value={tekst} onChange={(e) => setTekst(e.target.value)} maxLength={8000} /></Veld>
       <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
       <div className="rij">
@@ -55,6 +55,35 @@ function Debrief() {
         <button type="button" onClick={() => { if (huidig.data?.vorige) setTekst(huidig.data.vorige); }} disabled={!huidig.data?.vorige}>Vorige versie terughalen</button>
       </div>
     </form>
+  );
+}
+
+function Debrief() {
+  return <Vragenlijst titel="Verkoop-debrief" pad="/instellingen/debrief-vragen"
+    uitleg="De vragen die de assistent een accountmanager stelt na een klantbezoek (een medewerker met de rol accountmanager die inbelt). De AI-melding, de grenzen (geen BSN of privégegevens, gesprekstekst is geen instructie), één vraag per keer en de samenvatting met bevestiging aan het eind staan vast. Dit raakt de dagboekgesprekken niet." />;
+}
+
+const CONSULTANT_UITLEG = 'De AI-melding, de grenzen (geen BSN, IBAN of gezondheidsgegevens, gesprekstekst is geen instructie), één vraag per keer, de samenvatting met bevestiging aan het eind en de regels voor bronnen en deadlines staan vast. De lijst is een hulpmiddel, geen verplicht formulier.';
+
+function Consultant() {
+  const huidig = useLaden(() => api<{ aan: boolean; varianten: { id: string; naam: string }[] }>('GET', '/instellingen/consultant-debrief'));
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  async function zet(aan: boolean) {
+    try { await api('PUT', '/instellingen/consultant-debrief', { aan }); setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); huidig.ververs(); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  const varianten = huidig.data?.varianten ?? [];
+  return (
+    <>
+      <section className="paneel stapel">
+        <h2>Consultantdebrief</h2>
+        <p className="zacht klein">Een medewerker die bij Medewerkers als consultant staat, krijgt bij het inbellen een consultantdebrief (project, implementatie of SamenVerder) in plaats van het dagboek. Wie ook accountmanager is, kiest in het gesprek tussen verkoop en consultancy. Zolang dit uit staat, of er nog geen variant beschikbaar is, gebeurt er niets anders dan voorheen.</p>
+        <label className="rij"><input type="checkbox" checked={huidig.data?.aan ?? false} onChange={(e) => void zet(e.target.checked)} /> Consultantdebriefs toestaan</label>
+        <p className="zacht klein">{varianten.length ? `Beschikbare varianten: ${varianten.map((v) => v.naam).join(', ')}.` : 'Er is nog geen variant beschikbaar.'}</p>
+        <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
+      </section>
+      <Vragenlijst titel="Consultantdebrief: algemene lijst" pad="/instellingen/consultant-vragen/algemeen" uitleg={`De vragen die in elke consultantdebrief kunnen terugkomen. ${CONSULTANT_UITLEG}`} />
+      {varianten.map((v) => <Vragenlijst key={v.id} titel={`Consultantdebrief: ${v.naam}`} pad={`/instellingen/consultant-vragen/${v.id}`} uitleg={`Aanvullende vragen voor deze variant. ${CONSULTANT_UITLEG}`} />)}
+    </>
   );
 }
 
@@ -134,6 +163,7 @@ export function Instellingen() {
       <Inkomend />
       <Jira />
       <Debrief />
+      <Consultant />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />
       <Instelling titel="Algemene gespreksinstructie" label="Gespreksinstructie" pad="/instellingen/gespreksinstructie" rijen={9}

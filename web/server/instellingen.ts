@@ -95,3 +95,35 @@ export async function leesInkomend(db: Db): Promise<boolean> {
   return (await lees(db, 'inkomend', '')).waarde === 'aan';
 }
 export const bewaarInkomend = (db: Db, aan: boolean) => bewaar(db, 'inkomend', aan ? 'aan' : '');
+
+/** Schakelaar voor de consultantdebriefs. Standaard uit: zonder deze schakelaar blijft elke route precies zoals voorheen. */
+export async function leesConsultantDebrief(db: Db): Promise<boolean> {
+  return (await lees(db, 'consultant_debrief', '')).waarde === 'aan';
+}
+export const bewaarConsultantDebrief = (db: Db, aan: boolean) => bewaar(db, 'consultant_debrief', aan ? 'aan' : '');
+
+/** De checklist die alle consultantdebriefs delen. Per variant is er een eigen aanvulling (zie consultant-varianten.ts). Geen verplicht formulier, geen vaste volgorde. */
+export const STANDAARD_CONSULTANT_VRAGEN = [
+  '1. Context: Bij welke gemeente (klant) was dit, en wie was de contactpersoon? Vraag alleen wat nog niet bekend is.',
+  '2. Werkzaamheden: Wat heb je gedaan?',
+  '3. Resultaat: Wat is er daadwerkelijk bereikt of opgeleverd? Wat is nog niet af?',
+  '4. Besluiten en afspraken: Welke keuzes zijn gemaakt en wat is met wie afgesproken?',
+  '5. Acties: Wat moet er nog gebeuren, wie doet het en voor wanneer? Eén actie per keer. Onderscheid acties van de klant en interne acties.',
+  '6. Blokkades en afhankelijkheden: Wat houdt de voortgang nu echt tegen, en wat moet eerst door een ander of een andere stap gebeuren?',
+  '7. Risico\'s: Wat kan de planning, kwaliteit, acceptatie of ingebruikname bedreigen?',
+  '8. Vervolgsignalen: Heb je een behoefte bij de klant gehoord die buiten de huidige opdracht of het huidige pakket valt? Leg alleen vast wat is gezegd; kwalificeer het niet commercieel.',
+  '9. Eerstvolgende stap: Wat is de eerstvolgende concrete stap?',
+].join('\n');
+
+/** Sleutels van de bewerkbare consultantchecklists: 'algemeen' en één per variant. */
+const consultantSleutel = (sleutel: string) => `consultant_vragen_${sleutel}`;
+export const leesConsultantVragen = (db: Db, sleutel: string, standaard: string) => lees(db, consultantSleutel(sleutel), standaard);
+/** Een lege tekst zet de standaard terug; de tekst die wordt vervangen blijft bewaard als vorige versie. */
+export async function bewaarConsultantVragen(db: Db, sleutel: string, waarde: string, standaard: string): Promise<void> {
+  const huidig = await leesConsultantVragen(db, sleutel, standaard);
+  if (!huidig.standaard && huidig.waarde !== waarde.trim()) await bewaar(db, `${consultantSleutel(sleutel)}_vorige`, huidig.waarde);
+  await bewaar(db, consultantSleutel(sleutel), waarde);
+}
+export async function leesVorigeConsultantVragen(db: Db, sleutel: string): Promise<string> {
+  return (await lees(db, `${consultantSleutel(sleutel)}_vorige`, '')).waarde;
+}

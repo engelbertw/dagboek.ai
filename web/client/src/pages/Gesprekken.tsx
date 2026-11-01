@@ -74,14 +74,23 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
     } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
   }
   const debrief = g.type === 'verkoop_debrief';
+  const consultant = g.type === 'consultant_debrief';
+  const keuze = g.type === 'debrief_keuze';
+  async function kiesRoute(route: 'verkoop' | 'consultancy') {
+    if (!confirm(`Dit gesprek verwerken als ${route === 'verkoop' ? 'verkoop-debrief' : 'consultancy-debrief'}? Kijk eerst in het transcript.`)) return;
+    setBezig(true);
+    try { await api('POST', `/calls/${g.id}/route`, { route }); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
+  }
   const s = SAMENVATTING[g.samenvattingStatus];
-  const uitleg = debrief && g.samenvattingStatus === 'klaar' ? 'Het bezoek staat in het verkoopregister, bij de klant.' : s.uitleg;
+  const uitleg = debrief && g.samenvattingStatus === 'klaar' ? 'Het bezoek staat in het verkoopregister, bij de klant.'
+    : consultant && g.samenvattingStatus === 'klaar' ? 'De punten staan in Werk, bij de gemeente.'
+      : keuze ? 'De keuze tussen verkoop- en consultancy-debrief was niet aantoonbaar uit het gesprek. Kijk in het transcript en kies hieronder; er is nog niets opgeslagen.' : s.uitleg;
   const kanOphalen = g.engine === 'elevenlabs_agent' && !g.heeftTranscript && !g.transcriptGewist && ['belt', 'gesprek', 'onderbroken', 'niet_bereikt', 'mislukt'].includes(g.status);
   const kanOpnieuw = g.status === 'gesproken' && ['geen', 'mislukt', 'onduidelijk'].includes(g.samenvattingStatus);
   return (
     <div className="paneel stapel">
       <div className="rij spreid">
-        <div><h3>{g.employeeNaam} {debrief && <Badge soort="wacht">verkoop-debrief</Badge>}</h3><span className="zacht klein">{datumTijd(g.createdAt)} · {g.bron}{g.engine && ` · ${MOTOR_LABEL[g.engine]}`}</span></div>
+        <div><h3>{g.employeeNaam} {debrief && <Badge soort="wacht">verkoop-debrief</Badge>}{consultant && <Badge soort="wacht">consultantdebrief{g.variant ? ` · ${g.variant}` : g.variantBron === 'onbekend' ? ' · variant onbekend' : ''}</Badge>}{keuze && <Badge soort="wacht">route nog niet bepaald</Badge>}</h3><span className="zacht klein">{datumTijd(g.createdAt)} · {g.bron}{g.engine && ` · ${MOTOR_LABEL[g.engine]}`}</span></div>
         <div className="rij"><Badge soort={g.status}>{LABEL[g.status]}</Badge><button onClick={toggle} aria-expanded={!!detail}>{detail ? 'Verbergen' : 'Bekijken'}</button></div>
       </div>
       {g.fout && <p className="zacht klein">{g.fout}</p>}
@@ -100,6 +109,12 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
           <Badge soort={BADGE[g.samenvattingStatus]}>{s.label}</Badge>
           <span className="zacht klein">{g.samenvattingStatus === 'mislukt' ? g.samenvattingFout : uitleg}</span>
           {kanOpnieuw && <button onClick={opnieuw} disabled={bezig}>{bezig ? 'Bezig…' : g.samenvattingStatus === 'geen' ? 'Nu samenvatten' : 'Opnieuw proberen'}</button>}
+        </div>
+      )}
+      {keuze && g.status === 'gesproken' && (
+        <div className="rij">
+          <button type="button" onClick={() => void kiesRoute('verkoop')} disabled={bezig}>Verwerken als verkoop-debrief</button>
+          <button type="button" onClick={() => void kiesRoute('consultancy')} disabled={bezig}>Verwerken als consultancy-debrief</button>
         </div>
       )}
       {g.status === 'gesproken' && <Beoordeling g={g} ververs={ververs} />}
@@ -138,7 +153,7 @@ export function Gesprekken() {
         <div><h1>Gesprekken</h1><p className="zacht">Alle gesprekken met uitkomst en transcript.</p></div>
         <div className="rij">
           <select aria-label="Soort gesprek" value={type} onChange={(e) => setType(e.target.value as typeof type)}>
-            <option value="alle">Alle gesprekken</option><option value="dagboek">Dagboek</option><option value="verkoop_debrief">Verkoop-debrief</option>
+            <option value="alle">Alle gesprekken</option><option value="dagboek">Dagboek</option><option value="verkoop_debrief">Verkoop-debrief</option><option value="consultant_debrief">Consultantdebrief</option><option value="debrief_keuze">Route onbepaald</option>
           </select>
           <button onClick={lijst.ververs}>Verversen</button>
         </div>

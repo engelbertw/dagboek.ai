@@ -10,6 +10,8 @@ export const REDEN: Record<string, string> = {
   bron_niet_te_verifieren: 'Dit staat niet aantoonbaar in het gesprek; een genoemde deadline is weggelaten.',
   klant_niet_herkend: 'De klant is niet herkend of nog niet bevestigd. Koppel de klant of bevestig de voorgestelde klant.',
   eigenaar_onzeker: 'De genoemde eigenaar kwam niet voor in het gesprek.',
+  variant_onzeker: 'Niet aantoonbaar welke soort debrief (project, implementatie of SamenVerder) dit was. Controleer het punt aan de hand van het gesprek.',
+  contact_onzeker: 'Een genoemde contactpersoon lijkt op iemand die al bestaat. Controleer bij Contactpersonen of het dezelfde is.',
 };
 
 const JIRA_REDEN: Record<string, string> = { al_in_jira: 'staat al in Jira', afgerond: 'is afgerond', controle_nodig: 'moet eerst gecontroleerd worden', niet_gevonden: 'niet gevonden' };
@@ -20,7 +22,7 @@ const DETAIL_LABEL: Record<string, string> = {
 
 /** Soorten waar iemand iets mee moet doen. */
 export const TE_DOEN: ActiviteitSoort[] = ['actie', 'afspraak', 'intern'];
-export const SOORT_VOLGORDE: ActiviteitSoort[] = ['actie', 'afspraak', 'intern', 'kans', 'risico', 'doel', 'resultaat'];
+export const SOORT_VOLGORDE: ActiviteitSoort[] = ['actie', 'afspraak', 'intern', 'blokkade', 'afhankelijkheid', 'kans', 'vervolgsignaal', 'risico', 'doel', 'resultaat', 'besluit'];
 
 type Punt = Pick<Activiteit, 'id' | 'soort' | 'omschrijving' | 'status' | 'deadline' | 'createdAt'>;
 
@@ -195,8 +197,9 @@ export function Punten({ punten, acties, medewerkers, toonKlant, leeg = 'Geen pu
 export function Secties({ punten, acties, medewerkers }: { punten: Activiteit[]; acties: Acties; medewerkers: Medewerker[] }) {
   const van = (soorten: ActiviteitSoort[]) => punten.filter((p) => soorten.includes(p.soort));
   const blokken: { titel: string; soorten: ActiviteitSoort[]; ingeklapt?: boolean }[] = [
-    { titel: 'Te doen', soorten: TE_DOEN }, { titel: 'Kansen', soorten: ['kans'] }, { titel: 'Risico’s', soorten: ['risico'] },
-    { titel: 'Context', soorten: ['doel', 'resultaat'], ingeklapt: true },
+    { titel: 'Te doen', soorten: TE_DOEN }, { titel: 'Blokkades en afhankelijkheden', soorten: ['blokkade', 'afhankelijkheid'] }, { titel: 'Kansen', soorten: ['kans'] },
+    { titel: 'Vervolgsignalen', soorten: ['vervolgsignaal'] }, { titel: 'Risico’s', soorten: ['risico'] },
+    { titel: 'Context', soorten: ['doel', 'resultaat', 'besluit'], ingeklapt: true },
   ];
   return (
     <div className="werk-secties">

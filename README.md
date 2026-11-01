@@ -226,6 +226,16 @@ Een accountmanager belt hetzelfde nummer als een collega voor het dagboek. Is de
 2. Geef de accountmanagers de rol bij Medewerkers (telefoonnummer zoals bij elke medewerker; precies één actieve medewerker per nummer) en zet Inbellen aan.
 3. Deploy eerst *voice*, dan *web*. Een nieuwe *web* met oude *voice* geeft het type niet door en laat een accountmanager het dagboek-gesprek krijgen.
 
+## Consultantdebrief (fase 1: basis, standaard uit)
+Een consultant belt na uitgevoerd werk bij een gemeente (project, module-implementatie of SamenVerder-dag). Fase 1 legt alleen de gemeenschappelijke basis; de varianten zelf (registry in `web/server/consultant-varianten.ts`) volgen per fase en zijn nu nog leeg.
+
+- **Aan/uit.** Instellingen → Consultant, instelling `consultant_debrief` (standaard uit). Uit = het gedrag is exact als voorheen; het vinkje *consultant* bij Medewerkers wordt dan genegeerd.
+- **Route.** `calls.type` is `dagboek`, `verkoop_debrief`, `consultant_debrief` of (bij iemand die accountmanager én consultant is) `debrief_keuze`. In dat laatste geval vraagt de assistent "Wil je een verkoop- of consultancy-debrief doen?"; de gekozen route wordt achteraf met een citaat uit het gesprek geverifieerd (`routering.ts`, `debrief-gedeeld.ts`). Lukt dat niet, dan blijft het gesprek op `debrief_keuze` met status *onduidelijk* en kiest de beheerder bij Gesprekken ("Verwerken als verkoop-/consultancy-debrief", `POST /api/calls/:id/route`).
+- **Variant.** Wordt in het gesprek bevestigd en achteraf geverifieerd; zonder bewijs blijft de variant leeg en komt er een Controle-nodig-punt (`variant_onzeker`). Er wordt nooit gegokt.
+- **Gemeente als spil.** Alles bij één debrief moet bij dezelfde klant horen (`klant_inconsistent`); contactpersonen worden alleen vastgelegd als de naam in het gesprek valt, nooit met e-mail of telefoon uit spraak.
+- **Toestemming.** Eigen doel `consultant_debrief` (versie `consultant-debrief-v1`), los van dagboek en verkoop. Promptversies: `consultant-debrief-v1` en `debrief-keuze-v1`.
+- **Installeren.** Migratie `023_consultant_basis.sql` is additief en draait bij het starten van *web*. Deploy eerst *voice* (onbekende soorten vallen daar terug op het dagboek), dan *web*, en zet de schakelaar pas aan als beide draaien.
+
 ## Inloggen en gebruikers (Keycloak)
 Keycloak draait als eigen service in het Railway-project (map `keycloak/`: `Dockerfile`, realm `realm-dagboek.json`, inlogthema `themes/dagboek` in de huisstijl van Inwoner.AI). De realm `dagboek` heeft de rollen `beheerder` (alles) en `accountmanager` (alleen Werk en Klanten, ook op de server afgedwongen in `rollen.ts`; in een bestaande realm maak je de rol `accountmanager` eenmalig aan via de admin-console, want de import slaat een bestaande realm over), de client `dagboek-web` (code + PKCE, geheim) voor het inloggen en de client `dagboek-beheer` (service-account met alleen `manage-users`, `view-users`, `query-users` en `view-realm`) voor het scherm Gebruikers. Gebruikersgegevens staan alleen in Keycloak, niet in de database van het dagboek.
 

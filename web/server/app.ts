@@ -11,7 +11,7 @@ import { OidcFout, type Oidc } from './oidc.js';
 import { registreerGebruikers, type KeycloakBeheer } from './gebruikers.js';
 import { noodloginAan, ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
-import { callLog, calls, employees, activiteiten, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, consultantDebriefs, employees, activiteiten, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
 import { foutcode, log } from './log.js';
@@ -32,6 +32,7 @@ import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
 import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
+import { registreerConsultantRoutes } from './consultant-routes.js';
 import { actieRijen, registreerActiviteiten } from './activiteiten.js';
 import { ACCOUNTMANAGER_ROL, magDoen, normaleRol } from './rollen.js';
 import { beoordeelLijst } from './medewerkers-import.js';
@@ -54,6 +55,7 @@ const medewerkerBody = z.object({
   locgovGebruikersnaam: z.union([z.literal(''), z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{1,64}$/)]).default(''),
   actief: z.boolean().default(true), notitie: z.string().max(2000).default(''), toestemming: z.boolean().optional(),
   rol: z.enum(['medewerker', 'accountmanager']).default('medewerker'),
+  consultant: z.boolean().default(false),
 });
 const projectBody = z.object({
   naam: nonEmpty.max(150), omschrijving: z.string().max(2000).default(''), status: z.enum(['actief', 'afgerond']).default('actief'),
@@ -228,7 +230,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const b = medewerkerBody.parse(req.body);
     const rij = await db.transaction(async (tx) => {
       const [nieuw] = await tx.insert(employees).values({
-        naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie, rol: b.rol,
+        naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie, rol: b.rol, consultant: b.consultant,
       }).returning();
       if (!b.toestemming) return nieuw;
       await leggToestemmingVast(tx, { employeeId: nieuw.id, besluit: 'gegeven', bron: 'beheerder' });
@@ -538,6 +540,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     return leesInstructie(db);
   });
   registreerVerkoop(app, db);
+  registreerConsultantRoutes(app, db, llm);
   registreerActiviteiten(app, db);
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.
@@ -583,9 +586,9 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
       id: calls.id, status: calls.status, bron: calls.bron, fout: calls.fout, gestartOp: calls.gestartOp, afgerondOp: calls.afgerondOp,
       createdAt: calls.createdAt, employeeId: calls.employeeId, employeeNaam: employees.naam,
       samenvattingStatus: calls.samenvattingStatus, samenvattingFout: calls.samenvattingFout,
-      engine: calls.engine, type: calls.type, beoordeling: calls.beoordeling, beoordelingOpmerking: calls.beoordelingOpmerking,
+      engine: calls.engine, type: calls.type, routeBron: calls.routeBron, variant: consultantDebriefs.variant, variantBron: consultantDebriefs.variantBron, beoordeling: calls.beoordeling, beoordelingOpmerking: calls.beoordelingOpmerking,
       heeftTranscript: sql<boolean>`${calls.transcript} is not null`, transcriptGewist: sql<boolean>`${calls.transcriptGewistOp} is not null`,
-    }).from(calls).innerJoin(employees, eq(calls.employeeId, employees.id))
+    }).from(calls).innerJoin(employees, eq(calls.employeeId, employees.id)).leftJoin(consultantDebriefs, eq(consultantDebriefs.callId, calls.id))
       .where(employeeId ? eq(calls.employeeId, employeeId) : undefined).orderBy(desc(calls.createdAt)).limit(100);
   });
   app.get('/api/calls/:id', async (req, reply) => {

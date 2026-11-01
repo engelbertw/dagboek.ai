@@ -31,7 +31,7 @@ const VAGE_FRASEN = [
 /** Iets concreets: een getal, een bedrag of een eigennaam (hoofdletter midden in de zin). */
 const heeftConcreet = (t: string) => /\d|€|\beuro\b/i.test(t) || /(?:^|\s)\S+\s+[A-ZÀ-Ý][\p{L}]{2,}/u.test(t);
 
-export type Soortnaam = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'intern' | 'kans' | 'risico';
+export type Soortnaam = 'doel' | 'resultaat' | 'afspraak' | 'actie' | 'intern' | 'kans' | 'risico' | 'besluit' | 'blokkade' | 'afhankelijkheid' | 'vervolgsignaal';
 
 /** Te kort, te algemeen, of (bij een doel of resultaat) zonder iets concreets: niet opnemen. */
 export function teVaag(tekst: string, soort: Soortnaam | 'dagboek'): boolean {
@@ -44,10 +44,12 @@ export function teVaag(tekst: string, soort: Soortnaam | 'dagboek'): boolean {
 }
 
 /** Als twee soorten over hetzelfde gaan, wint de soort waar het meest mee te doen valt. */
-const PRIORITEIT: Record<Soortnaam, number> = { actie: 0, afspraak: 1, intern: 2, kans: 3, risico: 4, doel: 5, resultaat: 6 };
+const PRIORITEIT: Record<Soortnaam, number> = {
+  actie: 0, afspraak: 1, intern: 2, blokkade: 2.5, afhankelijkheid: 2.6, kans: 3, besluit: 3.5, vervolgsignaal: 3.6, risico: 4, doel: 5, resultaat: 6,
+};
 
 /** Hoeveel er per gesprek hooguit wordt opgenomen; de actiegerichte soorten delen één maximum. */
-export const MAX_PER_GESPREK = { acties: 5, kans: 3, risico: 3, doel: 3, resultaat: 3 } as const;
+export const MAX_PER_GESPREK = { acties: 5, kans: 3, risico: 3, doel: 3, resultaat: 3, besluit: 3, blokkade: 3, afhankelijkheid: 3, vervolgsignaal: 3 } as const;
 export const MAX_DAGBOEK_PER_ONDERWERP = 4;
 
 export interface Kandidaat { soort: Soortnaam; omschrijving: string; citaat: string; eigenaar?: string; deadline?: string | null }
