@@ -32,6 +32,7 @@ import type { GespreksOnderwerp } from './schema.js';
 import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
 import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
+import { registreerOpvolging } from './opvolging.js';
 import { registreerConsultantRoutes } from './consultant-routes.js';
 import { registreerVoorbereiding } from './voorbereiding.js';
 import { registreerImplementaties } from './implementaties.js';
@@ -553,6 +554,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerKwaliteit(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
   registreerSamenverder(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
   registreerActiviteiten(app, db);
+  registreerOpvolging(app, db, (req) => leesSessie(req.cookies[COOKIE], config.sessionSecret));
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.
   const geefSuggestie = async (reply: any, onderwerpen: OnderwerpVoorSuggestie[], doel: 'planning' | 'onderwerp') => {

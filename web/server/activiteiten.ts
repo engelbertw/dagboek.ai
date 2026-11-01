@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { ActieRij } from './dashboard.js';
 import type { Db } from './db.js';
-import { activiteiten, employees, klanten, topics } from './schema.js';
+import { activiteiten, employees, klanten, opvolgingen, topics } from './schema.js';
 
 const uuid = z.string().uuid();
 const nonEmpty = z.string().trim().min(1);
@@ -23,7 +23,7 @@ const kolommen = {
   deadline: activiteiten.deadline, deadlineOorspronkelijk: activiteiten.deadlineOorspronkelijk, deadlineGewijzigdAantal: activiteiten.deadlineGewijzigdAantal,
   details: activiteiten.details, citaat: activiteiten.citaat, jiraSleutel: activiteiten.jiraSleutel, jiraUrl: activiteiten.jiraUrl,
   controleNodig: activiteiten.controleNodig, controleReden: activiteiten.controleReden, callId: activiteiten.callId,
-  createdAt: activiteiten.createdAt, afgerondOp: activiteiten.afgerondOp,
+  createdAt: activiteiten.createdAt, afgerondOp: activiteiten.afgerondOp, bronActiviteitId: activiteiten.bronActiviteitId,
 };
 
 /** Alle punten, open eerst en dan op deadline. Het filteren gebeurt aan de clientkant. */
@@ -112,6 +112,9 @@ export function registreerActiviteiten(app: FastifyInstance, db: Db) {
   });
 
   app.delete('/api/activiteiten/:id', async (req, reply) => {
+    // Een signaal waarover is besloten blijft bewaard: het besluit en het citaat zijn de herleiding naar het gesprek.
+    const [besloten] = await db.select({ id: opvolgingen.id }).from(opvolgingen).where(eq(opvolgingen.signaalId, uuid.parse((req.params as any).id))).limit(1);
+    if (besloten) return reply.code(409).send({ fout: 'Over dit vervolgsignaal is besloten en het blijft bewaard' });
     const gewist = await db.delete(activiteiten).where(eq(activiteiten.id, uuid.parse((req.params as any).id))).returning({ id: activiteiten.id });
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Punt niet gevonden' });
   });

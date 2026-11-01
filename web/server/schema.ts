@@ -215,6 +215,8 @@ export const activiteiten = pgTable('activiteiten', {
   contactId: uuid('contact_id').references(() => klantContacten.id, { onDelete: 'set null' }),
   samenverderProgrammaId: uuid('samenverder_programma_id').references(() => samenverderProgrammas.id, { onDelete: 'set null' }),
   samenverderSessieId: uuid('samenverder_sessie_id').references(() => samenverderSessies.id, { onDelete: 'set null' }),
+  /** Het vervolgsignaal waaruit dit punt (een kans) na een besluit van beheer of accountmanagement is ontstaan. */
+  bronActiviteitId: uuid('bron_activiteit_id').references((): AnyPgColumn => activiteiten.id, { onDelete: 'set null' }),
   bron: text('bron', { enum: ['handmatig', 'gesprek'] }).notNull().default('gesprek'),
   deadlineOorspronkelijk: date('deadline_oorspronkelijk'),
   deadlineGewijzigdAantal: integer('deadline_gewijzigd_aantal').notNull().default(0),
@@ -393,6 +395,20 @@ export const samenverderSessieOnderwerpen = pgTable('samenverder_sessie_onderwer
   voorgesteldInSessieId: uuid('voorgesteld_in_sessie_id').references((): AnyPgColumn => samenverderSessies.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
 }, (t) => [index('samenverder_sessie_onderwerpen_sessie').on(t.sessieId)]);
+
+export const OPVOLG_BESLUITEN = ['kans', 'geen_vervolg'] as const;
+export type OpvolgBesluit = (typeof OPVOLG_BESLUITEN)[number];
+
+/** Het besluit over een vervolgsignaal; wordt niet gewijzigd. Eén besluit per signaal. */
+export const opvolgingen = pgTable('opvolgingen', {
+  id: id(),
+  signaalId: uuid('signaal_id').notNull().unique().references((): AnyPgColumn => activiteiten.id, { onDelete: 'cascade' }),
+  besluit: text('besluit', { enum: OPVOLG_BESLUITEN }).notNull(),
+  reden: text('reden').notNull().default(''),
+  door: text('door').notNull(),
+  op: timestamp('op', { withTimezone: true }).notNull().defaultNow(),
+  nieuwActiviteitId: uuid('nieuw_activiteit_id').references((): AnyPgColumn => activiteiten.id, { onDelete: 'set null' }),
+});
 
 export const BUDGET_SOORTEN = ['start', 'uitbreiding', 'correctie'] as const;
 export type BudgetSoort = (typeof BUDGET_SOORTEN)[number];

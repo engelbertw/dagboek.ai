@@ -6,7 +6,7 @@ import { startGesprek } from '../gesprek-starten.js';
 import { zetStatus } from '../gesprek-status.js';
 import { leggToestemmingVast } from '../toestemming.js';
 import { tik } from '../scheduler.js';
-import { calls, employees, activiteiten, implementaties, klanten, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
+import { calls, employees, activiteiten, implementaties, klanten, opvolgingen, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
 import { maakDatabase, maakHandles, migratieMap, migratiesTot, pool } from './helpers.js';
 
 const rijen = (r: unknown) => ((r as { rows?: any[] }).rows ?? (r as any[]));
@@ -144,6 +144,32 @@ describe('SamenVerder-budget (migratie 027)', () => {
       await db.insert(samenverderBudgetmutaties).values({ programmaId: p.id, dagen: '-2.00', soort: 'correctie', reden: 'Fout in contract', door: 'beheerder' });
       await kapot(sql`delete from samenverder_programmas where id = ${p.id}`); // restrict: een programma met budget blijft bestaan
       expect(await db.select().from(samenverderBudgetmutaties)).toHaveLength(2);
+    } finally { await h.close(); await d.verwijder(); }
+  });
+});
+
+describe('opvolging (migratie 029)', () => {
+  it('beschermt het besluit tegen wijzigen en laat een verwijderd nieuw punt los', async () => {
+    const d = await maakDatabase();
+    const h = await connectPostgres(d.url);
+    try {
+      await migrate(h);
+      const { db } = h;
+      const kapot = (q: ReturnType<typeof sql>) => expect(db.execute(q)).rejects.toThrow();
+      const [k] = await db.insert(klanten).values({ naam: 'Gemeente' }).returning();
+      const [signaal] = await db.insert(activiteiten).values({ klantId: k.id, soort: 'vervolgsignaal', omschrijving: 'Meer modules' }).returning();
+      const [kans] = await db.insert(activiteiten).values({ klantId: k.id, soort: 'kans', omschrijving: 'Meer modules', bronActiviteitId: signaal.id }).returning();
+      const [o] = await db.insert(opvolgingen).values({ signaalId: signaal.id, besluit: 'kans', door: 'beheerder', nieuwActiviteitId: kans.id }).returning();
+      await kapot(sql`update opvolgingen set besluit = 'geen_vervolg', reden = 'x' where id = ${o.id}`);
+      await kapot(sql`update opvolgingen set reden = 'achteraf' where id = ${o.id}`);
+      await kapot(sql`insert into opvolgingen (signaal_id, besluit, door) values (${signaal.id}, 'kans', 'nog een')`); // één besluit per signaal
+      const [s2] = await db.insert(activiteiten).values({ klantId: k.id, soort: 'vervolgsignaal', omschrijving: 'Ander' }).returning();
+      await kapot(sql`insert into opvolgingen (signaal_id, besluit, door) values (${s2.id}, 'geen_vervolg', 'x')`); // geen vervolg zonder reden
+      await kapot(sql`insert into opvolgingen (signaal_id, besluit, reden, door) values (${s2.id}, 'misschien', 'x', 'x')`);
+      // Het nieuwe punt mag verdwijnen: de verwijzing wordt leeg, het besluit blijft.
+      await db.delete(activiteiten).where(eq(activiteiten.id, kans.id));
+      const [na] = await db.select().from(opvolgingen);
+      expect(na).toMatchObject({ besluit: 'kans', nieuwActiviteitId: null });
     } finally { await h.close(); await d.verwijder(); }
   });
 });

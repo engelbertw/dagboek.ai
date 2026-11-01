@@ -15,7 +15,7 @@ const punt = (o: Partial<Activiteit>): Activiteit => ({
   createdAt: '2026-10-01T10:00:00Z', afgerondOp: null, topicId: null, topicTitel: null, bron: 'gesprek', deadlineGewijzigdAantal: 0, jiraSleutel: null, jiraUrl: null, ...o,
 });
 const acties: Acties = {
-  fout: null, jiraKlaar: true, jiraPaneel: null, zet: async () => {}, wijzig: async () => true, besluit: async () => {}, verwijder: async () => {}, voegToe: async () => true, jiraVoorbeeld: async () => {},
+  fout: null, jiraKlaar: true, jiraPaneel: null, zet: async () => {}, wijzig: async () => true, besluit: async () => {}, verwijder: async () => {}, voegToe: async () => true, opvolging: async () => {}, jiraVoorbeeld: async () => {},
 };
 const medewerkers = [{ id: 'm1', naam: 'Daan van Hooft' }] as Medewerker[];
 const html = (el: JSX.Element) => renderToStaticMarkup(<MemoryRouter>{el}</MemoryRouter>);

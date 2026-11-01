@@ -53,6 +53,8 @@ export interface Acties {
   besluit(a: Pick<Activiteit, 'id'>, b: 'goedkeuren' | 'afwijzen'): Promise<void>;
   verwijder(a: Pick<Activiteit, 'id' | 'omschrijving'>): Promise<void>;
   voegToe(waarden: Record<string, unknown>): Promise<boolean>;
+  /** Besluit over een vervolgsignaal: er een kans van maken, of geen vervolg (met reden). Het signaal blijft bewaard. */
+  opvolging(a: Pick<Activiteit, 'id' | 'omschrijving'>, besluit: 'kans' | 'geen_vervolg'): Promise<void>;
   jiraVoorbeeld(ids: string[]): Promise<void>;
   jiraPaneel: ReactNode;
 }
@@ -123,6 +125,11 @@ export function useActies(ververs: () => void, punten: Pick<Activiteit, 'id' | '
     besluit: async (a, b) => { await doe(() => api('POST', `/activiteiten/${a.id}/controle`, { besluit: b })); },
     verwijder: async (a) => { if (confirm(`Dit punt verwijderen?\n\n${a.omschrijving}`)) await doe(() => api('DELETE', `/activiteiten/${a.id}`)); },
     voegToe: (waarden) => doe(() => api('POST', '/activiteiten', waarden)),
+    opvolging: async (a, besluit) => {
+      if (besluit === 'kans') { if (!confirm(`Hier een kans van maken? Er ontstaat een nieuw, leeg punt bij de gemeente; het signaal wordt afgerond en blijft bewaard.\n\n${a.omschrijving}`)) return; await doe(() => api('POST', `/activiteiten/${a.id}/opvolging`, { besluit })); return; }
+      const reden = prompt('Waarom geen vervolg? (verplicht)');
+      if (reden?.trim()) await doe(() => api('POST', `/activiteiten/${a.id}/opvolging`, { besluit, reden }));
+    },
   };
 }
 
@@ -176,6 +183,7 @@ export function Regel({ a, acties, medewerkers, vandaag, toonKlant = false }: { 
           <Details a={a} />
           {toonKlant && (a.klantId ? <Link to={`/klanten/${a.klantId}`}>{a.klantNaam}</Link> : null)}
           {a.topicId && <Link to={`/onderwerp/${a.topicId}`}>{a.topicTitel}</Link>}
+          {a.soort === 'kans' && a.bronActiviteitId && <span className="zacht klein">uit vervolgsignaal</span>}
           {a.jiraSleutel && (a.jiraUrl?.startsWith('https://') ? <a href={a.jiraUrl} target="_blank" rel="noreferrer">{a.jiraSleutel}</a> : <span>{a.jiraSleutel}</span>)}
         </p>
       </div>
@@ -183,6 +191,8 @@ export function Regel({ a, acties, medewerkers, vandaag, toonKlant = false }: { 
         <summary aria-label={`Meer acties voor: ${a.omschrijving}`}>⋯</summary>
         <div className="werk-menu-lijst">
           <button type="button" onClick={doeActie(async () => setBewerk(true))}>Bewerken</button>
+          {a.soort === 'vervolgsignaal' && !klaar && !a.controleNodig && <button type="button" onClick={doeActie(() => acties.opvolging(a, 'kans'))}>Maak er een kans van…</button>}
+          {a.soort === 'vervolgsignaal' && !klaar && !a.controleNodig && <button type="button" onClick={doeActie(() => acties.opvolging(a, 'geen_vervolg'))}>Geen vervolg…</button>}
           {acties.jiraKlaar && !klaar && !a.jiraSleutel && <button type="button" onClick={doeActie(() => acties.jiraVoorbeeld([a.id]))}>Naar Jira…</button>}
           <button type="button" className="gevaar" onClick={doeActie(() => acties.verwijder(a))}>Verwijderen</button>
         </div>

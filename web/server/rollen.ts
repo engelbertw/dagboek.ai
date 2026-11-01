@@ -15,6 +15,8 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET', 'POST'], pad: /^\/api\/activiteiten$/ },
   { methode: ['PATCH', 'DELETE'], pad: new RegExp(`^/api/activiteiten/${ID}$`) },
   { methode: ['POST'], pad: new RegExp(`^/api/activiteiten/${ID}/controle$`) },
+  // Opvolging van een vervolgsignaal: lezen mag; beslissen mag alleen de accountmanager van de gemeente (dat controleert opvolging.ts).
+  { methode: ['GET', 'POST'], pad: new RegExp(`^/api/activiteiten/${ID}/opvolging$`) },
   { methode: ['GET', 'POST'], pad: /^\/api\/klanten$/ },
   { methode: ['GET', 'PATCH'], pad: new RegExp(`^/api/klanten/${ID}$`) },
   { methode: ['POST'], pad: new RegExp(`^/api/klanten/${ID}/contacten$`) },

@@ -76,6 +76,8 @@ export interface Activiteit {
   eigenaarId: string | null; eigenaarNaam: string | null; eigenaarExtern: string; deadline: string | null; details: Record<string, unknown>; citaat: string;
   controleNodig: boolean; controleReden: string | null; createdAt: string; afgerondOp: string | null;
   topicId: string | null; topicTitel: string | null; bron: 'handmatig' | 'gesprek'; deadlineGewijzigdAantal: number; jiraSleutel: string | null; jiraUrl: string | null;
+  /** Het vervolgsignaal waaruit deze kans na een besluit is ontstaan. */
+  bronActiviteitId?: string | null;
 }
 export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam' | 'topicTitel'> & { bezoekId: string | null })[] }
 export interface DebriefVragen extends Houding { vorige: string }
