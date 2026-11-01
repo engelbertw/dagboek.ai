@@ -87,6 +87,7 @@ def verwerk_init(verzoek: dict) -> dict:
             bool(data.get("toestemmingNodig")), data["callId"], data.get("houding", ""), data.get("instructie", ""), call_id=call_id, engine="elevenlabs_agent",
             # Een onbekende soort (bijvoorbeeld van een nieuwere web-service) valt terug op het dagboek.
             soort=kies_soort(data.get("type")), varianten=data.get("varianten") if isinstance(data.get("varianten"), list) else None,
+            voorstel=data.get("voorstel") if isinstance(data.get("voorstel"), dict) else None,
         )
         calls.update_opdracht(call_id, status="gesprek", agent_conversation_id=verzoek.get("conversation_id") or None, inkomend=True)
     spec = calls.lees_opdracht(call_id) or {}
@@ -97,9 +98,9 @@ def verwerk_init(verzoek: dict) -> dict:
         houding=spec.get("houding", ""), instructie=spec.get("instructie", ""), einde_tool="end_call", inkomend=True,
         # Een debrief schrijft alleen weg: de hulpmiddelen om collega's op te vragen horen daar niet bij.
         hulp_id=data["callId"] if os.getenv("INKOMEND_TOOLS", "").lower() == "true" and soort == SOORT_DAGBOEK else "",
-        soort=soort, varianten=spec.get("varianten"),
+        soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"),
     )
-    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True, soort=soort, varianten=spec.get("varianten"))
+    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True, soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"))
     logger.info(f"Inkomend gesprek gestart (opdracht {call_id}, soort {soort})")
     return _init_antwoord(call_id, prompt, groet, soort)
 

@@ -47,11 +47,14 @@ def _schrijf(pad: Path, spec: dict) -> None:
     os.replace(tmp, pad)
 
 
-def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat", soort: str = "dagboek", varianten: list[str] | None = None) -> str:
+def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat", soort: str = "dagboek", varianten: list[str] | None = None, voorstel: dict | None = None) -> str:
     call_id = call_id or uuid.uuid4().hex
     spec = {
         "call_id": call_id, "nummer": nummer, "medewerker": medewerker, "onderwerpen": onderwerpen,
-        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "engine": engine, "soort": soort, "varianten": [v for v in (varianten or []) if isinstance(v, str)][:10], "aangemaakt": time.time(),
+        "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "engine": engine, "soort": soort, "varianten": [v for v in (varianten or []) if isinstance(v, str)][:10],
+        # Alleen een planningsvoorstel met een gemeentenaam; het geldt pas als de consultant het bevestigt.
+        "voorstel": {"variant": "samenverder", "klant": voorstel["klant"][:200]} if isinstance(voorstel, dict) and voorstel.get("variant") == "samenverder" and isinstance(voorstel.get("klant"), str) and voorstel["klant"].strip() else None,
+        "aangemaakt": time.time(),
         "bijgewerkt": time.time(),
     }
     with _LOCK:

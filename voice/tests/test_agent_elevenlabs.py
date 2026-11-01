@@ -338,6 +338,29 @@ def test_inkomend_consultant_en_keuze_krijgen_eigen_prompt_versie_en_varianten(m
         assert again["dynamic_variables"]["prompt_version"] == versie
 
 
+def test_inkomend_consultant_met_planningsvoorstel_noemt_de_gemeente_in_begroeting_en_prompt(monkeypatch):
+    web = {**WEB_ANTWOORD, "callId": "c-voorstel", "type": "consultant_debrief", "varianten": ["samenverder"], "onderwerpen": [], "toestemmingNodig": False,
+           "voorstel": {"variant": "samenverder", "klant": "Gemeente Amersfoort"}}
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, web))
+    antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_voorstel"})
+    groet = antw["conversation_config_override"]["agent"]["first_message"]
+    assert "Volgens de planning was je vandaag bij Gemeente Amersfoort voor een SamenVerder-dag" in groet
+    assert "bij Gemeente Amersfoort voor een SamenVerder-dag" in antw["conversation_config_override"]["agent"]["prompt"]["prompt"]
+    # Een tweede init voor hetzelfde gesprek gebruikt het bewaarde voorstel, ook als het niet meer wordt meegestuurd.
+    web2 = {k: v for k, v in web.items() if k != "voorstel"}
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, web2))
+    nogmaals = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_voorstel"})
+    assert "Gemeente Amersfoort" in nogmaals["conversation_config_override"]["agent"]["first_message"]
+
+
+def test_inkomend_zonder_of_met_onbruikbaar_voorstel_blijft_de_gewone_vraag(monkeypatch):
+    for nr, voorstel in enumerate([None, {"variant": "project", "klant": "X"}, {"variant": "samenverder", "klant": "  "}, "tekst"]):
+        web = {**WEB_ANTWOORD, "callId": f"c-geen-{nr}", "type": "consultant_debrief", "varianten": ["project"], "onderwerpen": [], "toestemmingNodig": False, "voorstel": voorstel}
+        monkeypatch.setattr(calls, "vraag_inkomend", lambda beller, w=web: (200, w))
+        antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": f"conv_geen_{nr}"})
+        assert "Volgens de planning" not in antw["conversation_config_override"]["agent"]["first_message"]
+
+
 def test_inkomend_onbekend_type_valt_terug_op_het_dagboek(monkeypatch):
     monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, {**WEB_ANTWOORD, "type": "toekomstig_type"}))
     antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_onb"})

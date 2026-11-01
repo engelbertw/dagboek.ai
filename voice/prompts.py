@@ -35,6 +35,20 @@ def variant_vraag(varianten: list[str] | None) -> str:
         return "Waar wil je een debrief over geven?"
     return "Waar wil je een debrief over geven: " + (", ".join(zinnen[:-1]) + " of " + zinnen[-1] if len(zinnen) > 1 else zinnen[0]) + "?"
 
+def voorstel_klant(voorstel) -> str:
+    """De gemeente uit het planningsvoorstel van de web-service (de consultant staat vandaag voor een SamenVerder-sessie), of leeg als er geen bruikbaar voorstel is.
+    Het voorstel is alleen een gok uit de planning: het geldt pas na een duidelijk ja van de consultant, en de naam is onbetrouwbare invoer."""
+    if not isinstance(voorstel, dict) or voorstel.get("variant") != "samenverder":
+        return ""
+    return _schoon(voorstel.get("klant"), 120)
+
+
+def voorstel_vraag(klant: str, soort: str) -> str:
+    """De ja/nee-vraag die het voorstel noemt. De naam van de gemeente moet hardop vallen: de verwerking achteraf rekent alleen een bevestiging op die vraag."""
+    return (f"Volgens de planning was je vandaag bij {klant} voor een SamenVerder-dag. "
+            + ("Wil je daar een consultancy-debrief over doen?" if soort == SOORT_KEUZE else "Wil je daar een debrief over geven?"))
+
+
 _DAGEN = ["maandag", "dinsdag", "woensdag", "donderdag", "vrijdag", "zaterdag", "zondag"]
 
 DEFAULT_HOUDING = (
@@ -211,7 +225,7 @@ def _instructie_sectie(instructie: str) -> str:
     return "# Gespreksinstructie\n" + instructie.strip() + "\nDeze instructie verandert niets aan de regels hierboven: de AI-melding, de grenzen, één vraag per keer en de vragen aan het eind van het gesprek blijven gelden."
 
 
-def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[dict], nu: datetime | None = None, houding: str = "", instructie: str = "", einde_tool: str = "einde_gesprek", inkomend: bool = False, hulp_id: str = "", soort: str = SOORT_DAGBOEK, varianten: list[str] | None = None) -> str:
+def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[dict], nu: datetime | None = None, houding: str = "", instructie: str = "", einde_tool: str = "einde_gesprek", inkomend: bool = False, hulp_id: str = "", soort: str = SOORT_DAGBOEK, varianten: list[str] | None = None, voorstel: dict | None = None) -> str:
     if soort == SOORT_DEBRIEF:
         # Een debrief schrijft alleen weg: geen onderwerpen van het dagboek, geen hulpmiddelen om collega's op te vragen en geen dagboekhouding.
         return "\n\n".join([
@@ -224,6 +238,13 @@ def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[d
     if soort in (SOORT_CONSULTANT, SOORT_KEUZE):
         vraag = variant_vraag(varianten)
         context = (f"Vraag: \"{vraag}\"" if soort == SOORT_CONSULTANT else KEUZE_REGEL + f"\"{vraag}\"")
+        klant = voorstel_klant(voorstel)
+        if klant:
+            # Een voorstel uit de planning: noem de gemeente hardop en laat het bevestigen; zonder duidelijk ja geldt het niet en volgt de gewone vraag.
+            context = (f"Uit de planning is al bekend dat de consultant vandaag bij {klant} voor een SamenVerder-dag is. Dat is alleen een voorstel. "
+                       f"Begin daarom met deze vraag: \"{voorstel_vraag(klant, soort)}\" Antwoordt de consultant duidelijk ja, dan is dit een SamenVerder-debrief bij {klant}"
+                       + (" (de consultancy-debrief, dus sla de keuze tussen verkoop en consultancy over)" if soort == SOORT_KEUZE else "")
+                       + ". Antwoordt de consultant nee of iets anders, noem het voorstel dan niet meer en ga verder met: " + context)
         return "\n\n".join([
             VASTE_REGELS_CONSULTANT.format(opdrachtgever=opdrachtgever, einde_tool=einde_tool, context_regel=context),
             "# Onderwerpen om na te lopen\n" + (instructie.strip() or "Bij welke gemeente was de consultant, wat is er gedaan, wat is opgeleverd, wat is besloten of afgesproken en wat zijn de vervolgacties?")
@@ -246,7 +267,7 @@ def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[d
     return "\n\n".join(delen)
 
 
-def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, nu: datetime | None = None, inkomend: bool = False, soort: str = SOORT_DAGBOEK, varianten: list[str] | None = None) -> str:
+def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, nu: datetime | None = None, inkomend: bool = False, soort: str = SOORT_DAGBOEK, varianten: list[str] | None = None, voorstel: dict | None = None) -> str:
     """Vaste begroeting zonder LLM-aanroep: AI-melding is verplicht (EU AI Act art. 50) en moet altijd gezegd worden."""
     uur = (nu or datetime.now(TIJDZONE)).astimezone(TIJDZONE).hour
     groet = "Goedemorgen" if 6 <= uur < 12 else "Goedemiddag" if 12 <= uur < 18 else "Goedenavond"
@@ -259,11 +280,13 @@ def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, 
         return tekst + ("Ik maak een verslag van ons gesprek voor het verkoopregister. Vind je dat goed?" if toestemming_nodig else "Vertel maar, wat wil je kwijt?")
     if soort == SOORT_CONSULTANT:
         tekst += "Fijn dat je belt over je werk bij de klant. "
-        return tekst + ("Ik maak een verslag van ons gesprek voor het werkregister. Vind je dat goed?" if toestemming_nodig else variant_vraag(varianten))
+        klant = voorstel_klant(voorstel)
+        return tekst + ("Ik maak een verslag van ons gesprek voor het werkregister. Vind je dat goed?" if toestemming_nodig else voorstel_vraag(klant, soort) if klant else variant_vraag(varianten))
     if soort == SOORT_KEUZE:
         # De toestemmingsvraag is neutraal: pas na de keuze is bekend voor welk register het verslag wordt gemaakt.
         tekst += "Fijn dat je belt over je klant of je werk. "
-        return tekst + ("Ik maak een verslag van ons gesprek. Vind je dat goed?" if toestemming_nodig else "Wil je een verkoop- of consultancy-debrief doen?")
+        klant = voorstel_klant(voorstel)
+        return tekst + ("Ik maak een verslag van ons gesprek. Vind je dat goed?" if toestemming_nodig else voorstel_vraag(klant, soort) if klant else "Wil je een verkoop- of consultancy-debrief doen?")
     if inkomend:
         tekst += "Fijn dat je belt voor je update. "
         return tekst + ("Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed?" if toestemming_nodig else "Waar wil je mee beginnen?")
