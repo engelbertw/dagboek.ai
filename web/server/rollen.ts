@@ -15,6 +15,7 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET', 'POST'], pad: /^\/api\/klanten$/ },
   { methode: ['GET', 'PATCH'], pad: new RegExp(`^/api/klanten/${ID}$`) },
   { methode: ['POST'], pad: new RegExp(`^/api/klanten/${ID}/contacten$`) },
+  { methode: ['GET'], pad: new RegExp(`^/api/klanten/${ID}/voorbereiding$`) },
   { methode: ['GET', 'POST'], pad: /^\/api\/klant-contacten$/ },
   { methode: ['PATCH', 'DELETE'], pad: new RegExp(`^/api/klant-contacten/${ID}$`) },
   { methode: ['GET'], pad: /^\/api\/employees$/ },

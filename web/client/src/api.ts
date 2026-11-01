@@ -78,3 +78,13 @@ export interface Activiteit {
 export interface KlantDetail { klant: Klant; contacten: KlantContact[]; bezoeken: Bezoek[]; activiteiten: (Omit<Activiteit, 'klantNaam' | 'klantStatus' | 'eigenaarNaam' | 'topicTitel'> & { bezoekId: string | null })[] }
 export interface DebriefVragen extends Houding { vorige: string }
 export interface ContactRegel extends KlantContact { klantId: string; klantNaam: string }
+
+/** Bezoekvoorbereiding per gemeente (alleen lezen); zie server/voorbereiding.ts. */
+export interface Voorbereiding {
+  klant: { id: string; naam: string; status: string; samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null; accountmanagerNaam: string | null; omschrijving: string };
+  contacten: { id: string; naam: string; functie: string; rol: string; laatstGesproken: string | null }[];
+  onderwerpen: { id: string; titel: string; type: string; status: string; eigenaarNaam: string | null; laatsteUpdate: { datum: string; samenvatting: string; besluiten: string } | null; bron: string }[];
+  gesprekken: { soort: 'bezoek' | 'project' | 'implementatie' | 'samenverder' | 'consultant'; datum: string | null; samenvatting: string; door: string | null; bron: string }[];
+  openPunten: { id: string; soort: string; omschrijving: string; eigenaar: string; deadline: string | null; teLaat: boolean; onderwerp: string | null; datum: string; bron: string }[];
+  nietBevestigd: { soort: 'punt' | 'debrief'; omschrijving: string; reden: string | null; datum: string; bron: string }[];
+}

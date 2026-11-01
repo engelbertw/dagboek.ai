@@ -12,8 +12,10 @@ import { voerOpschoningUit } from './opschoning.js';
 import { herstelVastgelopen } from './samenvatten.js';
 import { herstelGesprekken } from './gesprek-herstel.js';
 import { foutcode, log } from './log.js';
+import { registreerStandaardVarianten } from './consultant-standaard.js';
 import { maakVoiceClient, maakVoiceHerstel, maakVoiceOpzoeker } from './voice.js';
 
+registreerStandaardVarianten();
 const config = loadConfig();
 const ontbreekt = ontbrekendeInstellingen(config);
 if (ontbreekt.length) {

@@ -8,6 +8,7 @@
  */
 import type { z } from 'zod';
 import type { DebriefVariant } from './schema.js';
+import type { Beurt } from './vertrouwen.js';
 
 export interface VariantConfig {
   id: DebriefVariant;
@@ -22,6 +23,10 @@ export interface VariantConfig {
   /** Wat het model voor deze variant extra teruggeeft (alleen beschrijving voor de prompt) en hoe dat gecontroleerd wordt. */
   promptAanvulling: string;
   schema: z.ZodType<Record<string, unknown>>;
+  /** Het soort onderwerp (topics.type) waaraan deze debrief gekoppeld kan worden. Zonder waarde koppelt de variant geen onderwerp. */
+  /** Haalt uit het antwoord van het model weg wat niet met een citaat uit het gesprek te bewijzen is. */
+  controleer?: (data: Record<string, unknown>, transcript: Beurt[]) => Record<string, unknown>;
+  onderwerpType?: 'project' | 'thema' | 'taak';
 }
 
 const register: Partial<Record<DebriefVariant, VariantConfig>> = {};

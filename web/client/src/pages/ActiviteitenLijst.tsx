@@ -11,6 +11,10 @@ export const REDEN: Record<string, string> = {
   klant_niet_herkend: 'De klant is niet herkend of nog niet bevestigd. Koppel de klant of bevestig de voorgestelde klant.',
   eigenaar_onzeker: 'De genoemde eigenaar kwam niet voor in het gesprek.',
   variant_onzeker: 'Niet aantoonbaar welke soort debrief (project, implementatie of SamenVerder) dit was. Controleer het punt aan de hand van het gesprek.',
+  onderwerp_onbekend: 'Het project is niet herkend of niet genoemd. Koppel het aan een bestaand project; er is niets nieuw aangemaakt.',
+  onderwerp_klant_koppelen: 'Het genoemde project heeft nog geen gemeente. Koppel het project aan de gemeente als dat klopt.',
+  klant_inconsistent: 'Het genoemde project hoort bij een andere gemeente dan de debrief. Er is niets gekoppeld.',
+  variantdata_onleesbaar: 'De aanvullende gegevens van deze debrief waren niet te lezen en zijn niet bewaard.',
   contact_onzeker: 'Een genoemde contactpersoon lijkt op iemand die al bestaat. Controleer bij Contactpersonen of het dezelfde is.',
 };
 

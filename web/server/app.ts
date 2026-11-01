@@ -33,6 +33,7 @@ import type { Onderwerp, VoiceClient, VoiceHerstel } from './voice.js';
 import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
 import { registreerConsultantRoutes } from './consultant-routes.js';
+import { registreerVoorbereiding } from './voorbereiding.js';
 import { actieRijen, registreerActiviteiten } from './activiteiten.js';
 import { ACCOUNTMANAGER_ROL, magDoen, normaleRol } from './rollen.js';
 import { beoordeelLijst } from './medewerkers-import.js';
@@ -541,6 +542,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   });
   registreerVerkoop(app, db);
   registreerConsultantRoutes(app, db, llm);
+  registreerVoorbereiding(app, db);
   registreerActiviteiten(app, db);
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.

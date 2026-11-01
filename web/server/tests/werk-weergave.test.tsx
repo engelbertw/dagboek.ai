@@ -4,7 +4,8 @@ import { describe, expect, it } from 'vitest';
 import type { Acties } from '../../client/src/pages/ActiviteitenLijst';
 import { ControleBanner, PuntToevoegen, Punten, Secties, sorteerPunten } from '../../client/src/pages/ActiviteitenLijst';
 import { Werk } from '../../client/src/pages/Werk';
-import type { Activiteit, Medewerker } from '../../client/src/api';
+import { VoorbereidingWeergave } from '../../client/src/pages/Voorbereiding';
+import type { Activiteit, Medewerker, Voorbereiding as VoorbereidingData } from '../../client/src/api';
 
 const punt = (o: Partial<Activiteit>): Activiteit => ({
   id: Math.random().toString(36).slice(2), soort: 'actie', omschrijving: 'Offerte versturen', status: 'open', klantId: 'k1', klantNaam: 'Gemeente Goes', klantStatus: 'klant',
@@ -52,5 +53,26 @@ describe('weergave van het werkregister', () => {
     expect(html(<PuntToevoegen acties={acties} medewerkers={medewerkers} />)).toContain('Punt toevoegen');
     const uit = html(<Werk />);
     expect(uit).toContain('Per klant'); expect(uit).toContain('Alle punten'); expect(uit).toContain('Te laat');
+  });
+});
+
+describe('weergave van de bezoekvoorbereiding', () => {
+  const data: VoorbereidingData = {
+    klant: { id: 'k1', naam: 'Gemeente Goes', status: 'klant', samenwerkingsverband: 'BEL Combinatie', inwoners: 38000, contractEinde: '2027-01-01', accountmanagerNaam: 'Ruben', omschrijving: '' },
+    contacten: [{ id: 'c1', naam: 'Mevrouw De Boer', functie: 'projectleider', rol: '', laatstGesproken: '2026-10-20T10:00:00Z' }],
+    onderwerpen: [{ id: 't1', titel: 'Zaakgericht werken', type: 'project', status: 'actief', eigenaarNaam: 'Daan', laatsteUpdate: { datum: '2026-10-25T10:00:00Z', samenvatting: 'Zaaktypen ingericht', besluiten: 'Start test in november' }, bron: 'dagboek' }],
+    gesprekken: [{ soort: 'project', datum: '2026-10-20T10:00:00Z', samenvatting: 'Koppeling blokkeert de livegang.', door: 'Karin', bron: 'consultant-debrief' }],
+    openPunten: [{ id: 'p1', soort: 'blokkade', omschrijving: 'Koppeling zaaksysteem', eigenaar: 'Karin', deadline: '2020-01-01', teLaat: true, onderwerp: 'Zaakgericht werken', datum: '2026-10-20T10:00:00Z', bron: 'werkregister' }],
+    nietBevestigd: [{ soort: 'debrief', omschrijving: 'Onduidelijk project', reden: 'onderwerp_onbekend', datum: '2026-10-21T10:00:00Z', bron: 'consultant-debrief' }],
+  };
+  it('toont elk onderdeel met bron en zet het niet-bevestigde apart', () => {
+    const uit = html(<VoorbereidingWeergave data={data} />);
+    for (const t of ['Kerngegevens', 'BEL Combinatie', 'Mevrouw De Boer', 'laatst gesproken', 'Zaakgericht werken', 'Start test in november', 'Projectdebrief', 'consultantdebrief', 'Blokkade (1)', 'te laat', 'Niet bevestigd (1)', 'Het project is niet herkend']) expect(uit).toContain(t);
+    expect(uit.indexOf('Openstaande punten')).toBeLessThan(uit.indexOf('Niet bevestigd'));
+  });
+  it('toont lege staten en laat het blok Niet bevestigd weg als er niets is', () => {
+    const uit = html(<VoorbereidingWeergave data={{ ...data, contacten: [], onderwerpen: [], gesprekken: [], openPunten: [], nietBevestigd: [] }} />);
+    for (const t of ['Nog geen contactpersonen', 'Geen onderwerpen', 'Nog geen bezoeken', 'Geen openstaande punten']) expect(uit).toContain(t);
+    expect(uit).not.toContain('Niet bevestigd');
   });
 });

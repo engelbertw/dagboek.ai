@@ -9,6 +9,7 @@ import { Spraakmotoren } from './pages/Spraakmotoren';
 import { Instellingen } from './pages/Instellingen';
 import { Klant } from './pages/Klant';
 import { Klanten } from './pages/Klanten';
+import { Voorbereiding } from './pages/Voorbereiding';
 import { Contactpersonen } from './pages/Contactpersonen';
 import { Medewerkers } from './pages/Medewerkers';
 import { Onderwerp } from './pages/Onderwerp';
@@ -120,6 +121,7 @@ export function App() {
           <Route path="/verkoopregister" element={<Navigate to="/werk" replace />} />
           <Route path="/klanten" element={<Klanten />} />
           <Route path="/klanten/:id" element={<Klant />} />
+          <Route path="/klanten/:id/voorbereiding" element={<Voorbereiding />} />
           <Route path="/contactpersonen" element={<Contactpersonen />} />
         </Routes>
       </main>

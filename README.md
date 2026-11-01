@@ -226,7 +226,7 @@ Een accountmanager belt hetzelfde nummer als een collega voor het dagboek. Is de
 2. Geef de accountmanagers de rol bij Medewerkers (telefoonnummer zoals bij elke medewerker; precies één actieve medewerker per nummer) en zet Inbellen aan.
 3. Deploy eerst *voice*, dan *web*. Een nieuwe *web* met oude *voice* geeft het type niet door en laat een accountmanager het dagboek-gesprek krijgen.
 
-## Consultantdebrief (fase 1: basis, standaard uit)
+## Consultantdebrief (fase 1 en 2: basis en projectvariant, standaard uit)
 Een consultant belt na uitgevoerd werk bij een gemeente (project, module-implementatie of SamenVerder-dag). Fase 1 legt alleen de gemeenschappelijke basis; de varianten zelf (registry in `web/server/consultant-varianten.ts`) volgen per fase en zijn nu nog leeg.
 
 - **Aan/uit.** Instellingen → Consultant, instelling `consultant_debrief` (standaard uit). Uit = het gedrag is exact als voorheen; het vinkje *consultant* bij Medewerkers wordt dan genegeerd.
@@ -234,6 +234,8 @@ Een consultant belt na uitgevoerd werk bij een gemeente (project, module-impleme
 - **Variant.** Wordt in het gesprek bevestigd en achteraf geverifieerd; zonder bewijs blijft de variant leeg en komt er een Controle-nodig-punt (`variant_onzeker`). Er wordt nooit gegokt.
 - **Gemeente als spil.** Alles bij één debrief moet bij dezelfde klant horen (`klant_inconsistent`); contactpersonen worden alleen vastgelegd als de naam in het gesprek valt, nooit met e-mail of telefoon uit spraak.
 - **Toestemming.** Eigen doel `consultant_debrief` (versie `consultant-debrief-v1`), los van dagboek en verkoop. Promptversies: `consultant-debrief-v1` en `debrief-keuze-v1`.
+- **Projectvariant (fase 2).** `consultant-project.ts`, geregistreerd bij het starten (`consultant-standaard.ts`), promptversie `consultant-project-v1`. De debrief koppelt alleen aan een **bestaand** project (`topics.type='project'`) van **dezelfde gemeente** en alleen als de naam in het gesprek valt; een onbekend project, een project zonder gemeente (`onderwerp_klant_koppelen`) of van een andere gemeente (`klant_inconsistent`) wordt nooit aangemaakt of gekoppeld maar komt onder Controle nodig, met de genoemde naam in `variantdata.genoemd_onderwerp`. Fase, scopewijziging en volgende mijlpaal blijven alleen bewaard met een citaat uit het gesprek. De checklist is bewerkbaar onder Instellingen → Consultant.
+- **Bezoekvoorbereiding (fase 2).** Klant → *Bereid bezoek voor* (`/klanten/:id/voorbereiding`, `GET /api/klanten/:id/voorbereiding`, `voorbereiding.ts`): kerngegevens, contactpersonen met *laatst gesproken* (berekend), dagboek per onderwerp, laatste bezoeken en debriefs, openstaande punten per soort, en apart *Niet bevestigd*. Uitsluitend uit vastgelegde records samengesteld (geen taalmodel), met datum en bron, zonder transcripten of citaten; beheerder en accountmanager mogen het lezen. Latere fasen voegen hun blok toe.
 - **Installeren.** Migratie `023_consultant_basis.sql` is additief en draait bij het starten van *web*. Deploy eerst *voice* (onbekende soorten vallen daar terug op het dagboek), dan *web*, en zet de schakelaar pas aan als beide draaien.
 
 ## Inloggen en gebruikers (Keycloak)
