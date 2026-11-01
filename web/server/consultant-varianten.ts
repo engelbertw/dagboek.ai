@@ -32,6 +32,10 @@ export interface VariantConfig {
   onderwerpType?: 'project' | 'implementatie';
   /** Past, binnen dezelfde transactie, de bewezen gegevens toe op het gekoppelde onderwerp. Alleen aangeroepen met een gekoppeld onderwerp. */
   toepassen?: (tx: Tx, onderwerpId: string, data: Record<string, unknown>) => Promise<void>;
+  /** Zoekt, alleen als het eenduidig is, het programma en de sessie bij deze debrief. Nooit iets aanmaken; bij twijfel een reden voor Controle nodig. */
+  koppel?: (tx: Tx, c: { klantId: string; employeeId: string; vandaag: string }) => Promise<{ programmaId: string | null; sessieId: string | null; reden: string | null }>;
+  /** Na het opslaan van de debrief: schrijft voorstellen en signalen die met een citaat zijn bewezen. Zet nooit een sessie op uitgevoerd en raakt het budget niet aan. */
+  naOpslaan?: (tx: Tx, c: { klantId: string; callId: string; programmaId: string | null; sessieId: string | null; data: Record<string, unknown> }) => Promise<void>;
 }
 
 const register: Partial<Record<DebriefVariant, VariantConfig>> = {};

@@ -271,15 +271,19 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
         const contacten = klantId ? await legContactenVast(tx, klantId, callId, uitkomst.contacten, transcript) : { gekoppeld: [] as string[], onzeker: [] as string[] };
         const contactRijen = klantId ? await tx.select({ id: klantContacten.id, naam: klantContacten.naam }).from(klantContacten).where(eq(klantContacten.klantId, klantId)) : [];
 
-        const debriefReden = !variant ? 'variant_onzeker' : !klantId ? 'klant_niet_herkend' : contacten.onzeker.length ? 'contact_onzeker' : variantdata && !variantdata.success ? 'variantdata_onleesbaar' : onderwerpReden;
+        // ── Programma en sessie (SamenVerder): alleen eenduidig bestaande; nooit aangemaakt.
+        const koppeling = variant?.koppel && klantId && variantdata?.success ? await variant.koppel(tx, { klantId, employeeId: medewerker.id, vandaag }) : { programmaId: null, sessieId: null, reden: null };
+
+        const debriefReden = !variant ? 'variant_onzeker' : !klantId ? 'klant_niet_herkend' : contacten.onzeker.length ? 'contact_onzeker' : variantdata && !variantdata.success ? 'variantdata_onleesbaar' : onderwerpReden ?? koppeling.reden;
         const [debrief] = await tx.insert(consultantDebriefs).values({
-          callId, employeeId: medewerker.id, variant: variant?.id ?? null, variantBron: variant ? keuze.bron : 'onbekend', variantCitaat: variant ? keuze.citaat : '', klantId, topicId,
+          callId, employeeId: medewerker.id, variant: variant?.id ?? null, variantBron: variant ? keuze.bron : 'onbekend', variantCitaat: variant ? keuze.citaat : '', klantId, topicId, programmaId: koppeling.programmaId, sessieId: koppeling.sessieId,
           samenvatting: uitkomst.samenvatting.trim(), werkzaamheden: uitkomst.werkzaamheden.map((w) => w.trim()).filter(Boolean),
           variantdata: variantdata?.success ? { ...variantdata.data, ...(genoemdOnderwerp && !topicId ? { genoemd_onderwerp: genoemdOnderwerp.slice(0, 200) } : {}) } : {}, promptVersie: variant ? variant.promptVersie : PROMPT_VERSIE_CONSULTANT,
           controleNodig: !!debriefReden, controleReden: debriefReden,
         }).onConflictDoNothing().returning({ id: consultantDebriefs.id });
         if (!debrief) throw new Error('Dit gesprek is al verwerkt');
         if (topicId && variant?.toepassen && variantdata?.success) await variant.toepassen(tx, topicId, variantdata.data);
+        if (variant?.naOpslaan && klantId && variantdata?.success) await variant.naOpslaan(tx, { klantId, callId, programmaId: koppeling.programmaId, sessieId: koppeling.sessieId, data: variantdata.data });
         tellers.updates++;
         if (debriefReden) tellers.teControleren++;
         for (const contactId of contacten.gekoppeld) await tx.insert(consultantDebriefContacten).values({ debriefId: debrief.id, contactId }).onConflictDoNothing();
@@ -316,7 +320,7 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
               : !variant ? 'variant_onzeker'
                 : eigenaar.eigenaarExtern && !contact && !komtVoorInGesprek(eigenaar.eigenaarExtern, transcript) ? 'eigenaar_onzeker' : null;
           await tx.insert(activiteiten).values({
-            klantId, topicId, soort: p.soort, omschrijving: p.omschrijving.slice(0, 400), citaat: onderbouwd ? p.citaat.trim() : '', callId,
+            klantId, topicId, samenverderProgrammaId: koppeling.programmaId, samenverderSessieId: koppeling.sessieId, soort: p.soort, omschrijving: p.omschrijving.slice(0, 400), citaat: onderbouwd ? p.citaat.trim() : '', callId,
             deadline, deadlineOorspronkelijk: deadline, details: {}, controleNodig: !!reden, controleReden: reden, contactId: contact?.id ?? null, ...eigenaar,
           });
           tellers.nieuweOpenPunten++;

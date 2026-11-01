@@ -7,7 +7,8 @@ import { bepaalRoute } from './routering.js';
 import { toestemmingNodigVoorDoel, TOESTEMMING_CONSULTANT } from './toestemming.js';
 import { stelOnderwerpenSamen } from './gesprek-starten.js';
 import { log } from './log.js';
-import { calls, employees, type DebriefVariant, type GesprekType } from './schema.js';
+import { calls, employees, klanten, samenverderProgrammas, samenverderSessieConsultants, samenverderSessies, type DebriefVariant, type GesprekType } from './schema.js';
+import { vandaagNL } from './samenvatten.js';
 import type { Onderwerp } from './voice.js';
 
 /** Zoveel inkomende gesprekken per medewerker per uur; daarboven weigeren we, tegen misbruik van een vervalst nummer en tegen kosten. */
@@ -23,8 +24,21 @@ export function normaliseerNummer(ruw: string): string {
 export type { GesprekType };
 
 export type InkomendUitkomst =
-  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType; varianten: DebriefVariant[] }
+  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType; varianten: DebriefVariant[]; voorstel: Voorstel | null }
   | { ok: false; reden: 'onbekend_nummer' | 'te_vaak' };
+
+/** Wat uit de planning al bekend is: de consultant staat vandaag voor precies één SamenVerder-sessie. Alleen een voorstel: het geldt pas als de consultant het bevestigt. */
+export interface Voorstel { variant: 'samenverder'; klant: string }
+
+/** Precies één geplande sessie van vandaag waaraan deze consultant is toegewezen, anders geen voorstel (nooit gokken). */
+async function planningsVoorstel(db: Db, employeeId: string): Promise<{ klant: string } | null> {
+  const rijen = await db.select({ sessie: samenverderSessies.id, klant: klanten.naam }).from(samenverderSessieConsultants)
+    .innerJoin(samenverderSessies, eq(samenverderSessies.id, samenverderSessieConsultants.sessieId))
+    .innerJoin(samenverderProgrammas, eq(samenverderProgrammas.id, samenverderSessies.programmaId))
+    .innerJoin(klanten, eq(klanten.id, samenverderProgrammas.klantId))
+    .where(and(eq(samenverderSessieConsultants.employeeId, employeeId), eq(samenverderSessies.status, 'gepland'), eq(samenverderSessies.datum, vandaagNL())));
+  return rijen.length === 1 ? { klant: rijen[0].klant } : null;
+}
 
 /** Start de administratie van een gesprek waarbij de medewerker zelf belt. De beller wordt alleen herkend aan het nummer; er wordt geen nummer bewaard. */
 export async function startInkomendGesprek(db: Db, beller: string, motor: Motor): Promise<InkomendUitkomst> {
@@ -55,10 +69,14 @@ export async function startInkomendGesprek(db: Db, beller: string, motor: Motor)
   // Toestemming is per doel: voor de consultantdebrief staat die in het register, voor de dubbele rol is hij nodig zolang één van beide ontbreekt.
   const toestemmingNodig = type === 'consultant_debrief' ? await toestemmingNodigVoorDoel(db, m.id, TOESTEMMING_CONSULTANT.doel)
     : type === 'debrief_keuze' ? !m.toestemmingOp || (await toestemmingNodigVoorDoel(db, m.id, TOESTEMMING_CONSULTANT.doel)) : !m.toestemmingOp;
+  // Het voorstel wordt bij het gesprek bewaard, zodat de verwerking achteraf kan nagaan of de consultant het echt bevestigde (context_bevestigd).
+  const plan = type !== 'dagboek' && type !== 'verkoop_debrief' && varianten.some((v) => v.id === 'samenverder') ? await planningsVoorstel(db, m.id) : null;
+  const voorstel: Voorstel | null = plan ? { variant: 'samenverder', klant: plan.klant } : null;
+  const context = plan ? { variant: { waarde: 'samenverder', noemt: plan.klant }, ...(type === 'debrief_keuze' ? { route: { waarde: 'consultancy', noemt: plan.klant } } : {}) } : null;
   const [call] = await db.insert(calls).values({
-    employeeId: m.id, status: 'gesprek', bron: 'inkomend', type, onderwerpen: momentopname, instructie, engine: motor, gestartOp: new Date(),
+    employeeId: m.id, status: 'gesprek', bron: 'inkomend', type, onderwerpen: momentopname, instructie, engine: motor, gestartOp: new Date(), ...(context ? { context } : {}),
   }).returning();
   await logGebeurtenis(db, call.id, 'voice', 'claim:inkomend');
   log('info', 'gesprek.inkomend', { correlatieId: call.id, type });
-  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig, houding: (await leesHouding(db)).waarde, instructie, type, varianten: varianten.map((v) => v.id) };
+  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig, houding: (await leesHouding(db)).waarde, instructie, type, varianten: varianten.map((v) => v.id), voorstel };
 }
