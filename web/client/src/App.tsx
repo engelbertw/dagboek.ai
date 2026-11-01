@@ -11,6 +11,7 @@ import { Klant } from './pages/Klant';
 import { Klanten } from './pages/Klanten';
 import { Voorbereiding } from './pages/Voorbereiding';
 import { SamenVerder } from './pages/SamenVerder';
+import { Kwaliteit } from './pages/Kwaliteit';
 import { SamenVerderProgramma } from './pages/SamenVerderProgramma';
 import { Contactpersonen } from './pages/Contactpersonen';
 import { Medewerkers } from './pages/Medewerkers';
@@ -63,7 +64,7 @@ interface MenuGroep { titel: string; items: { naar: string; label: string; einde
 
 const MENU: MenuGroep[] = [
   { titel: 'Overzicht', alleenBeheerder: true, items: [{ naar: '/', label: 'Dagboek', einde: true, ook: '/onderwerp' }, { naar: '/dashboard', label: 'Dashboard' }] },
-  { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/samenverder', label: 'SamenVerder' }] },
+  { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/samenverder', label: 'SamenVerder' }, { naar: '/kwaliteit', label: 'Kwaliteit' }] },
   { titel: 'Gesprekken', alleenBeheerder: true, items: [{ naar: '/gesprekken', label: 'Gesprekken' }, { naar: '/planning', label: 'Planning' }, { naar: '/suggesties', label: 'Suggesties' }] },
   { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/instellingen', label: 'Instellingen' }] },
 ];
@@ -125,6 +126,7 @@ export function App() {
           <Route path="/klanten/:id" element={<Klant />} />
           <Route path="/klanten/:id/voorbereiding" element={<Voorbereiding />} />
           <Route path="/contactpersonen" element={<Contactpersonen />} />
+          <Route path="/kwaliteit" element={<Kwaliteit />} />
           <Route path="/samenverder" element={<SamenVerder alleenLezen={!beheerder} />} />
           <Route path="/samenverder/:id" element={<SamenVerderProgramma alleenLezen={!beheerder} />} />
         </Routes>

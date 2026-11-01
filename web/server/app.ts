@@ -36,6 +36,7 @@ import { registreerConsultantRoutes } from './consultant-routes.js';
 import { registreerVoorbereiding } from './voorbereiding.js';
 import { registreerImplementaties } from './implementaties.js';
 import { registreerSamenverder } from './samenverder.js';
+import { registreerKwaliteit } from './datakwaliteit.js';
 import { actieRijen, registreerActiviteiten } from './activiteiten.js';
 import { ACCOUNTMANAGER_ROL, magDoen, normaleRol } from './rollen.js';
 import { beoordeelLijst } from './medewerkers-import.js';
@@ -549,6 +550,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerConsultantRoutes(app, db, llm);
   registreerVoorbereiding(app, db);
   registreerImplementaties(app, db);
+  registreerKwaliteit(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
   registreerSamenverder(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
   registreerActiviteiten(app, db);
 

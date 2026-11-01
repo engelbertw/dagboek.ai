@@ -122,3 +122,35 @@ export interface SamenverderProgramma {
   programma: Omit<SamenverderProgrammaRegel, 'klantNaam' | 'accountmanagerNaam' | 'aantalSessies' | 'aantalGepland' | 'aantalUitgevoerd' | 'volgendeSessie' | 'laatsteSessie'>;
   klant: { id: string; naam: string }; sessies: SamenverderSessie[];
 }
+
+/**
+ * Voegt iets toe waarbij de server kan waarschuwen dat het op een bestaand record lijkt (409 "Mogelijk dubbel"). De gebruiker beslist dan of het toch moet;
+ * bij nee is het resultaat null en is er niets toegevoegd.
+ */
+export async function apiToevoegenZonderDubbel<T>(pad: string, body: Record<string, unknown>): Promise<T | null> {
+  try { return await api<T>('POST', pad, body); } catch (e) {
+    if (e instanceof ApiFout && e.status === 409 && e.message.startsWith('Mogelijk dubbel')) {
+      if (!window.confirm(`${e.message}.\n\n${e.details.map((d) => `• ${d}`).join('\n')}\n\nToch toevoegen?`)) return null;
+      return api<T>('POST', pad, { ...body, bevestig: true });
+    }
+    throw e;
+  }
+}
+
+export const linkedInZoekUrl = (naam: string, gemeente: string) => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(`${naam} ${gemeente}`.trim())}`;
+
+export type KwaliteitSoort = 'dubbel_contact' | 'dubbele_klant' | 'dubbele_activiteit' | 'gegevens_in_naam' | 'naam_onvolledig' | 'contact_formaat' | 'contact_onvolledig';
+export const KWALITEIT_LABEL: Record<KwaliteitSoort, string> = {
+  dubbel_contact: 'Dubbele contactpersonen', dubbele_klant: 'Dubbele gemeenten', dubbele_activiteit: 'Dubbele punten', gegevens_in_naam: 'Gegevens in het naamveld',
+  naam_onvolledig: 'Onvolledige naam', contact_formaat: 'E-mail of telefoon controleren', contact_onvolledig: 'Functie en rol ontbreken',
+};
+export interface KwaliteitContact { id: string; naam: string; functie: string; rol: string; email: string; telefoon: string; aangemaakt: string; bron: 'gesprek' | 'handmatig'; gebruik: number }
+export interface KwaliteitBevinding {
+  sleutel: string; soort: KwaliteitSoort; ernst: 'hoog' | 'laag'; klantId: string; klantNaam: string; accountmanagerNaam: string | null; uitleg: string; besloten: boolean;
+  contacten?: KwaliteitContact[];
+  klanten?: { id: string; naam: string; status: string; afasId: string | null; aantalContacten: number; aantalPunten: number }[];
+  activiteiten?: { id: string; soort: string; omschrijving: string; eigenaar: string; deadline: string | null; aangemaakt: string; bron: string; metCitaat: boolean }[];
+  voorstel?: { contactId: string; naam?: string; email?: string; telefoon?: string };
+}
+export interface KwaliteitAntwoord { bevindingen: KwaliteitBevinding[]; perSoort: Partial<Record<KwaliteitSoort, number>>; totaal: number }
+export interface SamenvoegUitkomst { behouden: string; samengevoegd: number; aangevuld: string[]; conflicten: string[] }

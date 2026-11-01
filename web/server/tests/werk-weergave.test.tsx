@@ -5,6 +5,7 @@ import type { Acties } from '../../client/src/pages/ActiviteitenLijst';
 import { ControleBanner, PuntToevoegen, Punten, Secties, sorteerPunten } from '../../client/src/pages/ActiviteitenLijst';
 import { Werk } from '../../client/src/pages/Werk';
 import { VoorbereidingWeergave } from '../../client/src/pages/Voorbereiding';
+import { Kaart } from '../../client/src/pages/Kwaliteit';
 import type { Activiteit, Medewerker, Voorbereiding as VoorbereidingData } from '../../client/src/api';
 
 const punt = (o: Partial<Activiteit>): Activiteit => ({
@@ -78,5 +79,24 @@ describe('weergave van de bezoekvoorbereiding', () => {
     expect(uit).not.toContain('Niet bevestigd');
     expect(uit).not.toContain('Implementaties');
     expect(uit).not.toContain('SamenVerder');
+  });
+});
+
+describe('weergave van de kwaliteitsmeldingen', () => {
+  const contact = (o: Record<string, unknown>) => ({ id: Math.random().toString(36).slice(2), naam: 'Edwin Muntinga', functie: '', rol: '', email: '', telefoon: '', aangemaakt: '2026-10-01T10:00:00Z', bron: 'gesprek' as const, gebruik: 0, ...o });
+  const geen = () => {};
+  it('toont dubbele contactpersonen naast elkaar met samenvoegen en een LinkedIn-zoeklink', () => {
+    const uit = html(<Kaart b={{ sleutel: 'dubbel_contact:abc', soort: 'dubbel_contact', ernst: 'hoog', klantId: 'k1', klantNaam: 'Aa en Hunze', accountmanagerNaam: 'Ruben', uitleg: 'Mogelijk dezelfde persoon: bijna dezelfde naam.', besloten: false,
+      contacten: [contact({ naam: 'Edwin Muntinga', email: 'e@x.nl', gebruik: 2 }), contact({ naam: 'Edwin Mentenga' })] }} ververs={geen} fout={geen} />);
+    for (const t of ['Dubbele contactpersonen', 'Aa en Hunze', 'accountmanager Ruben', 'Edwin Mentenga', 'Behoud deze, voeg de rest samen', 'Dit zijn verschillende', '2× gekoppeld', 'uit een gesprek']) expect(uit).toContain(t);
+    expect(uit).toContain('https://www.linkedin.com/search/results/people/?keywords=Edwin%20Muntinga%20Aa%20en%20Hunze');
+    expect(uit).toContain('rel="noopener noreferrer"');
+  });
+  it('toont een voorstel om gegevens uit het naamveld te halen, en laat een besloten melding terugzetten', () => {
+    const uit = html(<Kaart b={{ sleutel: 'gegevens_in_naam:abc', soort: 'gegevens_in_naam', ernst: 'hoog', klantId: 'k1', klantNaam: 'Aa en Hunze', accountmanagerNaam: null, uitleg: 'x', besloten: true,
+      contacten: [contact({ naam: 'Edwin Muntinga e@x.nl' })], voorstel: { contactId: 'c1', naam: 'Edwin Muntinga', email: 'e@x.nl' } }} ververs={geen} fout={geen} />);
+    expect(uit).toContain('Toepassen');
+    expect(uit).toContain('Weer tonen');
+    expect(uit).not.toContain('Geen probleem');
   });
 });

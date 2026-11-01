@@ -13,6 +13,7 @@ import { log } from './log.js';
 import { leggToestemmingVast, TOESTEMMING_DEBRIEF } from './toestemming.js';
 import { citaatKomtVoor, komtVoorInGesprek, normaliseer, schoonVoorPrompt } from './vertrouwen.js';
 import { selecteerBelangrijk } from './kwaliteit.js';
+import { vergelijkNamen } from './namen.js';
 import {
   bepaalEigenaar, geldigeDeadline, gewistVelden, toestemmingsPoort, ToestemmingIngetrokken, vandaagNL,
   type Bericht, type SamenvattingStatus, type Uitkomst,
@@ -283,11 +284,12 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
 
         // ── Contactpersonen: alleen een naam die in het gesprek voorkomt, en niet dubbel.
         if (klantId) {
-          const bekend = new Set((await tx.select({ naam: klantContacten.naam }).from(klantContacten).where(eq(klantContacten.klantId, klantId))).map((c) => c.naam.toLowerCase()));
+          // Ook een bijna gelijke naam ("Muntinga" / "Mentenga", of met een titel) telt als dezelfde persoon: liever geen dubbel contact dan een extra regel.
+          const bekend = (await tx.select({ naam: klantContacten.naam }).from(klantContacten).where(eq(klantContacten.klantId, klantId))).map((c) => c.naam);
           for (const c of uitkomst.contacten) {
             const naam = c.naam.trim();
-            if (!naam || bekend.has(naam.toLowerCase()) || !komtVoorInGesprek(naam, transcript)) continue;
-            bekend.add(naam.toLowerCase());
+            if (!naam || bekend.some((b) => b.toLowerCase() === naam.toLowerCase() || vergelijkNamen(b, naam) !== null) || !komtVoorInGesprek(naam, transcript)) continue;
+            bekend.push(naam);
             await tx.insert(klantContacten).values({ klantId, naam: naam.slice(0, 100), functie: c.functie.trim().slice(0, 100), rol: c.rol.trim().slice(0, 100), callId });
           }
         }

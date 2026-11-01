@@ -6,6 +6,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { klantContacten, type Herkomst } from './schema.js';
+import { vergelijkNamen } from './namen.js';
 import { citaatKomtVoor, komtVoorInGesprek, normaliseer, type Beurt } from './vertrouwen.js';
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -134,7 +135,8 @@ export async function legContactenVast(tx: Db | Tx, klantId: string, callId: str
     if (gelijk.length === 0) {
       // Een gedeeltelijke overeenkomst ("De Boer" tegenover "Mevrouw De Boer") is geen zekerheid: niet raden en geen dubbel contact maken, de beheerder beslist.
       const eigen = delen(naam);
-      const gedeeltelijk = bekend.filter((b) => { const d = delen(b.naam); return eigen.every((w) => d.includes(w)) || d.every((w) => eigen.includes(w)); });
+      // Ook een bijna gelijke naam (spelfout van de spraakherkenning) is geen nieuw contact.
+      const gedeeltelijk = bekend.filter((b) => { const d = delen(b.naam); return eigen.every((w) => d.includes(w)) || d.every((w) => eigen.includes(w)) || vergelijkNamen(b.naam, naam) !== null; });
       if (gedeeltelijk.length) { uitkomst.onzeker.push(naam); continue; }
       const functie = c.functie.trim().slice(0, 100);
       const rol = c.rol.trim().slice(0, 100);

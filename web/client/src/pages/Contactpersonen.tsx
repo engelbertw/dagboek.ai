@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import { api, type ContactRegel, type KlantRegel } from '../api';
+import { Link, useSearchParams } from 'react-router-dom';
+import { api, apiToevoegenZonderDubbel, linkedInZoekUrl, type ContactRegel, type KlantRegel } from '../api';
 import { Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 type Waarden = { naam: string; functie: string; rol: string; email: string; telefoon: string; klantId: string };
@@ -32,7 +32,8 @@ function Formulier({ waarden, zet, klanten, opslaan, annuleer, knop }: {
 export function Contactpersonen() {
   const lijst = useLaden(() => api<ContactRegel[]>('GET', '/klant-contacten'));
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
-  const [zoek, setZoek] = useState('');
+  const [params] = useSearchParams();
+  const [zoek, setZoek] = useState(params.get('zoek') ?? '');
   const [bewerk, setBewerk] = useState<{ id: string | null; waarden: Waarden } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const q = zoek.trim().toLowerCase();
@@ -42,7 +43,8 @@ export function Contactpersonen() {
     e.preventDefault();
     if (!bewerk) return;
     try {
-      await api(bewerk.id ? 'PATCH' : 'POST', bewerk.id ? `/klant-contacten/${bewerk.id}` : '/klant-contacten', bewerk.waarden);
+      if (bewerk.id) await api('PATCH', `/klant-contacten/${bewerk.id}`, bewerk.waarden);
+      else if (!(await apiToevoegenZonderDubbel('/klant-contacten', bewerk.waarden))) return;
       setBewerk(null); setFout(null); lijst.ververs();
     } catch (err) { setFout(foutTekst(err)); }
   }
@@ -79,7 +81,7 @@ export function Contactpersonen() {
                   {[c.functie, c.rol].filter(Boolean).map((x) => ` · ${x}`)}
                 </span>
                 <div className="klein">
-                  {c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}{c.email && c.telefoon && ' · '}{c.telefoon && <a href={`tel:${c.telefoon.replace(/[^+\d]/g, '')}`}>{c.telefoon}</a>}
+                  {c.email && <a href={`mailto:${c.email}`}>{c.email}</a>}{c.email && c.telefoon && ' · '}{c.telefoon && <a href={`tel:${c.telefoon.replace(/[^+\d]/g, '')}`}>{c.telefoon}</a>}{(c.email || c.telefoon) && ' · '}<a href={linkedInZoekUrl(c.naam, c.klantNaam)} target="_blank" rel="noopener noreferrer">Zoek op LinkedIn</a>
                 </div>
               </div>
               <div className="rij">

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, api, datum, type KlantRegel, type KlantStatus, type KlantenImportUitkomst } from '../api';
+import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, type KlantRegel, type KlantStatus, type KlantenImportUitkomst } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 function Importeren({ klaar }: { klaar: () => void }) {
@@ -62,7 +62,7 @@ export function Klanten() {
 
   async function maakAan(e: FormEvent) {
     e.preventDefault();
-    try { await api('POST', '/klanten', nieuw); setNieuw(null); setFout(null); lijst.ververs(); } catch (err) { setFout(foutTekst(err)); }
+    try { if (nieuw && (await apiToevoegenZonderDubbel('/klanten', nieuw))) { setNieuw(null); setFout(null); lijst.ververs(); } } catch (err) { setFout(foutTekst(err)); }
   }
   return (
     <div className="stapel">

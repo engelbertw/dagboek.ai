@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { Db } from './db.js';
 import { beoordeelKlantenLijst } from './klanten-import.js';
 import { normaliseer } from './vertrouwen.js';
+import { lijktOpBestaandeKlant, zoekMogelijkeDubbelen } from './datakwaliteit.js';
 import { bewaarDebriefVragen, leesDebriefVragen, leesVorigeDebriefVragen } from './instellingen.js';
 import { bezoeken, employees, activiteiten, klantContacten, klanten, topics } from './schema.js';
 
@@ -88,6 +89,11 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
 
   app.post('/api/klanten', async (req, reply) => {
     const b = klantBody.partial({ status: true, accountmanagerId: true, omschrijving: true, contractEinde: true, samenwerkingsverband: true, inwoners: true, salesAm: true }).parse(req.body);
+    // Een gemeente die lijkt op een bestaande klant wordt niet zonder bevestiging toegevoegd.
+    if (z.object({ bevestig: z.boolean().optional() }).safeParse(req.body).data?.bevestig !== true) {
+      const dubbel = lijktOpBestaandeKlant(b.naam, await db.select({ naam: klanten.naam }).from(klanten));
+      if (dubbel.length) return reply.code(409).send({ fout: 'Mogelijk dubbel: deze gemeente lijkt op een bestaande klant', details: dubbel.map((d) => d.naam) });
+    }
     const [rij] = await db.insert(klanten).values({
       naam: b.naam, status: b.status ?? 'klant', accountmanagerId: b.accountmanagerId ?? null, omschrijving: b.omschrijving ?? '', contractEinde: b.contractEinde ?? null, bron: 'handmatig',
       samenwerkingsverband: b.samenwerkingsverband ?? '', inwoners: b.inwoners ?? null, salesAm: b.salesAm ?? '',
@@ -160,11 +166,20 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     return gewist.length ? { ok: true } : reply.code(404).send({ fout: 'Klant niet gevonden' });
   });
 
+  // Een contactpersoon die lijkt op een bestaande (zelfde e-mail of telefoon, of een bijna gelijke naam) wordt niet zonder bevestiging toegevoegd.
+  const bevestigd = (body: unknown) => z.object({ bevestig: z.boolean().optional() }).safeParse(body).data?.bevestig === true;
+  const dubbelMelding = async (klantId: string, b: { naam: string; email: string; telefoon: string }, body: unknown) => {
+    if (bevestigd(body)) return null;
+    const dubbel = await zoekMogelijkeDubbelen(db, klantId, b);
+    return dubbel.length ? { fout: 'Mogelijk dubbel: deze contactpersoon lijkt op een bestaande', details: dubbel.map((d) => [d.naam, d.functie, d.email].filter(Boolean).join(', ')) } : null;
+  };
   app.post('/api/klanten/:id/contacten', async (req, reply) => {
     const id = uuid.parse((req.params as any).id);
     const b = contactBody.parse(req.body);
     const [klant] = await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, id));
     if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    const dubbel = await dubbelMelding(id, b, req.body);
+    if (dubbel) return reply.code(409).send(dubbel);
     return reply.code(201).send((await db.insert(klantContacten).values({ klantId: id, ...b }).returning())[0]);
   });
   // Alle contactpersonen op één plek, om te zoeken, bij te werken, te verplaatsen naar een andere klant of te verwijderen.
@@ -176,6 +191,8 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     const b = contactBody.extend({ klantId: uuid }).parse(req.body);
     const [klant] = await db.select({ id: klanten.id }).from(klanten).where(eq(klanten.id, b.klantId));
     if (!klant) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    const dubbel = await dubbelMelding(b.klantId, b, req.body);
+    if (dubbel) return reply.code(409).send(dubbel);
     return reply.code(201).send((await db.insert(klantContacten).values(b).returning())[0]);
   });
   app.patch('/api/klant-contacten/:id', async (req, reply) => {

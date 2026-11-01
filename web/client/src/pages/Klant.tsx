@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, api, datum, type Activiteit, type TopicRegel, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
+import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, linkedInZoekUrl, type Activiteit, type TopicRegel, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 import { ControleBanner, PuntToevoegen, Secties, useActies } from './ActiviteitenLijst';
 
@@ -43,7 +43,7 @@ export function Klant() {
   }
   async function voegContactToe(e: FormEvent) {
     e.preventDefault();
-    try { await api('POST', `/klanten/${id}/contacten`, contact); setContact({ naam: '', functie: '', rol: '', email: '', telefoon: '' }); kaart.ververs(); } catch (er) { fout(er); }
+    try { if (await apiToevoegenZonderDubbel(`/klanten/${id}/contacten`, contact)) { setContact({ naam: '', functie: '', rol: '', email: '', telefoon: '' }); kaart.ververs(); } } catch (er) { fout(er); }
   }
   async function wisContact(cid: string) {
     try { await api('DELETE', `/klant-contacten/${cid}`); kaart.ververs(); } catch (er) { fout(er); }
@@ -55,7 +55,7 @@ export function Klant() {
 
   return (
     <div className="stapel">
-      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link></div>
+      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link> · <Link to={`/kwaliteit?klant=${k.id}`}>Kwaliteit</Link></div>
       {k.status === 'voorgesteld' && (
         <section className="paneel stapel" aria-label="Klant bevestigen">
           <h2>Bevestig deze klant</h2>

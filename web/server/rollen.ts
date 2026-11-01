@@ -16,6 +16,10 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET', 'PATCH'], pad: new RegExp(`^/api/klanten/${ID}$`) },
   { methode: ['POST'], pad: new RegExp(`^/api/klanten/${ID}/contacten$`) },
   { methode: ['GET'], pad: new RegExp(`^/api/klanten/${ID}/voorbereiding$`) },
+  // Datakwaliteit: de accountmanager beoordeelt en verbetert contactpersonen en punten. Gemeenten samenvoegen blijft bij de beheerder (zie hierboven: geen /controle).
+  { methode: ['GET'], pad: /^\/api\/kwaliteit$/ },
+  { methode: ['POST'], pad: /^\/api\/kwaliteit\/besluiten(\/terugdraaien)?$/ },
+  { methode: ['POST'], pad: /^\/api\/klant-contacten\/samenvoegen$/ },
   // SamenVerder: alleen lezen
   { methode: ['GET'], pad: /^\/api\/samenverder\/programmas$/ },
   { methode: ['GET'], pad: new RegExp(`^/api/samenverder/programmas/${ID}$`) },

@@ -394,3 +394,12 @@ export const samenverderSessieOnderwerpen = pgTable('samenverder_sessie_onderwer
   voorgesteldInSessieId: uuid('voorgesteld_in_sessie_id').references((): AnyPgColumn => samenverderSessies.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
 }, (t) => [index('samenverder_sessie_onderwerpen_sessie').on(t.sessieId)]);
+
+/** Beoordelingen in de datakwaliteit: een melding die een accountmanager als "geen probleem" heeft aangemerkt. */
+export const kwaliteitBesluiten = pgTable('kwaliteit_besluiten', {
+  sleutel: text('sleutel').primaryKey(),
+  soort: text('soort').notNull(),
+  besluit: text('besluit', { enum: ['geen_probleem'] }).notNull().default('geen_probleem'),
+  door: text('door'),
+  op: timestamp('op', { withTimezone: true }).notNull().defaultNow(),
+});
