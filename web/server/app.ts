@@ -205,7 +205,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   });
   app.get('/api/me', async (req) => {
     const sessie = leesSessie(req.cookies[COOKIE], config.sessionSecret);
-    const opties = { keycloak: !!oidc, noodlogin: noodloginAan(config), gebruikersbeheer: !!gebruikersbeheer };
+    const opties = { keycloak: !!oidc, noodlogin: noodloginAan(config), gebruikersbeheer: !!gebruikersbeheer, ...(config.keycloak ? { accountUrl: `${config.keycloak.issuer.replace(/\/$/, '')}/account` } : {}) };
     return sessie ? { ingelogd: true, email: sessie.email, naam: sessie.naam ?? sessie.email, rol: normaleRol(sessie.rol), ...opties } : { ingelogd: false, ...opties };
   });
 

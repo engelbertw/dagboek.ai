@@ -26,7 +26,7 @@ button:hover { border-color: var(--paars); }
 button.primair { background: linear-gradient(90deg, var(--roze), var(--paars)); color: var(--accent-tekst); border: 0; font-weight: 700; box-shadow: 0 6px 24px rgba(226, 0, 122, .35); transition: transform .15s, box-shadow .15s; }
 button.primair:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 32px rgba(226, 0, 122, .5); }
 @media (prefers-reduced-motion: reduce) { button.primair { transition: none; } button.primair:hover:not(:disabled) { transform: none; } }
-button.gevaar { color: var(--fout); } button.tekstknop { border: none; background: none; padding: .25rem .5rem; min-height: 0; color: var(--accent); }
+button.gevaar { color: var(--fout); } button.tekstknop, a.tekstknop { border: none; background: none; padding: .25rem .5rem; min-height: 0; color: var(--accent); text-decoration: none; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 input, select, textarea { font: inherit; width: 100%; padding: .5rem .65rem; border: 1px solid var(--rand-veld); border-radius: 8px; background: var(--bg); color: var(--tekst); min-height: 40px; }
@@ -64,7 +64,7 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; } legend { font-weigh
 a.knop { text-align: center; text-decoration: none; display: block; padding-top: .55rem; }
 a.knop.primair { background: linear-gradient(90deg, var(--roze), var(--paars)); color: var(--accent-tekst); border: 0; font-weight: 700; box-shadow: 0 6px 24px rgba(226, 0, 122, .35); }
 .noodingang { border-top: 1px solid var(--rand); padding-top: .75rem; } .noodingang summary { cursor: pointer; color: var(--zacht); margin-bottom: .75rem; }
-.kop .wie { margin-left: auto; } .kop .wie + button.tekstknop { margin-left: 0; }
+.kop .wie { margin-left: auto; } .kop .wie + .tekstknop { margin-left: 0; }
 .wachtwoordvak { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.05rem; padding: .6rem .8rem; border: 1px dashed var(--paars); border-radius: 8px; word-break: break-all; background: var(--bg); }
 
 /* Indeling met zijmenu */

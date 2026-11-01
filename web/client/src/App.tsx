@@ -23,7 +23,7 @@ import { Projecten } from './pages/Projecten';
 import { Werk } from './pages/Werk';
 import { Gebruikers } from './pages/Gebruikers';
 
-interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: GebruikersRol; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean }
+interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: GebruikersRol; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean; accountUrl?: string }
 
 const INLOGFOUT: Record<string, string> = {
   geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om je de rol beheerder, accountmanager, administratie of consultant te geven.',
@@ -97,6 +97,7 @@ export function App() {
         <button type="button" className="menuknop" aria-expanded={menuOpen} aria-controls="hoofdmenu" onClick={() => setMenuOpen(!menuOpen)}>Menu</button>
         <span className="merk">Dagboek</span>
         <span className="zacht klein wie">{me.naam}</span>
+        {me.accountUrl && <a className="tekstknop" href={me.accountUrl} target="_blank" rel="noreferrer">Account</a>}
         <button className="tekstknop" onClick={async () => {
           const { eindUrl } = await api<{ eindUrl: string | null }>('POST', '/logout');
           if (eindUrl) window.location.href = eindUrl; else setMe({ ...me, ingelogd: false });

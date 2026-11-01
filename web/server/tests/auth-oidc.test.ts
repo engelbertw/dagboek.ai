@@ -183,6 +183,14 @@ describe('inloggen via Keycloak (routes)', () => {
     expect(loadConfig({ ...env, KEYCLOAK_ISSUER: '' }).noodlogin).toBe(true);
   });
 
+  it('geeft een ingelogde gebruiker de link naar het Keycloak-account, zonder Keycloak niet', async () => {
+    const app = await appMet(nepOidc('ok'), { keycloak: KC, noodlogin: false });
+    const start = await app.inject({ method: 'GET', url: '/api/auth/start' });
+    const cb = await app.inject({ method: 'GET', url: '/api/auth/callback?code=code1&state=st', cookies: { dagboek_oidc: namen(start).dagboek_oidc } });
+    expect((await app.inject({ method: 'GET', url: '/api/me', cookies: { dagboek_sessie: namen(cb).dagboek_sessie } })).json().accountUrl).toBe(`${ISSUER}/account`);
+    expect((await (await appMet(undefined)).inject({ method: 'GET', url: '/api/me' })).json().accountUrl).toBeUndefined();
+  });
+
   it('geeft bij uitloggen de Keycloak-uitlog-URL terug', async () => {
     const app = await appMet(nepOidc('ok'), { keycloak: KC, noodlogin: false });
     const start = await app.inject({ method: 'GET', url: '/api/auth/start' });
