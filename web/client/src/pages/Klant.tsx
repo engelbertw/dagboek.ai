@@ -55,7 +55,7 @@ export function Klant() {
 
   return (
     <div className="stapel">
-      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link></div>
+      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link></div>
       {k.status === 'voorgesteld' && (
         <section className="paneel stapel" aria-label="Klant bevestigen">
           <h2>Bevestig deze klant</h2>

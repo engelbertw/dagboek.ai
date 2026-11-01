@@ -6,7 +6,7 @@ import { startGesprek } from '../gesprek-starten.js';
 import { zetStatus } from '../gesprek-status.js';
 import { leggToestemmingVast } from '../toestemming.js';
 import { tik } from '../scheduler.js';
-import { calls, employees, activiteiten, implementaties, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
+import { calls, employees, activiteiten, implementaties, klanten, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
 import { maakDatabase, maakHandles, migratieMap, migratiesTot, pool } from './helpers.js';
 
 const rijen = (r: unknown) => ((r as { rows?: any[] }).rows ?? (r as any[]));
@@ -90,6 +90,34 @@ describe('implementaties (migratie 024)', () => {
       expect((await db.select().from(implementaties))[0]).toMatchObject({ module: 'Zaken', bovenliggendTopicId: null, fase: 'voorbereiding', testStatus: 'niet_gestart' });
       await db.delete(topics).where(eq(topics.id, t.id)); // onderwerp weg: implementatie mee
       expect(await db.select().from(implementaties)).toHaveLength(0);
+    } finally { await h.close(); await d.verwijder(); }
+  });
+});
+
+describe('SamenVerder (migratie 025)', () => {
+  it('bewaakt programma’s en sessies in de database zelf', async () => {
+    const d = await maakDatabase();
+    const h = await connectPostgres(d.url);
+    try {
+      await migrate(h);
+      const { db } = h;
+      const kapot = (q: ReturnType<typeof sql>) => expect(db.execute(q)).rejects.toThrow();
+      const [k] = await db.insert(klanten).values({ naam: 'Gemeente' }).returning();
+      const [p] = await db.insert(samenverderProgrammas).values({ klantId: k.id, periodeVan: '2026-01-01' }).returning();
+      await kapot(sql`update samenverder_programmas set periode_tot = '2025-12-31' where id = ${p.id}`);
+      await kapot(sql`update samenverder_programmas set status = 'bezig' where id = ${p.id}`);
+      await kapot(sql`delete from klanten where id = ${k.id}`); // restrict: de gemeente blijft zolang er een programma is
+      await kapot(sql`insert into samenverder_sessies (programma_id, status) values (${p.id}, 'gepland')`); // gepland heeft een datum
+      await kapot(sql`insert into samenverder_sessies (programma_id, status, datum) values (${p.id}, 'uitgevoerd', '2026-02-01')`); // uitgevoerd heeft een bevestiging
+      await kapot(sql`insert into samenverder_sessies (programma_id, datum, omvang_dagen) values (${p.id}, '2026-02-01', 0)`);
+      await kapot(sql`insert into samenverder_sessies (programma_id, datum, omvang_dagen) values (${p.id}, '2026-02-01', 21)`);
+      await kapot(sql`insert into samenverder_sessies (programma_id, datum, soort) values (${p.id}, '2026-02-01', 'feest')`);
+      const [s] = await db.insert(samenverderSessies).values({ programmaId: p.id, datum: '2026-02-01', omvangDagen: '0.5' }).returning();
+      expect(s.omvangDagen).toBe('0.50');
+      await kapot(sql`update samenverder_sessies set verplaatst_naar_id = id where id = ${s.id}`);
+      await db.update(samenverderSessies).set({ status: 'uitgevoerd', bevestigdOp: new Date() }).where(eq(samenverderSessies.id, s.id));
+      await db.delete(samenverderProgrammas).where(eq(samenverderProgrammas.id, p.id)); // sessies gaan mee
+      expect(await db.select().from(samenverderSessies)).toHaveLength(0);
     } finally { await h.close(); await d.verwijder(); }
   });
 });

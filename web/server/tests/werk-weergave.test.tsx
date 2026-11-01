@@ -61,6 +61,7 @@ describe('weergave van de bezoekvoorbereiding', () => {
     klant: { id: 'k1', naam: 'Gemeente Goes', status: 'klant', samenwerkingsverband: 'BEL Combinatie', inwoners: 38000, contractEinde: '2027-01-01', accountmanagerNaam: 'Ruben', omschrijving: '' },
     contacten: [{ id: 'c1', naam: 'Mevrouw De Boer', functie: 'projectleider', rol: '', laatstGesproken: '2026-10-20T10:00:00Z' }],
     onderwerpen: [{ id: 't1', titel: 'Zaakgericht werken', type: 'project', status: 'actief', eigenaarNaam: 'Daan', laatsteUpdate: { datum: '2026-10-25T10:00:00Z', samenvatting: 'Zaaktypen ingericht', besluiten: 'Start test in november' }, bron: 'dagboek' }],
+    samenverder: [{ id: 'p1', pakket: 'SamenVerder 2026', periodeVan: '2026-01-01', periodeTot: null, status: 'actief', aantalGepland: 2, aantalUitgevoerd: 3, volgendeSessie: '2026-12-01', laatsteSessie: '2026-10-20', laatsteSamenvatting: { datum: '2026-10-21T10:00:00Z', tekst: 'Zaaktypen besproken.' }, bron: 'werkregister' }],
     implementaties: [{ topicId: 't2', titel: 'Zaaksysteem uitrol', module: 'Zaken', fase: 'test', testStatus: 'bezig', status: 'actief', geplandeLivegang: '2026-12-01', werkelijkeLivegang: null, bron: 'werkregister' }],
     gesprekken: [{ soort: 'project', datum: '2026-10-20T10:00:00Z', samenvatting: 'Koppeling blokkeert de livegang.', door: 'Karin', bron: 'consultant-debrief' }],
     openPunten: [{ id: 'p1', soort: 'blokkade', omschrijving: 'Koppeling zaaksysteem', eigenaar: 'Karin', deadline: '2020-01-01', teLaat: true, onderwerp: 'Zaakgericht werken', datum: '2026-10-20T10:00:00Z', bron: 'werkregister' }],
@@ -68,13 +69,14 @@ describe('weergave van de bezoekvoorbereiding', () => {
   };
   it('toont elk onderdeel met bron en zet het niet-bevestigde apart', () => {
     const uit = html(<VoorbereidingWeergave data={data} />);
-    for (const t of ['Implementaties (1)', 'Zaaksysteem uitrol', 'Test', 'livegang gepland', 'Kerngegevens', 'BEL Combinatie', 'Mevrouw De Boer', 'laatst gesproken', 'Zaakgericht werken', 'Start test in november', 'Projectdebrief', 'consultantdebrief', 'Blokkade (1)', 'te laat', 'Niet bevestigd (1)', 'Het project is niet herkend']) expect(uit).toContain(t);
+    for (const t of ['SamenVerder (1)', 'SamenVerder 2026', '3 uitgevoerd, 2 gepland', 'Zaaktypen besproken.', 'Implementaties (1)', 'Zaaksysteem uitrol', 'Test', 'livegang gepland', 'Kerngegevens', 'BEL Combinatie', 'Mevrouw De Boer', 'laatst gesproken', 'Zaakgericht werken', 'Start test in november', 'Projectdebrief', 'consultantdebrief', 'Blokkade (1)', 'te laat', 'Niet bevestigd (1)', 'Het project is niet herkend']) expect(uit).toContain(t);
     expect(uit.indexOf('Openstaande punten')).toBeLessThan(uit.indexOf('Niet bevestigd'));
   });
   it('toont lege staten en laat het blok Niet bevestigd weg als er niets is', () => {
-    const uit = html(<VoorbereidingWeergave data={{ ...data, contacten: [], onderwerpen: [], implementaties: [], gesprekken: [], openPunten: [], nietBevestigd: [] }} />);
+    const uit = html(<VoorbereidingWeergave data={{ ...data, contacten: [], onderwerpen: [], samenverder: [], implementaties: [], gesprekken: [], openPunten: [], nietBevestigd: [] }} />);
     for (const t of ['Nog geen contactpersonen', 'Geen onderwerpen', 'Nog geen bezoeken', 'Geen openstaande punten']) expect(uit).toContain(t);
     expect(uit).not.toContain('Niet bevestigd');
     expect(uit).not.toContain('Implementaties');
+    expect(uit).not.toContain('SamenVerder');
   });
 });

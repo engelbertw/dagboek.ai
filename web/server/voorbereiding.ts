@@ -7,7 +7,8 @@ import { and, asc, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
-import { activiteiten, bezoeken, consultantDebriefContacten, consultantDebriefs, employees, implementaties, klantContacten, klanten, topics, updates } from './schema.js';
+import { activiteiten, bezoeken, consultantDebriefContacten, consultantDebriefs, employees, implementaties, klantContacten, klanten, samenverderProgrammas, samenverderSessies, topics, updates } from './schema.js';
+import { vandaagNL } from './samenvatten.js';
 
 const uuid = z.string().uuid();
 
@@ -18,6 +19,7 @@ export interface Voorbereiding {
   klant: { id: string; naam: string; status: string; samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null; accountmanagerNaam: string | null; omschrijving: string };
   contacten: { id: string; naam: string; functie: string; rol: string; laatstGesproken: string | null }[];
   onderwerpen: { id: string; titel: string; type: string; status: string; eigenaarNaam: string | null; laatsteUpdate: { datum: string; samenvatting: string; besluiten: string } | null; bron: Bron }[];
+  samenverder: { id: string; pakket: string; periodeVan: string; periodeTot: string | null; status: string; aantalGepland: number; aantalUitgevoerd: number; volgendeSessie: string | null; laatsteSessie: string | null; laatsteSamenvatting: { datum: string; tekst: string } | null; bron: Bron }[];
   implementaties: { topicId: string; titel: string; module: string; fase: string; testStatus: string; status: string; geplandeLivegang: string | null; werkelijkeLivegang: string | null; bron: Bron }[];
   gesprekken: { soort: 'bezoek' | 'project' | 'implementatie' | 'samenverder' | 'consultant'; datum: string | null; samenvatting: string; door: string | null; bron: Bron }[];
   openPunten: { id: string; soort: string; omschrijving: string; eigenaar: string; deadline: string | null; teLaat: boolean; onderwerp: string | null; datum: string; bron: Bron }[];
@@ -56,6 +58,16 @@ export async function bouwVoorbereiding(db: Db, klantId: string): Promise<Voorbe
       .where(and(eq(activiteiten.klantId, klantId), eq(activiteiten.status, 'open'))).orderBy(sql`${activiteiten.deadline} asc nulls last`, desc(activiteiten.createdAt)).limit(MAX_PUNTEN),
   ]);
 
+  // SamenVerder-programma's van deze gemeente: wat gepland en uitgevoerd is (bevestigd), en de laatste samenvatting van een debrief bij het programma.
+  const programmaRijen = await db.select().from(samenverderProgrammas).where(eq(samenverderProgrammas.klantId, klantId)).orderBy(desc(samenverderProgrammas.periodeVan));
+  const programmaIds = programmaRijen.map((p) => p.id);
+  const [sessieRijen, programmaDebriefs] = programmaIds.length ? await Promise.all([
+    db.select({ programmaId: samenverderSessies.programmaId, status: samenverderSessies.status, datum: samenverderSessies.datum }).from(samenverderSessies).where(inArray(samenverderSessies.programmaId, programmaIds)),
+    db.select({ programmaId: consultantDebriefs.programmaId, samenvatting: consultantDebriefs.samenvatting, createdAt: consultantDebriefs.createdAt }).from(consultantDebriefs)
+      .where(and(inArray(consultantDebriefs.programmaId, programmaIds), eq(consultantDebriefs.controleNodig, false))).orderBy(desc(consultantDebriefs.createdAt)),
+  ]) : [[], []] as const;
+  const vandaagDatum = vandaagNL();
+
   // Laatste update per onderwerp uit het dagboek.
   const topicIds = topicRijen.map((t) => t.id);
   const updateRijen = topicIds.length
@@ -79,6 +91,17 @@ export async function bouwVoorbereiding(db: Db, klantId: string): Promise<Voorbe
     onderwerpen: topicRijen.map((t) => {
       const u = laatsteUpdate.get(t.id);
       return { ...t, laatsteUpdate: u ? { datum: iso(u.createdAt)!, samenvatting: u.samenvatting, besluiten: u.besluiten } : null, bron: 'dagboek' as const };
+    }),
+    samenverder: programmaRijen.map((p) => {
+      const eigen = sessieRijen.filter((s) => s.programmaId === p.id);
+      const gepland = eigen.filter((s) => s.status === 'gepland' && s.datum).map((s) => s.datum!).sort();
+      const uitgevoerd = eigen.filter((s) => s.status === 'uitgevoerd' && s.datum).map((s) => s.datum!).sort();
+      const laatste = programmaDebriefs.find((d) => d.programmaId === p.id);
+      return {
+        id: p.id, pakket: p.pakket, periodeVan: p.periodeVan, periodeTot: p.periodeTot, status: p.status, aantalGepland: gepland.length, aantalUitgevoerd: uitgevoerd.length,
+        volgendeSessie: gepland.find((d) => d >= vandaagDatum) ?? null, laatsteSessie: uitgevoerd.at(-1) ?? null,
+        laatsteSamenvatting: laatste ? { datum: iso(laatste.createdAt)!, tekst: laatste.samenvatting } : null, bron: 'werkregister' as const,
+      };
     }),
     implementaties: implementatieRijen.map((i) => ({ ...i, bron: 'werkregister' as const })),
     gesprekken,

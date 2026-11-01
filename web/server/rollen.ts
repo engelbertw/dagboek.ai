@@ -16,6 +16,9 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET', 'PATCH'], pad: new RegExp(`^/api/klanten/${ID}$`) },
   { methode: ['POST'], pad: new RegExp(`^/api/klanten/${ID}/contacten$`) },
   { methode: ['GET'], pad: new RegExp(`^/api/klanten/${ID}/voorbereiding$`) },
+  // SamenVerder: alleen lezen
+  { methode: ['GET'], pad: /^\/api\/samenverder\/programmas$/ },
+  { methode: ['GET'], pad: new RegExp(`^/api/samenverder/programmas/${ID}$`) },
   { methode: ['GET', 'POST'], pad: /^\/api\/klant-contacten$/ },
   { methode: ['PATCH', 'DELETE'], pad: new RegExp(`^/api/klant-contacten/${ID}$`) },
   { methode: ['GET'], pad: /^\/api\/employees$/ },

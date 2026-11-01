@@ -83,6 +83,19 @@ export function VoorbereidingWeergave({ data }: { data: VoorbereidingData }) {
         </details>
       )}
 
+      {data.samenverder.length > 0 && (
+        <details className="paneel" open>
+          <summary><h2>SamenVerder ({data.samenverder.length})</h2></summary>
+          <ul className="lijst">
+            {data.samenverder.map((p) => (
+              <li key={p.id}><Link to={`/samenverder/${p.id}`}>{p.pakket || 'Programma'}</Link> <Badge soort={p.status === 'afgerond' ? 'wacht' : ''}>{p.status === 'actief' ? 'Actief' : 'Afgerond'}</Badge>
+                <span className="subtiel"> · {datum(p.periodeVan)}{p.periodeTot ? ` – ${datum(p.periodeTot)}` : ' –'} · {p.aantalUitgevoerd} uitgevoerd, {p.aantalGepland} gepland{p.volgendeSessie ? ` · volgende sessie ${datum(p.volgendeSessie)}` : ' · geen volgende sessie gepland'}{p.laatsteSessie && ` · laatste sessie ${datum(p.laatsteSessie)}`} · {BRON_LABEL[p.bron]}</span>
+                {p.laatsteSamenvatting && <p>{p.laatsteSamenvatting.tekst}<span className="subtiel"> ({datum(p.laatsteSamenvatting.datum)}, laatste debrief)</span></p>}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       <details className="paneel" open>
         <summary><h2>Laatste bezoeken en debriefs ({data.gesprekken.length})</h2></summary>
         {data.gesprekken.length === 0 ? <Leeg>Nog geen bezoeken of debriefs.</Leeg> : (

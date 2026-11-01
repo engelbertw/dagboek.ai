@@ -150,6 +150,9 @@ button.werk-soort[aria-pressed="true"] { border-color: currentColor; box-shadow:
 .werk-controle-knoppen { display: flex; gap: .4rem; flex-wrap: wrap; flex: none; }
 @media (max-width: 640px) { .werk-regel { gap: .5rem; } .werk-controle .werk-regel { flex-wrap: wrap; } }
 
+/* SamenVerder */
+.lijst-kaarten { list-style: none; margin: 0; padding: 0; display: grid; gap: .8rem; }
+
 /* Bezoekvoorbereiding */
 .voorbereiding .subtiel { color: var(--zacht); font-size: .9rem; }
 .voorbereiding .lijst { list-style: none; margin: .5rem 0 0; padding: 0; display: grid; gap: .6rem; }

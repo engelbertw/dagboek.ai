@@ -1,4 +1,4 @@
-import { boolean, date, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, date, index, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 /** Momentopname van wat er in een gesprek aan bod kon komen. */
 export interface GespreksOnderwerp {
@@ -214,6 +214,8 @@ export const activiteiten = pgTable('activiteiten', {
   callId: uuid('call_id').references(() => calls.id, { onDelete: 'set null' }),
   /** De herkende contactpersoon bij de klant, als de eigenaar van een klantactie. */
   contactId: uuid('contact_id').references(() => klantContacten.id, { onDelete: 'set null' }),
+  samenverderProgrammaId: uuid('samenverder_programma_id').references(() => samenverderProgrammas.id, { onDelete: 'set null' }),
+  samenverderSessieId: uuid('samenverder_sessie_id').references(() => samenverderSessies.id, { onDelete: 'set null' }),
   bron: text('bron', { enum: ['handmatig', 'gesprek'] }).notNull().default('gesprek'),
   deadlineOorspronkelijk: date('deadline_oorspronkelijk'),
   deadlineGewijzigdAantal: integer('deadline_gewijzigd_aantal').notNull().default(0),
@@ -301,6 +303,8 @@ export const consultantDebriefs = pgTable('consultant_debriefs', {
   variantCitaat: text('variant_citaat').notNull().default(''),
   klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'set null' }),
   topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'set null' }),
+  programmaId: uuid('programma_id').references(() => samenverderProgrammas.id, { onDelete: 'set null' }),
+  sessieId: uuid('sessie_id').references(() => samenverderSessies.id, { onDelete: 'set null' }),
   samenvatting: text('samenvatting').notNull().default(''),
   werkzaamheden: jsonb('werkzaamheden').$type<string[]>().notNull().default([]),
   variantdata: jsonb('variantdata').$type<Record<string, unknown>>().notNull().default({}),
@@ -334,3 +338,59 @@ export const implementaties = pgTable('implementaties', {
   nazorgTot: date('nazorg_tot'),
   bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('implementaties_module').on(t.module), index('implementaties_fase').on(t.fase)]);
+
+export const SESSIE_SOORTEN = ['kickstart', 'uitvoering', 'online', 'tussenevaluatie', 'eindevaluatie'] as const;
+export type SessieSoort = (typeof SESSIE_SOORTEN)[number];
+export const SESSIE_STATUSSEN = ['gepland', 'uitgevoerd', 'geannuleerd', 'verplaatst'] as const;
+export type SessieStatus = (typeof SESSIE_STATUSSEN)[number];
+export const ONDERWERP_STATUSSEN = ['voorgesteld', 'gepland', 'afgehandeld', 'afgewezen'] as const;
+
+/** Een SamenVerder-programma: de afspraak met één gemeente voor een periode. Een eerder jaar is een eigen rij. */
+export const samenverderProgrammas = pgTable('samenverder_programmas', {
+  id: id(),
+  klantId: uuid('klant_id').notNull().references(() => klanten.id, { onDelete: 'restrict' }),
+  pakket: text('pakket').notNull().default(''),
+  periodeVan: date('periode_van').notNull(),
+  periodeTot: date('periode_tot'),
+  status: text('status', { enum: ['actief', 'afgerond'] }).notNull().default('actief'),
+  accountmanagerId: uuid('accountmanager_id').references(() => employees.id, { onDelete: 'set null' }),
+  bron: text('bron', { enum: ['handmatig', 'import'] }).notNull().default('handmatig'),
+  opmerking: text('opmerking').notNull().default(''),
+  createdAt: createdAt(),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('samenverder_programmas_klant').on(t.klantId, t.periodeVan)]);
+
+/** Een sessie (dag of dagdeel) binnen een programma. `uitgevoerd` telt pas met `bevestigdOp`: een beheerder bevestigt, een gesprek nooit. */
+export const samenverderSessies = pgTable('samenverder_sessies', {
+  id: id(),
+  programmaId: uuid('programma_id').notNull().references(() => samenverderProgrammas.id, { onDelete: 'cascade' }),
+  soort: text('soort', { enum: SESSIE_SOORTEN }).notNull().default('uitvoering'),
+  dagnummer: integer('dagnummer'),
+  onderwerp: text('onderwerp').notNull().default(''),
+  doel: text('doel'),
+  datum: date('datum'),
+  omvangDagen: numeric('omvang_dagen', { precision: 4, scale: 2 }).notNull().default('1'),
+  status: text('status', { enum: SESSIE_STATUSSEN }).notNull().default('gepland'),
+  verplaatstNaarId: uuid('verplaatst_naar_id').references((): AnyPgColumn => samenverderSessies.id, { onDelete: 'set null' }),
+  extra: boolean('extra').notNull().default(false),
+  contactpersoonId: uuid('contactpersoon_id').references(() => klantContacten.id, { onDelete: 'set null' }),
+  bevestigdDoor: text('bevestigd_door'),
+  bevestigdOp: timestamp('bevestigd_op', { withTimezone: true }),
+  createdAt: createdAt(),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('samenverder_sessies_programma').on(t.programmaId, t.datum), index('samenverder_sessies_datum').on(t.datum)]);
+
+export const samenverderSessieConsultants = pgTable('samenverder_sessie_consultants', {
+  sessieId: uuid('sessie_id').notNull().references(() => samenverderSessies.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+}, (t) => [primaryKey({ columns: [t.sessieId, t.employeeId] })]);
+
+export const samenverderSessieOnderwerpen = pgTable('samenverder_sessie_onderwerpen', {
+  id: id(),
+  sessieId: uuid('sessie_id').notNull().references(() => samenverderSessies.id, { onDelete: 'cascade' }),
+  titel: text('titel').notNull(),
+  topicId: uuid('topic_id').references(() => topics.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ONDERWERP_STATUSSEN }).notNull().default('gepland'),
+  voorgesteldInSessieId: uuid('voorgesteld_in_sessie_id').references((): AnyPgColumn => samenverderSessies.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+}, (t) => [index('samenverder_sessie_onderwerpen_sessie').on(t.sessieId)]);
