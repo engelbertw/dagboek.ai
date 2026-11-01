@@ -189,7 +189,7 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
     try {
       uitkomst = leesDebriefAntwoord(ruw);
     } catch (e) {
-      await eindig('mislukt', { samenvattingFout: `Antwoord van het taalmodel niet te lezen: ${(e as Error).message} (begin: "${ruw.trim().slice(0, 150).replace(/\s+/g, ' ')}", ${ruw.length} tekens)`.slice(0, 500), samenvattingRuw: { tekst: ruw.slice(0, 4000) } });
+      await eindig('mislukt', { samenvattingFout: `Antwoord van het taalmodel niet te lezen (${ruw.length} tekens)`, samenvattingRuw: { tekst: ruw.slice(0, 4000) } });
       return { status: 'mislukt', fout: 'Antwoord van het taalmodel niet te lezen' };
     }
 

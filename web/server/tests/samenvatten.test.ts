@@ -136,7 +136,7 @@ describe('samenvatting na een gesprek', () => {
     const c = await s.call();
     expect(c.samenvattingStatus).toBe('mislukt');
     expect(c.samenvattingFout).toContain('niet te lezen');
-    expect(c.samenvattingFout).toContain('begin: "Sorry, dat kan ik niet."');
+    expect(c.samenvattingFout).not.toContain('Sorry'); // nooit een fragment van de modeluitvoer in de foutmelding
     expect(await s.alleUpdates()).toHaveLength(0);
 
     antwoord = GOED;
