@@ -1,10 +1,13 @@
 /**
  * Wie wat mag. `beheerder` mag alles. `accountmanager` ziet alleen het werkregister en de klanten, zodat een accountmanager zijn eigen
- * punten kan bijhouden zonder bij gesprekken, medewerkers, instellingen of gebruikers te kunnen. Wat niet is toegestaan, is verboden.
+ * punten kan bijhouden zonder bij gesprekken, medewerkers, instellingen of gebruikers te kunnen. `administratie` beheert de stamgegevens van klanten
+ * (inwoners, contactpersonen) maar ziet het werkregister niet. Wat niet is toegestaan, is verboden.
  */
 export const BEHEERDER_ROL = 'beheerder';
 export const ACCOUNTMANAGER_ROL = 'accountmanager';
-export const ROLLEN = [BEHEERDER_ROL, ACCOUNTMANAGER_ROL] as const;
+export const ADMINISTRATIE_ROL = 'administratie';
+/** De volgorde is de voorrang als iemand in Keycloak meer dan één rol heeft: de eerste wint. */
+export const ROLLEN = [BEHEERDER_ROL, ACCOUNTMANAGER_ROL, ADMINISTRATIE_ROL] as const;
 export type GebruikersRol = (typeof ROLLEN)[number];
 
 const ID = '[0-9a-fA-F-]{36}';
@@ -28,9 +31,32 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET'], pad: /^\/api\/employees$/ },
 ];
 
-export const normaleRol = (rol: string | undefined): GebruikersRol => (rol === ACCOUNTMANAGER_ROL ? ACCOUNTMANAGER_ROL : BEHEERDER_ROL);
+// Administratie: klantgegevens (alleen inwoners, zie magKlantveldenWijzigen) en contactpersonen, zonder werkregister, gesprekken of instellingen.
+const ADMINISTRATIE_MAG: { methode: string[]; pad: RegExp }[] = [
+  { methode: ['GET'], pad: /^\/api\/klanten$/ },
+  { methode: ['GET', 'PATCH'], pad: new RegExp(`^/api/klanten/${ID}$`) },
+  { methode: ['POST'], pad: new RegExp(`^/api/klanten/${ID}/contacten$`) },
+  { methode: ['GET'], pad: new RegExp(`^/api/klanten/${ID}/voorbereiding$`) },
+  { methode: ['GET'], pad: /^\/api\/kwaliteit$/ },
+  { methode: ['POST'], pad: /^\/api\/kwaliteit\/besluiten(\/terugdraaien)?$/ },
+  { methode: ['POST'], pad: /^\/api\/klant-contacten\/samenvoegen$/ },
+  { methode: ['GET', 'POST'], pad: /^\/api\/klant-contacten$/ },
+  { methode: ['PATCH', 'DELETE'], pad: new RegExp(`^/api/klant-contacten/${ID}$`) },
+  { methode: ['GET'], pad: /^\/api\/employees$/ },
+];
+
+/** Een ontbrekende rol (een oude sessie of de noodlogin) is beheerder; een onbekende rol krijgt de minste rechten. */
+export const normaleRol = (rol: string | undefined): GebruikersRol => (!rol || rol === BEHEERDER_ROL ? BEHEERDER_ROL : rol === ADMINISTRATIE_ROL ? ADMINISTRATIE_ROL : ACCOUNTMANAGER_ROL);
 
 export function magDoen(rol: string | undefined, methode: string, pad: string): boolean {
-  if (normaleRol(rol) === BEHEERDER_ROL) return true;
-  return ACCOUNTMANAGER_MAG.some((r) => r.methode.includes(methode.toUpperCase()) && r.pad.test(pad));
+  if (rol && !(ROLLEN as readonly string[]).includes(rol)) return false;
+  const normaal = normaleRol(rol);
+  if (normaal === BEHEERDER_ROL) return true;
+  const lijst = normaal === ADMINISTRATIE_ROL ? ADMINISTRATIE_MAG : ACCOUNTMANAGER_MAG;
+  return lijst.some((r) => r.methode.includes(methode.toUpperCase()) && r.pad.test(pad));
 }
+
+/** Wie mag het aantal inwoners van een gemeente wijzigen? Alleen beheer en administratie, niet de accountmanager. */
+export const magInwonersWijzigen = (rol: string | undefined): boolean => normaleRol(rol) !== ACCOUNTMANAGER_ROL;
+/** Administratie past alleen inwoners aan; de overige klantgegevens blijven bij beheerder en accountmanager. */
+export const magAndereKlantveldenWijzigen = (rol: string | undefined): boolean => normaleRol(rol) !== ADMINISTRATIE_ROL;

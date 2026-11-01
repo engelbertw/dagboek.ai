@@ -161,7 +161,6 @@ export const klanten = pgTable('klanten', {
   contractEinde: date('contract_einde'),
   samenwerkingsverband: text('samenwerkingsverband').notNull().default(''),
   inwoners: integer('inwoners'),
-  salesAm: text('sales_am').notNull().default(''),
   bron: text('bron', { enum: ['handmatig', 'gesprek', 'afas'] }).notNull().default('handmatig'),
   bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
   createdAt: createdAt(),

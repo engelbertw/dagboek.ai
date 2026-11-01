@@ -103,10 +103,16 @@ const LIJST_SALES = [
 ].join('\n');
 
 describe('klantenlijst van sales met extra kolommen', () => {
+  it('negeert een kolom Sales AM: die wordt niet meer vastgelegd', () => {
+    const r = beoordeelKlantenLijst(LIJST_SALES, [], []);
+    expect(r.gemeenten.every((g) => !('salesAm' in g.velden))).toBe(true);
+    expect(r.gemeenten.find((g) => g.naam === 'Gemeente Amersfoort')!.contacten[0].email).toBe('s.dehaas@amersfoort.nl'); // de kolommen erna blijven kloppen
+  });
+
   it('leest de kolommen via de kopregel, met punten in aantallen, streepjes als leeg en datums dag-maand-jaar', () => {
     const r = beoordeelKlantenLijst(LIJST_SALES, [], []);
     const per = (n: string) => r.gemeenten.find((g) => g.naam === n)!;
-    expect(per('Gemeente Amersfoort').velden).toEqual({ samenwerkingsverband: '', inwoners: 163298, salesAm: 'Anouk/Lara?', contractEinde: '2024-05-22' });
+    expect(per('Gemeente Amersfoort').velden).toEqual({ samenwerkingsverband: '', inwoners: 163298, contractEinde: '2024-05-22' });
     expect(per('Gemeente Blaricum').velden).toMatchObject({ samenwerkingsverband: 'BEL Combinatie', inwoners: 12947, contractEinde: '2024-12-31' });
     expect(per('Gemeente Blaricum').contacten[0]).toMatchObject({ naam: 'Marita Rigter', email: 'm.rigter@belcombinatie.nl', telefoon: '06-23182441' });
     expect(per('Gemeente Maasdriel').velden.inwoners).toBe(26225);
@@ -122,13 +128,13 @@ describe('klantenlijst van sales met extra kolommen', () => {
     const r = (await t.api('POST', '/api/klanten/import', { tekst: LIJST_SALES })).json();
     expect(r.toegevoegd).toEqual({ gemeenten: 6, contacten: 5, bijgewerkt: 0 });
     const blaricum = (await t.db.select().from(klanten)).find((k) => k.naam === 'Gemeente Blaricum')!;
-    expect(blaricum).toMatchObject({ samenwerkingsverband: 'BEL Combinatie', inwoners: 12947, salesAm: 'Ruben/Lara?', contractEinde: '2024-12-31', status: 'klant' });
+    expect(blaricum).toMatchObject({ samenwerkingsverband: 'BEL Combinatie', inwoners: 12947, contractEinde: '2024-12-31', status: 'klant' });
     expect((await t.db.select().from(klantContacten)).find((c) => c.naam === 'Marita Rigter')).toMatchObject({ email: 'm.rigter@belcombinatie.nl', telefoon: '06-23182441' });
     // Een handmatige wijziging blijft staan; een leeg veld wordt wel aangevuld.
-    await t.api('PATCH', `/api/klanten/${blaricum.id}`, { salesAm: 'Iemand anders', inwoners: null });
+    await t.api('PATCH', `/api/klanten/${blaricum.id}`, { omschrijving: 'Handmatig', inwoners: null });
     const nogmaals = (await t.api('POST', '/api/klanten/import', { tekst: LIJST_SALES })).json();
     expect(nogmaals.toegevoegd).toEqual({ gemeenten: 0, contacten: 0, bijgewerkt: 1 });
-    expect((await t.db.select().from(klanten)).find((k) => k.id === blaricum.id)).toMatchObject({ salesAm: 'Iemand anders', inwoners: 12947 });
+    expect((await t.db.select().from(klanten)).find((k) => k.id === blaricum.id)).toMatchObject({ omschrijving: 'Handmatig', inwoners: 12947 });
   });
 });
 

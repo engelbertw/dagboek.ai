@@ -160,6 +160,23 @@ describe('maakKeycloakBeheer (Admin API)', () => {
     expect(verzoeken.find((v) => v.url.endsWith('/users/abc/role-mappings/realm'))!.body).toEqual([{ id: 'r1', name: 'beheerder' }]);
   });
 
+  it('maakt de rol administratie aan als de realm hem nog niet kent', async () => {
+    const verzoeken: { url: string; method: string; body?: any }[] = [];
+    let aangemaakt = false;
+    const haal: typeof fetch = async (input, init) => {
+      const url = String(input);
+      verzoeken.push({ url, method: init?.method ?? 'GET', body: init?.body && typeof init.body === 'string' && !url.endsWith('/token') ? JSON.parse(init.body) : undefined });
+      if (url.endsWith('/token')) return Response.json({ access_token: 'tok', expires_in: 300 });
+      if (url.endsWith('/users') && init?.method === 'POST') return new Response(null, { status: 201, headers: { location: 'https://kc.test/admin/realms/dagboek/users/abc' } });
+      if (url.endsWith('/roles') && init?.method === 'POST') { aangemaakt = true; return new Response(null, { status: 201 }); }
+      if (url.endsWith('/roles/administratie')) return aangemaakt ? Response.json({ id: 'r3', name: 'administratie' }) : new Response(null, { status: 404 });
+      return new Response(null, { status: 204 });
+    };
+    await maakKeycloakBeheer(CFG, haal).maak({ email: 'a@b.nl', naam: 'Anna', wachtwoord: 'tijdelijk-wachtwoord-1', rol: 'administratie' });
+    expect(verzoeken.find((v) => v.method === 'POST' && v.url.endsWith('/roles'))!.body).toMatchObject({ name: 'administratie' });
+    expect(verzoeken.find((v) => v.url.endsWith('/users/abc/role-mappings/realm'))!.body).toEqual([{ id: 'r3', name: 'administratie' }]);
+  });
+
   it('geeft een accountmanager de rol accountmanager en meldt een rol die nog niet bestaat', async () => {
     const verzoeken: { url: string; method: string; body?: any }[] = [];
     const haal: typeof fetch = async (input, init) => {

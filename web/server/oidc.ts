@@ -6,7 +6,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createLocalJWKSet, jwtVerify, type JSONWebKeySet } from 'jose';
 import type { KeycloakConfig } from './config.js';
 
-import { ACCOUNTMANAGER_ROL, BEHEERDER_ROL, type GebruikersRol } from './rollen.js';
+import { ACCOUNTMANAGER_ROL, BEHEERDER_ROL, ROLLEN, type GebruikersRol } from './rollen.js';
 
 export { ACCOUNTMANAGER_ROL, BEHEERDER_ROL };
 
@@ -96,8 +96,8 @@ export function maakOidc(cfg: KeycloakConfig, haal: Haal = fetch): Oidc {
       // De rollen staan in het access token (Keycloak zet realm_access daar, niet in het ID-token).
       const toegang = await controleer(antwoord.access_token, {});
       const rollen = (toegang as { realm_access?: { roles?: unknown } }).realm_access?.roles;
-      // Wie beide rollen heeft, is beheerder.
-      const rol: GebruikersRol | null = !Array.isArray(rollen) ? null : rollen.includes(BEHEERDER_ROL) ? BEHEERDER_ROL : rollen.includes(ACCOUNTMANAGER_ROL) ? ACCOUNTMANAGER_ROL : null;
+      // Wie meer rollen heeft, krijgt de eerste uit ROLLEN (beheerder, dan accountmanager, dan administratie).
+      const rol: GebruikersRol | null = !Array.isArray(rollen) ? null : ROLLEN.find((r) => rollen.includes(r)) ?? null;
       if (!rol) throw new OidcFout('geen_toegang', 'Geen rol in dagboek.ai');
       const email = String(id.email ?? '').trim().toLowerCase();
       if (!email) throw new OidcFout('ongeldig', 'Geen e-mailadres in het token');

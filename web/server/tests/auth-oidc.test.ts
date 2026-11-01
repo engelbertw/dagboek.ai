@@ -64,7 +64,7 @@ describe('maakOidc', () => {
   });
 
   it('geeft een accountmanager de rol accountmanager, en wie beide heeft is beheerder', async () => {
-    for (const [rollen, verwacht] of [[['accountmanager'], 'accountmanager'], [['accountmanager', 'beheerder'], 'beheerder']] as const) {
+    for (const [rollen, verwacht] of [[['accountmanager'], 'accountmanager'], [['accountmanager', 'beheerder'], 'beheerder'], [['administratie'], 'administratie'], [['administratie', 'accountmanager'], 'accountmanager']] as const) {
       const kc = await nepKeycloak({ rollen: [...rollen] });
       const oidc = maakOidc(KC, kc.haal);
       const s = await oidc.start('https://x/cb');

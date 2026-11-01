@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, type KlantRegel, type KlantStatus, type KlantenImportUitkomst } from '../api';
+import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, type GebruikersRol, type KlantRegel, type KlantStatus, type KlantenImportUitkomst } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
 function Importeren({ klaar }: { klaar: () => void }) {
@@ -23,7 +23,7 @@ function Importeren({ klaar }: { klaar: () => void }) {
   return (
     <section className="paneel stapel" aria-label="Lijst importeren">
       <h2>Lijst importeren</h2>
-      <p className="zacht klein">Plak een lijst uit Excel (gescheiden door een tab, puntkomma of verticale streep). Met een kopregel herkent de import de kolommen <strong>Gemeente, Samenwerkingsverband, Inwonersaantallen, Sales AM, Contactpersoon, Functie, Rol, Emailadres, Telefoonnummer</strong> en <strong>Looptijd contract</strong> (dag-maand-jaar). Zonder kopregel geldt: Gemeente ; Contactpersoon ; Functie ; Rol. Een lege gemeente betekent dezelfde gemeente als hierboven. Je ziet eerst een voorbeeld. Bestaande gemeenten en contactpersonen worden niet dubbel toegevoegd en niets wordt overschreven: alleen lege velden worden aangevuld.</p>
+      <p className="zacht klein">Plak een lijst uit Excel (gescheiden door een tab, puntkomma of verticale streep). Met een kopregel herkent de import de kolommen <strong>Gemeente, Samenwerkingsverband, Inwonersaantallen, Contactpersoon, Functie, Rol, Emailadres, Telefoonnummer</strong> en <strong>Looptijd contract</strong> (dag-maand-jaar). Zonder kopregel geldt: Gemeente ; Contactpersoon ; Functie ; Rol. Een lege gemeente betekent dezelfde gemeente als hierboven. Je ziet eerst een voorbeeld. Bestaande gemeenten en contactpersonen worden niet dubbel toegevoegd en niets wordt overschreven: alleen lege velden worden aangevuld.</p>
       <Veld label="Lijst"><textarea rows={8} value={tekst} onChange={(e) => { setTekst(e.target.value); setVoorbeeld(null); }} placeholder={'Gemeente Voorbeeld; Jan Jansen; Teamleider ICT; Beslisser\n; Piet Pieters; Inkoper; Adviseur'} /></Veld>
       <Veld label="Status van nieuwe gemeenten">
         <select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}><option value="klant">Klant</option><option value="prospect">Prospect</option></select>
@@ -34,7 +34,7 @@ function Importeren({ klaar }: { klaar: () => void }) {
           {voorbeeld.gemeenten.map((g) => (
             <div key={g.naam}>
               <strong>{g.naam}</strong> <Badge soort={g.status === 'nieuw' ? '' : 'wacht'}>{g.status === 'nieuw' ? 'nieuwe gemeente' : 'bestaat al'}</Badge>
-              <div className="zacht klein">{[g.velden.samenwerkingsverband, g.velden.inwoners !== null ? `${g.velden.inwoners.toLocaleString('nl-NL')} inwoners` : '', g.velden.salesAm && `sales ${g.velden.salesAm}`, g.velden.contractEinde && `contract tot ${datum(g.velden.contractEinde)}`].filter(Boolean).join(' · ')}</div>
+              <div className="zacht klein">{[g.velden.samenwerkingsverband, g.velden.inwoners !== null ? `${g.velden.inwoners.toLocaleString('nl-NL')} inwoners` : '', g.velden.contractEinde && `contract tot ${datum(g.velden.contractEinde)}`].filter(Boolean).join(' · ')}</div>
               <ul className="klein" style={{ margin: '2px 0 0', paddingLeft: 20 }}>
                 {g.contacten.map((c, i) => <li key={i}>{c.naam}{(c.functie || c.rol || c.email || c.telefoon) && <span className="zacht"> · {[c.functie, c.rol, c.email, c.telefoon].filter(Boolean).join(' · ')}</span>} <span className="zacht">({c.status === 'nieuw' ? 'wordt toegevoegd' : 'staat er al'})</span></li>)}
               </ul>
@@ -51,7 +51,7 @@ function Importeren({ klaar }: { klaar: () => void }) {
   );
 }
 
-export function Klanten() {
+export function Klanten({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
   const lijst = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const [zoek, setZoek] = useState('');
   const [nieuw, setNieuw] = useState<{ naam: string; status: KlantStatus } | null>(null);
@@ -69,8 +69,8 @@ export function Klanten() {
       <div className="rij spreid">
         <div><h1>Klanten</h1><p className="zacht">Klanten uit verkoop-debriefs, met bezoeken, afspraken en kansen. Een klant die alleen uit een gesprek komt is een voorstel tot jij hem bevestigt.</p></div>
         <div className="rij">
-          <button onClick={() => setImporteer(!importeer)} aria-expanded={importeer}>{importeer ? 'Importeren sluiten' : 'Lijst importeren'}</button>
-          <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', status: 'klant' })}>{nieuw ? 'Annuleren' : 'Nieuwe klant'}</button>
+          {rol === 'beheerder' && <button onClick={() => setImporteer(!importeer)} aria-expanded={importeer}>{importeer ? 'Importeren sluiten' : 'Lijst importeren'}</button>}
+          {rol !== 'administratie' && <button className="primair" onClick={() => setNieuw(nieuw ? null : { naam: '', status: 'klant' })}>{nieuw ? 'Annuleren' : 'Nieuwe klant'}</button>}
         </div>
       </div>
       {importeer && <Importeren klaar={lijst.ververs} />}
@@ -101,8 +101,8 @@ export function Klanten() {
               {k.laatsteBezoek && ` · laatste bezoek ${datum(k.laatsteBezoek)}`}
               {k.contractEinde && ` · contract tot ${datum(k.contractEinde)}`}
             </span>
-            {(k.samenwerkingsverband || k.inwoners !== null || k.salesAm) && (
-              <div className="zacht klein">{[k.samenwerkingsverband, k.inwoners !== null && `${k.inwoners.toLocaleString('nl-NL')} inwoners`, k.salesAm && `sales ${k.salesAm}`].filter(Boolean).join(' · ')}</div>
+            {(k.samenwerkingsverband || k.inwoners !== null) && (
+              <div className="zacht klein">{[k.samenwerkingsverband, k.inwoners !== null && `${k.inwoners.toLocaleString('nl-NL')} inwoners`].filter(Boolean).join(' · ')}</div>
             )}
           </div>
           <span className="zacht klein">{k.openActiviteiten} open</span>

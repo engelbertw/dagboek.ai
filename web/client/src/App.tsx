@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { api } from './api';
+import { api, type GebruikersRol } from './api';
 import { Melding, Veld, foutTekst } from './ui';
 import { Dagboek } from './pages/Dagboek';
 import { Dashboard } from './pages/Dashboard';
@@ -22,10 +22,10 @@ import { Projecten } from './pages/Projecten';
 import { Werk } from './pages/Werk';
 import { Gebruikers } from './pages/Gebruikers';
 
-interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: 'beheerder' | 'accountmanager'; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean }
+interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: GebruikersRol; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean }
 
 const INLOGFOUT: Record<string, string> = {
-  geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om je de rol beheerder of accountmanager te geven.',
+  geen_toegang: 'Dit account heeft geen toegang tot dagboek.ai. Vraag een beheerder om je de rol beheerder, accountmanager of administratie te geven.',
   ongeldig: 'De inlogpoging is verlopen of ongeldig. Probeer het opnieuw.',
   keycloak: 'Keycloak is nu niet bereikbaar. Probeer het later opnieuw.',
 };
@@ -69,6 +69,9 @@ const MENU: MenuGroep[] = [
   { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/instellingen', label: 'Instellingen' }] },
 ];
 
+/** Administratie beheert alleen de stamgegevens van klanten: geen werkregister, gesprekken of instellingen. */
+const MENU_ADMINISTRATIE: MenuGroep[] = [{ titel: 'Klantgegevens', items: [{ naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/kwaliteit', label: 'Kwaliteit' }] }];
+
 export function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -78,8 +81,10 @@ export function App() {
   useEffect(() => { setMenuOpen(false); }, [pathname]);
   if (me === null) return null;
   if (!me.ingelogd) return <Inloggen me={me} klaar={() => void controleer()} />;
-  const beheerder = me.rol !== 'accountmanager';
-  const groepen = MENU.filter((g) => beheerder || !g.alleenBeheerder);
+  const rol: GebruikersRol = me.rol ?? 'beheerder';
+  const beheerder = rol === 'beheerder';
+  const administratie = rol === 'administratie';
+  const groepen = administratie ? MENU_ADMINISTRATIE : MENU.filter((g) => beheerder || !g.alleenBeheerder);
   const actief = (naar: string, ook?: string) => (naar === '/' ? pathname === '/' : pathname === naar || pathname.startsWith(`${naar}/`)) || (!!ook && pathname.startsWith(ook));
   return (
     <div className="app">
@@ -118,17 +123,25 @@ export function App() {
               <Route path="/spraakmotoren" element={<Spraakmotoren />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </>
-          ) : <Route path="*" element={<Navigate to="/werk" replace />} />}
-          <Route path="/werk" element={<Werk />} />
-          <Route path="/acties" element={<Navigate to="/werk" replace />} />
-          <Route path="/verkoopregister" element={<Navigate to="/werk" replace />} />
-          <Route path="/klanten" element={<Klanten />} />
-          <Route path="/klanten/:id" element={<Klant />} />
+          ) : <Route path="*" element={<Navigate to={administratie ? '/klanten' : '/werk'} replace />} />}
+          {!administratie && (
+            <>
+              <Route path="/werk" element={<Werk />} />
+              <Route path="/acties" element={<Navigate to="/werk" replace />} />
+              <Route path="/verkoopregister" element={<Navigate to="/werk" replace />} />
+            </>
+          )}
+          <Route path="/klanten" element={<Klanten rol={rol} />} />
+          <Route path="/klanten/:id" element={<Klant rol={rol} />} />
           <Route path="/klanten/:id/voorbereiding" element={<Voorbereiding />} />
           <Route path="/contactpersonen" element={<Contactpersonen />} />
           <Route path="/kwaliteit" element={<Kwaliteit />} />
-          <Route path="/samenverder" element={<SamenVerder alleenLezen={!beheerder} />} />
-          <Route path="/samenverder/:id" element={<SamenVerderProgramma alleenLezen={!beheerder} />} />
+          {!administratie && (
+            <>
+              <Route path="/samenverder" element={<SamenVerder alleenLezen={!beheerder} />} />
+              <Route path="/samenverder/:id" element={<SamenVerderProgramma alleenLezen={!beheerder} />} />
+            </>
+          )}
         </Routes>
       </main>
     </div>

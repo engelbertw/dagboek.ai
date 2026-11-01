@@ -38,7 +38,7 @@ import { registreerImplementaties } from './implementaties.js';
 import { registreerSamenverder } from './samenverder.js';
 import { registreerKwaliteit } from './datakwaliteit.js';
 import { actieRijen, registreerActiviteiten } from './activiteiten.js';
-import { ACCOUNTMANAGER_ROL, magDoen, normaleRol } from './rollen.js';
+import { BEHEERDER_ROL, magDoen, normaleRol } from './rollen.js';
 import { beoordeelLijst } from './medewerkers-import.js';
 
 const COOKIE = 'dagboek_sessie';
@@ -213,7 +213,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   app.get('/api/employees', async (req) => {
     const rijen = await db.select().from(employees).orderBy(asc(employees.naam));
     // Een accountmanager heeft de namen nodig om een eigenaar te kiezen, geen telefoonnummers of notities.
-    if (leesSessie(req.cookies[COOKIE], config.sessionSecret)?.rol !== ACCOUNTMANAGER_ROL) return rijen;
+    if (normaleRol(leesSessie(req.cookies[COOKIE], config.sessionSecret)?.rol) === BEHEERDER_ROL) return rijen;
     return rijen.map((m) => ({ id: m.id, naam: m.naam, rol: m.rol, actief: m.actief }));
   });
   // Een geplakte lijst in één keer toevoegen. Met `voorbeeld` gebeurt er niets; zonder worden alleen de nieuwe, geldige regels toegevoegd.
@@ -546,7 +546,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     await bewaarInstructie(db, waarde);
     return leesInstructie(db);
   });
-  registreerVerkoop(app, db);
+  registreerVerkoop(app, db, (req) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.rol);
   registreerConsultantRoutes(app, db, llm);
   registreerVoorbereiding(app, db);
   registreerImplementaties(app, db);

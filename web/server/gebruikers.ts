@@ -10,6 +10,12 @@ import type { Db } from './db.js';
 import { employees } from './schema.js';
 import type { KeycloakConfig } from './config.js';
 import { ACCOUNTMANAGER_ROL, BEHEERDER_ROL, ROLLEN, type GebruikersRol } from './rollen.js';
+
+const ROL_OMSCHRIJVING: Record<GebruikersRol, string> = {
+  beheerder: 'Beheerder van dagboek.ai: ziet alle gegevens en beheert gebruikers.',
+  accountmanager: 'Accountmanager: ziet alleen het werkregister en de klanten van dagboek.ai.',
+  administratie: 'Administratie: beheert de stamgegevens van klanten (inwoners, contactpersonen) van dagboek.ai.',
+};
 import { log } from './log.js';
 
 type Haal = typeof fetch;
@@ -66,11 +72,20 @@ export function maakKeycloakBeheer(cfg: KeycloakConfig, haal: Haal = fetch): Key
 
   const heeftOtp = async (id: string) => ((await (await vraag(`/users/${id}/credentials`)).json()) as { type: string }[]).some((c) => c.type === 'otp');
 
-  /** De rol zoals Keycloak hem kent; ontbreekt hij (de rol is nog niet aangemaakt in de realm), dan is dat een duidelijke fout. */
+  /**
+   * De rol zoals Keycloak hem kent. Ontbreekt hij (de realm is ouder dan de rol), dan proberen we de rol aan te maken; lukt dat niet, bijvoorbeeld omdat het
+   * beheeraccount daar geen recht toe heeft, dan is dat een duidelijke fout met de handmatige stap.
+   */
   const rolVan = async (rol: GebruikersRol) => {
-    try { return await (await vraag(`/roles/${rol}`)).json(); } catch (e) {
-      if (e instanceof BeheerFout && e.status === 404) throw new BeheerFout(409, `De rol ${rol} bestaat nog niet in Keycloak`);
-      throw e;
+    const lees = async () => (await vraag(`/roles/${rol}`)).json();
+    try { return await lees(); } catch (e) {
+      if (!(e instanceof BeheerFout && e.status === 404)) throw e;
+    }
+    try {
+      await vraag('/roles', { method: 'POST', body: JSON.stringify({ name: rol, description: ROL_OMSCHRIJVING[rol] }) });
+      return await lees();
+    } catch {
+      throw new BeheerFout(409, `De rol ${rol} bestaat nog niet in Keycloak en kon niet worden aangemaakt. Maak de realmrol "${rol}" aan in Keycloak (Realm roles) en probeer het opnieuw.`);
     }
   };
   type KcGebruiker = { id: string; email?: string; firstName?: string; lastName?: string; enabled: boolean; createdTimestamp?: number };

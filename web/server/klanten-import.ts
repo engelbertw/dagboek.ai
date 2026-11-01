@@ -1,18 +1,18 @@
 /**
  * Gemeenten (klanten) met contactpersonen in één keer toevoegen uit een geplakte lijst (uit Excel: gescheiden door een tab; ook een puntkomma of
- * een verticale streep). De kopregel bepaalt welke kolom wat is: Gemeente, Samenwerkingsverband, Inwonersaantallen, Sales AM, Contactpersoon,
+ * een verticale streep). De kopregel bepaalt welke kolom wat is: Gemeente, Samenwerkingsverband, Inwonersaantallen, Contactpersoon,
  * Functie, Rol, Emailadres, Telefoonnummer en Looptijd contract. Zonder kopregel geldt: Gemeente ; Contactpersoon ; Functie ; Rol.
  * Een lege gemeente betekent dezelfde gemeente als de regel erboven; een regel met alleen een gemeente voegt alleen de gemeente toe.
  */
 import { normaliseer } from './vertrouwen.js';
 
 export interface ImportContact { naam: string; functie: string; rol: string; email: string; telefoon: string; status: 'nieuw' | 'bestaat_al'; }
-export interface KlantVelden { samenwerkingsverband: string; inwoners: number | null; salesAm: string; contractEinde: string | null }
+export interface KlantVelden { samenwerkingsverband: string; inwoners: number | null; contractEinde: string | null }
 export interface ImportGemeente { naam: string; status: 'nieuw' | 'bestaat_al'; klantId: string | null; velden: KlantVelden; contacten: ImportContact[]; }
 export interface KlantenImport { gemeenten: ImportGemeente[]; fouten: string[]; }
 export interface BestaandContact { id?: string; klantId: string; naam: string }
 
-type Veld = 'gemeente' | 'samenwerkingsverband' | 'inwoners' | 'salesAm' | 'naam' | 'functie' | 'rol' | 'email' | 'telefoon' | 'contractEinde';
+type Veld = 'gemeente' | 'samenwerkingsverband' | 'inwoners' | 'naam' | 'functie' | 'rol' | 'email' | 'telefoon' | 'contractEinde';
 const LEGACY: Veld[] = ['gemeente', 'naam', 'functie', 'rol'];
 
 /** Welke kolom is wat, op basis van de kopregel. Geeft null als de eerste regel geen kopregel is. */
@@ -22,7 +22,6 @@ function leesKop(kolommen: string[]): Veld[] | null {
     if (/^(gemeente|klant|organisatie)$/.test(t)) return 'gemeente';
     if (t.includes('samenwerking')) return 'samenwerkingsverband';
     if (t.includes('inwoner')) return 'inwoners';
-    if (t.includes('sales') || t === 'accountmanager' || t === 'am') return 'salesAm';
     if (t.includes('contactpersoon') || t === 'naam') return 'naam';
     if (t.includes('mail')) return 'email';
     if (t.includes('telefoon') || t.includes('mobiel')) return 'telefoon';
@@ -77,12 +76,11 @@ export function beoordeelKlantenLijst(
     let g = groepen.get(sleutel);
     if (!g) {
       const k = perNaam.get(sleutel);
-      g = { naam: gemeente, status: k ? 'bestaat_al' : 'nieuw', klantId: k?.id ?? null, velden: { samenwerkingsverband: '', inwoners: null, salesAm: '', contractEinde: null }, contacten: [] };
+      g = { naam: gemeente, status: k ? 'bestaat_al' : 'nieuw', klantId: k?.id ?? null, velden: { samenwerkingsverband: '', inwoners: null, contractEinde: null }, contacten: [] };
       groepen.set(sleutel, g);
     }
     // Gegevens van de gemeente: de eerste regel met een waarde wint.
     if (!g.velden.samenwerkingsverband) g.velden.samenwerkingsverband = w('samenwerkingsverband').slice(0, 200);
-    if (!g.velden.salesAm) g.velden.salesAm = w('salesAm').slice(0, 100);
     const inwoners = w('inwoners').replace(/\D/g, '');
     if (g.velden.inwoners === null && inwoners && Number(inwoners) <= 20_000_000) g.velden.inwoners = Number(inwoners);
     const einde = w('contractEinde');

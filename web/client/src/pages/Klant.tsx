@@ -1,32 +1,36 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, linkedInZoekUrl, type Activiteit, type TopicRegel, type KlantDetail, type KlantRegel, type KlantStatus, type Medewerker } from '../api';
+import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, linkedInZoekUrl, type Activiteit, type TopicRegel, type KlantDetail, type KlantRegel, type KlantStatus, type GebruikersRol, type Medewerker } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 import { ControleBanner, PuntToevoegen, Secties, useActies } from './ActiviteitenLijst';
 
-export function Klant() {
+export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
+  // Administratie past alleen inwoners aan en ziet het werkregister niet; de accountmanager past inwoners niet aan (de server dwingt dat af).
+  const administratie = rol === 'administratie';
+  const magInwoners = rol !== 'accountmanager';
+  const magAnder = !administratie;
   const { id } = useParams();
   const navigeer = useNavigate();
   const kaart = useLaden(() => api<KlantDetail>('GET', `/klanten/${id}`), [id]);
   const medewerkers = useLaden(() => api<Medewerker[]>('GET', '/employees'));
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
-  const onderwerpen = useLaden(() => api<TopicRegel[]>('GET', '/topics?status=alle'));
-  const punten = useLaden(() => api<Activiteit[]>('GET', `/activiteiten?klantId=${id}`), [id]);
+  const onderwerpen = useLaden(() => (administratie ? Promise.resolve([] as TopicRegel[]) : api<TopicRegel[]>('GET', '/topics?status=alle')));
+  const punten = useLaden(() => (administratie ? Promise.resolve([] as Activiteit[]) : api<Activiteit[]>('GET', `/activiteiten?klantId=${id}`)), [id]);
   const acties = useActies(() => { void punten.ververs(); void kaart.ververs(); }, punten.data ?? []);
-  const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '', samenwerkingsverband: '', inwoners: '', salesAm: '' });
+  const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '', samenwerkingsverband: '', inwoners: '' });
   const [samenvoegMet, setSamenvoegMet] = useState('');
   const [contact, setContact] = useState({ naam: '', functie: '', rol: '', email: '', telefoon: '' });
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const k = kaart.data?.klant;
   useEffect(() => {
-    if (k) setBewerk({ naam: k.naam, status: k.status, accountmanagerId: k.accountmanagerId ?? '', omschrijving: k.omschrijving, contractEinde: k.contractEinde ?? '', samenwerkingsverband: k.samenwerkingsverband, inwoners: k.inwoners === null ? '' : String(k.inwoners), salesAm: k.salesAm });
+    if (k) setBewerk({ naam: k.naam, status: k.status, accountmanagerId: k.accountmanagerId ?? '', omschrijving: k.omschrijving, contractEinde: k.contractEinde ?? '', samenwerkingsverband: k.samenwerkingsverband, inwoners: k.inwoners === null ? '' : String(k.inwoners) });
   }, [k]);
 
   const fout = (e: unknown) => setMelding({ tekst: foutTekst(e), soort: 'fout' });
   async function bewaar(e: FormEvent) {
     e.preventDefault();
     try {
-      await api('PATCH', `/klanten/${id}`, { naam: bewerk.naam, status: bewerk.status, accountmanagerId: bewerk.accountmanagerId || null, omschrijving: bewerk.omschrijving, contractEinde: bewerk.contractEinde || null, samenwerkingsverband: bewerk.samenwerkingsverband, inwoners: bewerk.inwoners.trim() ? Number(bewerk.inwoners) : null, salesAm: bewerk.salesAm });
+      await api('PATCH', `/klanten/${id}`, { naam: bewerk.naam, status: bewerk.status, accountmanagerId: bewerk.accountmanagerId || null, omschrijving: bewerk.omschrijving, contractEinde: bewerk.contractEinde || null, samenwerkingsverband: bewerk.samenwerkingsverband, inwoners: bewerk.inwoners.trim() ? Number(bewerk.inwoners) : null });
       setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); kaart.ververs();
     } catch (er) { fout(er); }
   }
@@ -55,7 +59,7 @@ export function Klant() {
 
   return (
     <div className="stapel">
-      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link> · <Link to={`/kwaliteit?klant=${k.id}`}>Kwaliteit</Link></div>
+      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> {!administratie && <> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link></>} · <Link to={`/kwaliteit?klant=${k.id}`}>Kwaliteit</Link></div>
       {k.status === 'voorgesteld' && (
         <section className="paneel stapel" aria-label="Klant bevestigen">
           <h2>Bevestig deze klant</h2>
@@ -75,7 +79,7 @@ export function Klant() {
       )}
       <Melding tekst={melding?.tekst ?? null} soort={melding?.soort} />
 
-      <section className="paneel stapel" aria-label="Werk">
+      {!administratie && <section className="paneel stapel" aria-label="Werk">
         <h2>Werk</h2>
         <Melding tekst={acties.fout ?? punten.fout} />
         {acties.jiraPaneel}
@@ -88,7 +92,7 @@ export function Klant() {
           </details>
         )}
         <PuntToevoegen acties={acties} medewerkers={medewerkers.data ?? []} vast={{ klantId: id }} />
-      </section>
+      </section>}
 
       {(onderwerpen.data ?? []).some((t) => t.klantId === id) && (
         <section className="paneel stapel" aria-label="Onderwerpen in het dagboek">
@@ -137,27 +141,26 @@ export function Klant() {
       <form className="paneel stapel" onSubmit={bewaar}>
         <h2>Klantgegevens</h2>
         <div className="raster">
-          <Veld label="Naam"><input value={bewerk.naam} onChange={(e) => setBewerk({ ...bewerk, naam: e.target.value })} required maxLength={200} /></Veld>
+          <Veld label="Naam"><input value={bewerk.naam} onChange={(e) => setBewerk({ ...bewerk, naam: e.target.value })} required maxLength={200} disabled={!magAnder} /></Veld>
           <Veld label="Status">
-            <select value={bewerk.status} onChange={(e) => setBewerk({ ...bewerk, status: e.target.value as KlantStatus })}>
+            <select value={bewerk.status} disabled={!magAnder} onChange={(e) => setBewerk({ ...bewerk, status: e.target.value as KlantStatus })}>
               {(Object.keys(KLANT_STATUS_LABEL) as KlantStatus[]).map((s) => <option key={s} value={s}>{KLANT_STATUS_LABEL[s]}</option>)}
             </select>
           </Veld>
           <Veld label="Accountmanager">
-            <select value={bewerk.accountmanagerId} onChange={(e) => setBewerk({ ...bewerk, accountmanagerId: e.target.value })}>
+            <select value={bewerk.accountmanagerId} disabled={!magAnder} onChange={(e) => setBewerk({ ...bewerk, accountmanagerId: e.target.value })}>
               <option value="">Geen</option>
               {medewerkers.data?.filter((m) => m.rol === 'accountmanager').map((m) => <option key={m.id} value={m.id}>{m.naam}</option>)}
             </select>
           </Veld>
-          <Veld label="Contract tot"><input type="date" value={bewerk.contractEinde} onChange={(e) => setBewerk({ ...bewerk, contractEinde: e.target.value })} /></Veld>
-          <Veld label="Samenwerkingsverband"><input value={bewerk.samenwerkingsverband} onChange={(e) => setBewerk({ ...bewerk, samenwerkingsverband: e.target.value })} maxLength={200} /></Veld>
-          <Veld label="Inwoners"><input type="number" min={0} value={bewerk.inwoners} onChange={(e) => setBewerk({ ...bewerk, inwoners: e.target.value })} /></Veld>
-          <Veld label="Sales AM"><input value={bewerk.salesAm} onChange={(e) => setBewerk({ ...bewerk, salesAm: e.target.value })} maxLength={100} /></Veld>
+          <Veld label="Contract tot"><input type="date" value={bewerk.contractEinde} disabled={!magAnder} onChange={(e) => setBewerk({ ...bewerk, contractEinde: e.target.value })} /></Veld>
+          <Veld label="Samenwerkingsverband"><input value={bewerk.samenwerkingsverband} onChange={(e) => setBewerk({ ...bewerk, samenwerkingsverband: e.target.value })} maxLength={200} disabled={!magAnder} /></Veld>
+          <Veld label="Inwoners"><input type="number" min={0} value={bewerk.inwoners} onChange={(e) => setBewerk({ ...bewerk, inwoners: e.target.value })} disabled={!magInwoners} title={magInwoners ? undefined : 'Alleen administratie of beheer past het aantal inwoners aan'} /></Veld>
         </div>
-        <Veld label="Omschrijving"><textarea value={bewerk.omschrijving} onChange={(e) => setBewerk({ ...bewerk, omschrijving: e.target.value })} maxLength={2000} /></Veld>
+        <Veld label="Omschrijving"><textarea value={bewerk.omschrijving} disabled={!magAnder} onChange={(e) => setBewerk({ ...bewerk, omschrijving: e.target.value })} maxLength={2000} /></Veld>
         <div className="rij">
           <button className="primair" type="submit">Opslaan</button>
-          <button type="button" className="gevaar" onClick={() => void wis()}>Klant wissen</button>
+          {rol === 'beheerder' && <button type="button" className="gevaar" onClick={() => void wis()}>Klant wissen</button>}
         </div>
       </form>
     </div>

@@ -3,11 +3,12 @@
  * (geen filter per klant of accountmanager); de agent leest hieruit nooit voor aan de telefoon.
  */
 import { and, asc, desc, eq, isNotNull, sql } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
 import { beoordeelKlantenLijst } from './klanten-import.js';
 import { normaliseer } from './vertrouwen.js';
+import { magAndereKlantveldenWijzigen, magInwonersWijzigen } from './rollen.js';
 import { lijktOpBestaandeKlant, zoekMogelijkeDubbelen } from './datakwaliteit.js';
 import { bewaarDebriefVragen, leesDebriefVragen, leesVorigeDebriefVragen } from './instellingen.js';
 import { bezoeken, employees, activiteiten, klantContacten, klanten, topics } from './schema.js';
@@ -19,14 +20,14 @@ const datum = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((d) => !Number.isNa
 const klantBody = z.object({
   naam: nonEmpty.max(200), status: z.enum(['prospect', 'klant', 'voorgesteld', 'inactief']),
   accountmanagerId: uuid.nullable(), omschrijving: z.string().max(2000), contractEinde: datum.nullable(),
-  samenwerkingsverband: z.string().trim().max(200), inwoners: z.number().int().min(0).max(20_000_000).nullable(), salesAm: z.string().trim().max(100),
+  samenwerkingsverband: z.string().trim().max(200), inwoners: z.number().int().min(0).max(20_000_000).nullable(),
 });
 const contactBody = z.object({
   naam: nonEmpty.max(100), functie: z.string().trim().max(100).default(''), rol: z.string().trim().max(100).default(''),
   email: z.string().trim().max(200).refine((e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e), 'Ongeldig e-mailadres').default(''), telefoon: z.string().trim().max(30).default(''),
 });
 
-export function registreerVerkoop(app: FastifyInstance, db: Db) {
+export function registreerVerkoop(app: FastifyInstance, db: Db, rolVan: (req: FastifyRequest) => string | undefined = () => undefined) {
   // ── Vragen van de debrief (bewerkbaar; de grenzen staan vast in de voice-service) ──
   app.get('/api/instellingen/debrief-vragen', async () => ({ ...(await leesDebriefVragen(db)), vorige: await leesVorigeDebriefVragen(db) }));
   app.put('/api/instellingen/debrief-vragen', async (req) => {
@@ -39,7 +40,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
   app.get('/api/klanten', async () => db.select({
     id: klanten.id, naam: klanten.naam, status: klanten.status, bron: klanten.bron, accountmanagerId: klanten.accountmanagerId, accountmanagerNaam: employees.naam,
     contractEinde: klanten.contractEinde, bijgewerktOp: klanten.bijgewerktOp,
-    samenwerkingsverband: klanten.samenwerkingsverband, inwoners: klanten.inwoners, salesAm: klanten.salesAm,
+    samenwerkingsverband: klanten.samenwerkingsverband, inwoners: klanten.inwoners,
     openActiviteiten: sql<number>`(select count(*)::int from ${activiteiten} where ${activiteiten.klantId} = ${klanten.id} and ${activiteiten.status} = 'open')`,
     laatsteBezoek: sql<string | null>`(select max(${bezoeken.datum})::text from ${bezoeken} where ${bezoeken.klantId} = ${klanten.id})`,
   }).from(klanten).leftJoin(employees, eq(klanten.accountmanagerId, employees.id)).orderBy(asc(klanten.naam)));
@@ -58,7 +59,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
           let klantId = g.klantId;
           const v = g.velden;
           if (!klantId) {
-            klantId = (await tx.insert(klanten).values({ naam: g.naam, status: b.status, bron: 'handmatig', samenwerkingsverband: v.samenwerkingsverband, inwoners: v.inwoners, salesAm: v.salesAm, contractEinde: v.contractEinde }).returning({ id: klanten.id }))[0].id;
+            klantId = (await tx.insert(klanten).values({ naam: g.naam, status: b.status, bron: 'handmatig', samenwerkingsverband: v.samenwerkingsverband, inwoners: v.inwoners, contractEinde: v.contractEinde }).returning({ id: klanten.id }))[0].id;
             gemeenten++;
           } else {
             // Een bestaande klant krijgt alleen aangevuld wat nog leeg is; ingevulde gegevens worden nooit overschreven.
@@ -66,7 +67,6 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
             const aanvulling = {
               ...(!k.samenwerkingsverband && v.samenwerkingsverband ? { samenwerkingsverband: v.samenwerkingsverband } : {}),
               ...(k.inwoners === null && v.inwoners !== null ? { inwoners: v.inwoners } : {}),
-              ...(!k.salesAm && v.salesAm ? { salesAm: v.salesAm } : {}),
               ...(!k.contractEinde && v.contractEinde ? { contractEinde: v.contractEinde } : {}),
             };
             if (Object.keys(aanvulling).length) { await tx.update(klanten).set({ ...aanvulling, bijgewerktOp: new Date() }).where(eq(klanten.id, klantId)); bijgewerkt++; }
@@ -88,15 +88,17 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
   });
 
   app.post('/api/klanten', async (req, reply) => {
-    const b = klantBody.partial({ status: true, accountmanagerId: true, omschrijving: true, contractEinde: true, samenwerkingsverband: true, inwoners: true, salesAm: true }).parse(req.body);
+    const b = klantBody.partial({ status: true, accountmanagerId: true, omschrijving: true, contractEinde: true, samenwerkingsverband: true, inwoners: true }).parse(req.body);
     // Een gemeente die lijkt op een bestaande klant wordt niet zonder bevestiging toegevoegd.
     if (z.object({ bevestig: z.boolean().optional() }).safeParse(req.body).data?.bevestig !== true) {
       const dubbel = lijktOpBestaandeKlant(b.naam, await db.select({ naam: klanten.naam }).from(klanten));
       if (dubbel.length) return reply.code(409).send({ fout: 'Mogelijk dubbel: deze gemeente lijkt op een bestaande klant', details: dubbel.map((d) => d.naam) });
     }
+    // Het aantal inwoners legt alleen beheer of administratie vast.
+    if (b.inwoners != null && !magInwonersWijzigen(rolVan(req))) return reply.code(403).send({ fout: 'Alleen administratie of beheer legt het aantal inwoners vast' });
     const [rij] = await db.insert(klanten).values({
       naam: b.naam, status: b.status ?? 'klant', accountmanagerId: b.accountmanagerId ?? null, omschrijving: b.omschrijving ?? '', contractEinde: b.contractEinde ?? null, bron: 'handmatig',
-      samenwerkingsverband: b.samenwerkingsverband ?? '', inwoners: b.inwoners ?? null, salesAm: b.salesAm ?? '',
+      samenwerkingsverband: b.samenwerkingsverband ?? '', inwoners: b.inwoners ?? null,
     }).returning();
     return reply.code(201).send(rij);
   });
@@ -120,9 +122,16 @@ export function registreerVerkoop(app: FastifyInstance, db: Db) {
     const id = uuid.parse((req.params as any).id);
     const b = klantBody.partial().parse(req.body);
     if (!Object.keys(b).length) return reply.code(400).send({ fout: 'Niets te wijzigen' });
+    const [huidig] = await db.select().from(klanten).where(eq(klanten.id, id));
+    if (!huidig) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    // De client stuurt alle velden mee: alleen een echte wijziging telt. Inwoners alleen door beheer of administratie; administratie wijzigt niets anders.
+    const rol = rolVan(req);
+    const gewijzigd = (Object.keys(b) as (keyof typeof b)[]).filter((k) => b[k] !== huidig[k]);
+    if (gewijzigd.includes('inwoners') && !magInwonersWijzigen(rol)) return reply.code(403).send({ fout: 'Alleen administratie of beheer past het aantal inwoners aan' });
+    if (!magAndereKlantveldenWijzigen(rol) && gewijzigd.some((k) => k !== 'inwoners')) return reply.code(403).send({ fout: 'Administratie past alleen het aantal inwoners aan' });
     // Een beheerder die iets wijzigt wordt de bron van die klantgegevens.
     const [rij] = await db.update(klanten).set({ ...b, bron: 'handmatig', bijgewerktOp: new Date() }).where(eq(klanten.id, id)).returning();
-    return rij ?? reply.code(404).send({ fout: 'Klant niet gevonden' });
+    return rij;
   });
 
   // Een klant die uit een gesprek is voorgesteld: goedkeuren, of samenvoegen met een bestaande klant om dubbelen te voorkomen.
