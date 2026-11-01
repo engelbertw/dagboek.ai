@@ -154,7 +154,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   const publiekeUrl = (req: any) => config.publiekeUrl || `${String(req.headers['x-forwarded-proto'] ?? req.protocol).split(',')[0]}://${req.headers['x-forwarded-host'] ?? req.headers.host}`;
   const terugNaarInlog = (reply: any, fout: string) => reply.redirect(`/?inlogfout=${fout}`);
 
-  // Noodingang met het vaste beheerdersaccount. Met Keycloak staat die standaard uit (NOODLOGIN=aan zet hem aan).
+  // Login met het vaste beheerdersaccount, alleen zonder Keycloak (lokale ontwikkeling). Met Keycloak is er geen wachtwoordlogin.
   app.post('/api/login', async (req, reply) => {
     if (!noodloginAan(config)) return reply.code(404).send({ fout: 'Inloggen met wachtwoord staat uit; gebruik Keycloak' });
     const { email, wachtwoord } = z.object({ email: z.string(), wachtwoord: z.string() }).parse(req.body);

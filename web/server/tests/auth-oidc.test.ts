@@ -2,7 +2,7 @@ import { SignJWT, exportJWK, generateKeyPair } from 'jose';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../app.js';
 import { hashWachtwoord } from '../auth.js';
-import { ontbrekendeInstellingen, type Config, type KeycloakConfig } from '../config.js';
+import { loadConfig, ontbrekendeInstellingen, type Config, type KeycloakConfig } from '../config.js';
 import { connectMemory, migrate } from '../db.js';
 import { maakOidc, type Oidc } from '../oidc.js';
 
@@ -175,11 +175,12 @@ describe('inloggen via Keycloak (routes)', () => {
     expect(namen(cb).dagboek_sessie).toBeUndefined();
   });
 
-  it('zet de noodlogin uit met Keycloak, en aan met NOODLOGIN=aan', async () => {
+  it('kent met Keycloak geen wachtwoordlogin, ook niet met NOODLOGIN=aan in de omgeving', async () => {
     const uit = await appMet(nepOidc('ok'), { keycloak: KC, noodlogin: false });
     expect((await uit.inject({ method: 'POST', url: '/api/login', payload: { email: 'beheer@test.nl', wachtwoord: 'een-lang-testwachtwoord' } })).statusCode).toBe(404);
-    const aan = await appMet(nepOidc('ok'), { keycloak: KC, noodlogin: true });
-    expect((await aan.inject({ method: 'POST', url: '/api/login', payload: { email: 'beheer@test.nl', wachtwoord: 'een-lang-testwachtwoord' } })).statusCode).toBe(200);
+    const env = { DATABASE_URL: 'x', SESSION_SECRET: 'x', SERVICE_KEY: 'x', KEYCLOAK_ISSUER: 'https://kc.test/realms/dagboek', KEYCLOAK_CLIENT_ID: 'c', KEYCLOAK_CLIENT_SECRET: 's', NOODLOGIN: 'aan' };
+    expect(loadConfig(env).noodlogin).toBe(false);
+    expect(loadConfig({ ...env, KEYCLOAK_ISSUER: '' }).noodlogin).toBe(true);
   });
 
   it('geeft bij uitloggen de Keycloak-uitlog-URL terug', async () => {

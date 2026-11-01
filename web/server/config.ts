@@ -34,7 +34,7 @@ export interface Config {
   mcpKey: string;
   /** Aanwezig = inloggen via Keycloak. */
   keycloak?: KeycloakConfig;
-  /** De oude login met ADMIN_EMAIL en wachtwoord. Standaard aan zolang er geen Keycloak is; met Keycloak alleen als NOODLOGIN=aan. */
+  /** De oude login met ADMIN_EMAIL en wachtwoord. Alleen aan zolang er geen Keycloak is (lokale ontwikkeling); met Keycloak bestaat er geen wachtwoordlogin meer. */
   noodlogin?: boolean;
 }
 
@@ -66,7 +66,7 @@ export function loadConfig(env = process.env): Config {
     publiekeUrl: (env.PUBLIC_URL ?? '').replace(/\/$/, ''),
     mcpKey: env.MCP_KEY ?? '',
     keycloak,
-    noodlogin: !keycloak || env.NOODLOGIN === 'aan',
+    noodlogin: !keycloak,
   };
 }
 
