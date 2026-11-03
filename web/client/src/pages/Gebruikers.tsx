@@ -95,12 +95,13 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
     try { await taak(); setFout(null); setOk(melding ?? null); lijst.ververs(); } catch (e) { setOk(null); setFout(foutTekst(e)); }
   }
 
+  const [toeOpen, setToeOpen] = useState(false);
   async function voegToe(e: FormEvent) {
     e.preventDefault();
     try {
       const r = await api<{ tijdelijkWachtwoord: string }>('POST', '/gebruikers', { naam, email, rol });
       setWachtwoord({ voor: email, waarde: r.tijdelijkWachtwoord });
-      setNaam(''); setEmail(''); setFout(null); setOk(null); lijst.ververs();
+      setNaam(''); setEmail(''); setFout(null); setOk(null); setToeOpen(false); lijst.ververs();
     } catch (err) { setFout(foutTekst(err)); }
   }
 
@@ -174,7 +175,8 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
 
       <UitMedewerkers klaar={lijst.ververs} />
 
-      <form className="paneel stapel" onSubmit={voegToe}>
+      {!toeOpen && <div><button type="button" className="primair" onClick={() => setToeOpen(true)}>Gebruiker toevoegen</button></div>}
+      {toeOpen && <form className="paneel stapel" onSubmit={voegToe}>
         <h2>Gebruiker toevoegen</h2>
         <div className="raster">
           <Veld label="Naam"><input value={naam} onChange={(e) => setNaam(e.target.value)} autoComplete="off" required maxLength={150} /></Veld>
@@ -185,8 +187,8 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
             </select>
           </Veld>
         </div>
-        <div><button className="primair" type="submit">Toevoegen</button></div>
-      </form>
+        <div className="rij"><button className="primair" type="submit">Toevoegen</button><button type="button" onClick={() => setToeOpen(false)}>Annuleren</button></div>
+      </form>}
     </div>
   );
 }

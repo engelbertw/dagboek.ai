@@ -33,18 +33,21 @@ function ProjectKaart({ p, ververs }: { p: Project; ververs: () => void }) {
 export function Projecten() {
   const lijst = useLaden(() => api<Project[]>('GET', '/projects'));
   const [naam, setNaam] = useState('');
+  const [toeOpen, setToeOpen] = useState(false);
   const [fout, setFout] = useState<string | null>(null);
   async function maakAan(e: FormEvent) {
     e.preventDefault();
-    try { await api('POST', '/projects', { naam }); setNaam(''); setFout(null); lijst.ververs(); } catch (err) { setFout(foutTekst(err)); }
+    try { await api('POST', '/projects', { naam }); setNaam(''); setFout(null); setToeOpen(false); lijst.ververs(); } catch (err) { setFout(foutTekst(err)); }
   }
   return (
     <div className="stapel">
       <div><h1>Projecten</h1><p className="zacht">Groepeer onderwerpen, bijvoorbeeld MijnServices of Common Ground.</p></div>
-      <form className="rij" onSubmit={maakAan}>
+      {!toeOpen && <div><button type="button" className="primair" onClick={() => setToeOpen(true)}>+ Project toevoegen</button></div>}
+      {toeOpen && <form className="rij" onSubmit={maakAan}>
         <input style={{ flex: 1 }} value={naam} onChange={(e) => setNaam(e.target.value)} placeholder="Naam van het nieuwe project" aria-label="Naam van het nieuwe project" required />
         <button className="primair" type="submit">Toevoegen</button>
-      </form>
+        <button type="button" onClick={() => setToeOpen(false)}>Annuleren</button>
+      </form>}
       <Melding tekst={fout ?? lijst.fout} />
       {lijst.data?.length === 0 && <Leeg>Nog geen projecten.</Leeg>}
       {lijst.data?.map((p) => <ProjectKaart key={p.id} p={p} ververs={lijst.ververs} />)}

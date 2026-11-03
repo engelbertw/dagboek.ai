@@ -73,6 +73,7 @@ export function Onderwerp() {
   const alleTopics = useLaden(() => api<TopicRegel[]>('GET', '/topics?status=alle'));
   const [waarden, setWaarden] = useState<TopicWaarden | null>(null);
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [nieuweUpdate, setNieuweUpdate] = useState('');
   const [besluiten, setBesluiten] = useState('');
 
@@ -90,7 +91,7 @@ export function Onderwerp() {
   }
   async function voegUpdateToe(e: FormEvent) {
     e.preventDefault();
-    try { await api('POST', `/topics/${id}/updates`, { samenvatting: nieuweUpdate, besluiten }); setNieuweUpdate(''); setBesluiten(''); topic.ververs(); } catch (err) { setMelding({ tekst: foutTekst(err), soort: 'fout' }); }
+    try { await api('POST', `/topics/${id}/updates`, { samenvatting: nieuweUpdate, besluiten }); setNieuweUpdate(''); setBesluiten(''); setUpdateOpen(false); topic.ververs(); } catch (err) { setMelding({ tekst: foutTekst(err), soort: 'fout' }); }
   }
   async function verwijder() {
     if (!confirm(`‘${topic.data!.titel}’ en alle updates verwijderen? Dit kan niet ongedaan worden.`)) return;
@@ -108,11 +109,12 @@ export function Onderwerp() {
         {topic.data.updates.length === 0 ? <Leeg>Nog geen updates. Na het eerste gesprek verschijnt hier de samenvatting.</Leeg> : (
           <ul className="tijdlijn">{topic.data.updates.map((u) => <UpdateRegel key={u.id} u={u} ververs={topic.ververs} />)}</ul>
         )}
-        <form className="stapel" onSubmit={voegUpdateToe}>
+        {!updateOpen && <div><button type="button" onClick={() => setUpdateOpen(true)}>+ Update toevoegen</button></div>}
+        {updateOpen && <form className="stapel" onSubmit={voegUpdateToe}>
           <Veld label="Nieuwe update (handmatig)"><textarea value={nieuweUpdate} onChange={(e) => setNieuweUpdate(e.target.value)} required /></Veld>
           <Veld label="Besluiten (optioneel)"><input value={besluiten} onChange={(e) => setBesluiten(e.target.value)} /></Veld>
-          <button type="submit" className="primair">Update toevoegen</button>
-        </form>
+          <div className="rij"><button type="submit" className="primair">Update toevoegen</button><button type="button" onClick={() => setUpdateOpen(false)}>Annuleren</button></div>
+        </form>}
 
       </section>
 

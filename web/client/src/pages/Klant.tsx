@@ -21,6 +21,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
   const [bewerk, setBewerk] = useState({ naam: '', status: 'klant' as KlantStatus, accountmanagerId: '', omschrijving: '', contractEinde: '', samenwerkingsverband: '', inwoners: '' });
   const [samenvoegMet, setSamenvoegMet] = useState('');
   const [contact, setContact] = useState({ naam: '', functie: '', rol: '', email: '', telefoon: '' });
+  const [contactOpen, setContactOpen] = useState(false);
   const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
   const k = kaart.data?.klant;
   useEffect(() => {
@@ -53,7 +54,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
   }
   async function voegContactToe(e: FormEvent) {
     e.preventDefault();
-    try { if (await apiToevoegenZonderDubbel(`/klanten/${id}/contacten`, contact)) { setContact({ naam: '', functie: '', rol: '', email: '', telefoon: '' }); kaart.ververs(); } } catch (er) { fout(er); }
+    try { if (await apiToevoegenZonderDubbel(`/klanten/${id}/contacten`, contact)) { setContact({ naam: '', functie: '', rol: '', email: '', telefoon: '' }); setContactOpen(false); kaart.ververs(); } } catch (er) { fout(er); }
   }
   async function wisContact(cid: string) {
     try { await api('DELETE', `/klant-contacten/${cid}`); kaart.ververs(); } catch (er) { fout(er); }
@@ -135,13 +136,15 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
             {!consultant && <button type="button" onClick={() => void wisContact(c.id)}>Verwijderen</button>}
           </div>
         ))}
-        {!consultant && <form className="rij" onSubmit={voegContactToe}>
+        {!consultant && !contactOpen && <div><button type="button" onClick={() => setContactOpen(true)}>+ Contactpersoon toevoegen</button></div>}
+        {!consultant && contactOpen && <form className="rij" onSubmit={voegContactToe}>
           <input value={contact.naam} onChange={(e) => setContact({ ...contact, naam: e.target.value })} placeholder="Naam" required maxLength={100} aria-label="Naam contactpersoon" />
           <input value={contact.functie} onChange={(e) => setContact({ ...contact, functie: e.target.value })} placeholder="Functie" maxLength={100} aria-label="Functie" />
           <input value={contact.rol} onChange={(e) => setContact({ ...contact, rol: e.target.value })} placeholder="Rol (bijv. beslisser)" maxLength={100} aria-label="Rol" />
           <input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="E-mailadres" maxLength={200} aria-label="E-mailadres" />
           <input value={contact.telefoon} onChange={(e) => setContact({ ...contact, telefoon: e.target.value })} placeholder="Telefoon" maxLength={30} aria-label="Telefoon" />
-          <button type="submit">Toevoegen</button>
+          <button type="submit" className="primair">Toevoegen</button>
+          <button type="button" onClick={() => setContactOpen(false)}>Annuleren</button>
         </form>}
       </section>
 

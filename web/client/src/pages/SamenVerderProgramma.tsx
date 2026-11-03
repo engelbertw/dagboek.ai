@@ -47,6 +47,7 @@ function SessieFormulier({ waarden, zet, klant, medewerkers, opslaan, annuleer, 
 function Sessie({ s, alleenLezen, klant, medewerkers, ververs, fout }: { s: SamenverderSessie; alleenLezen: boolean; klant: KlantDetail | null; medewerkers: Medewerker[]; ververs: () => void; fout: (e: unknown) => void }) {
   const [bewerk, setBewerk] = useState<SessieWaarden | null>(null);
   const [nieuwOnderwerp, setNieuwOnderwerp] = useState('');
+  const [onderwerpOpen, setOnderwerpOpen] = useState(false);
   const doe = async (f: () => Promise<unknown>) => { try { await f(); ververs(); } catch (e) { fout(e); } };
   const actief = s.status === 'gepland';
   const punten = new Map<string, SamenverderSessie['activiteiten']>();
@@ -81,9 +82,10 @@ function Sessie({ s, alleenLezen, klant, medewerkers, ververs, fout }: { s: Same
           opslaan={(e) => { e.preventDefault(); void doe(async () => { await api('PATCH', `/samenverder/sessies/${s.id}`, naarBody(bewerk)); setBewerk(null); }); }} />
       ) : (
         <>
-          {s.status !== 'verplaatst' && (
-            <form className="rij" onSubmit={(e) => { e.preventDefault(); void doe(() => api('POST', `/samenverder/sessies/${s.id}/onderwerpen`, { titel: nieuwOnderwerp }).then(() => setNieuwOnderwerp(''))); }}>
-              <input value={nieuwOnderwerp} onChange={(e) => setNieuwOnderwerp(e.target.value)} placeholder="Onderwerp toevoegen" aria-label="Onderwerp toevoegen" maxLength={300} /><button type="submit" disabled={!nieuwOnderwerp.trim()}>Toevoegen</button>
+          {s.status !== 'verplaatst' && !onderwerpOpen && <div><button type="button" onClick={() => setOnderwerpOpen(true)}>+ Onderwerp toevoegen</button></div>}
+          {s.status !== 'verplaatst' && onderwerpOpen && (
+            <form className="rij" onSubmit={(e) => { e.preventDefault(); void doe(() => api('POST', `/samenverder/sessies/${s.id}/onderwerpen`, { titel: nieuwOnderwerp }).then(() => { setNieuwOnderwerp(''); setOnderwerpOpen(false); })); }}>
+              <input value={nieuwOnderwerp} onChange={(e) => setNieuwOnderwerp(e.target.value)} placeholder="Onderwerp toevoegen" aria-label="Onderwerp toevoegen" maxLength={300} /><button type="submit" disabled={!nieuwOnderwerp.trim()}>Toevoegen</button><button type="button" onClick={() => setOnderwerpOpen(false)}>Annuleren</button>
             </form>
           )}
           <div className="rij">
