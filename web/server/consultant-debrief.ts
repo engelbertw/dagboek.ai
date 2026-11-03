@@ -118,10 +118,10 @@ Antwoord uitsluitend met één JSON-object: {"route":"verkoop|consultancy","bron
 - "citaat": de letterlijke woorden van de beller waaruit de keuze blijkt. Is de keuze niet duidelijk, laat "route" dan leeg: raad nooit.`;
 
 /** Welke route koos de beller? Alleen met een citaat dat de keuze bewijst; anders null. */
-export async function bepaalRouteUitGesprek(llm: LlmClient, transcript: Bericht[], voorstel: Voorstel | null): Promise<{ route: Route | null; bron: string; citaat: string }> {
+export async function bepaalRouteUitGesprek(llm: LlmClient, transcript: Bericht[], voorstel: Voorstel | null, callId?: string): Promise<{ route: Route | null; bron: string; citaat: string }> {
   const bericht = `<transcript>\n${transcript.map((m) => `${m.role === 'assistant' ? 'Assistent' : 'Beller'}: ${schoonVoorPrompt(m.content, 2000)}`).join('\n').slice(-MAX_TRANSCRIPT_TEKENS)}\n</transcript>`;
   let gelezen: z.infer<typeof routeSchema>;
-  try { gelezen = routeSchema.parse(jsonUit(await llm(SYSTEEM_PROMPT_ROUTE, bericht))); } catch { return { route: null, bron: 'onbekend', citaat: '' }; }
+  try { gelezen = routeSchema.parse(jsonUit(await llm(SYSTEEM_PROMPT_ROUTE, bericht, { functie: 'routebepaling', referentie: callId }))); } catch { return { route: null, bron: 'onbekend', citaat: '' }; }
   const keuze = verifieerKeuze({ waarde: gelezen.route, bron: gelezen.bron, citaat: gelezen.citaat }, ROUTE_TREFWOORDEN as unknown as Record<string, readonly string[]>, transcript, voorstel);
   return { route: keuze.waarde as Route | null, bron: keuze.bron, citaat: keuze.citaat };
 }
@@ -145,7 +145,7 @@ export async function verwerkRouteKeuze(deps: { db: Db; llm: LlmClient }, callId
     await logGebeurtenis(db, callId, 'web', 'samenvatting:geen_inhoud');
     return { status: 'geen_inhoud' };
   }
-  const gevonden = await bepaalRouteUitGesprek(llm, transcript, voorstelUit(call.context, 'route'));
+  const gevonden = await bepaalRouteUitGesprek(llm, transcript, voorstelUit(call.context, 'route'), callId);
   if (!gevonden.route) {
     await db.update(calls).set({ samenvattingStatus: 'onduidelijk', routeBron: 'onbekend' }).where(and(eq(calls.id, callId), eq(calls.type, 'debrief_keuze')));
     await logGebeurtenis(db, callId, 'web', 'samenvatting:route_onzeker');
@@ -212,7 +212,7 @@ export async function verwerkConsultantDebrief({ db, llm }: { db: Db; llm: LlmCl
       ruw = await llm(SYSTEEM_PROMPT_CONSULTANT(toestemmingNodig, varianten.map((v) => ({ id: v.id, naam: v.naam, aanvulling: v.promptAanvulling }))) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''),
         bouwConsultantBericht(medewerker.naam, bekendeKlanten.map((k) => k.naam), transcript, {
           vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint, onderwerpen: bekendeOnderwerpen.map((o) => ({ klant: o.klant ?? '', titel: o.titel })), openPunten: openRijen.map((r, i) => ({ nr: i + 1, klant: r.klant, soort: r.soort, omschrijving: r.omschrijving })),
-        }));
+        }), { functie: 'consultantdebrief', referentie: callId });
     } catch (e) {
       throw new Error(`Taalmodel niet bereikbaar: ${(e as Error).message}`);
     }

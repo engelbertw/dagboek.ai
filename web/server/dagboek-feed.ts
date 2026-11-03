@@ -132,7 +132,7 @@ export async function digestStand(db: Db, dagen = DIGEST_DAGEN, nu = new Date())
 export async function maakDigest(db: Db, llm: LlmClient, dagen = DIGEST_DAGEN, nu = new Date()): Promise<DigestStand> {
   const items = await leesFeedItems(db, { dagen, limit: MAX_ITEMS_DIGEST }, nu);
   if (!items.length) return { tekst: null, gemaaktOp: null, aantalItems: 0, dagen, verouderd: false };
-  const ruw = await llm(DIGEST_PROMPT, bouwDigestBericht(items, nu.toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' })));
+  const ruw = await llm(DIGEST_PROMPT, bouwDigestBericht(items, nu.toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' })), { functie: 'weekoverzicht' });
   const tekst = ruw.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/[<>]/g, '').trim().slice(0, 4000);
   if (!tekst) throw new Error('Lege samenvatting');
   const [rij] = await db.insert(dagboekDigests).values({ dagen, tekst, aantalItems: items.length, laatsteItem: new Date(items[0].datum), gemaaktOp: nu }).returning();

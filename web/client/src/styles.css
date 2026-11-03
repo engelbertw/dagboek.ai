@@ -179,3 +179,7 @@ button.werk-soort[aria-pressed="true"] { border-color: currentColor; box-shadow:
 @media (max-width: 600px) { .gebruiker-meta .zacht:not([aria-hidden]) { display: none; } }
 
 .eenheid { padding: .85rem 1.1rem; background: var(--paneel); border: 1px solid var(--rand); border-radius: var(--radius); } .eenheid.uit { opacity: .65; }
+
+.ai-verwerking { background: var(--paneel); border: 1px solid var(--rand); border-radius: var(--radius); padding: .85rem 1.1rem; }
+.ai-verwerking > summary { display: flex; justify-content: space-between; align-items: center; gap: 1rem; cursor: pointer; list-style: none; } .ai-verwerking > summary::-webkit-details-marker { display: none; }
+.ai-verwerking[open] > summary { margin-bottom: .8rem; } .ai-verwerking:hover { border-color: var(--paars); }

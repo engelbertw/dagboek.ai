@@ -25,6 +25,7 @@ import { Projecten } from './pages/Projecten';
 import { Werk } from './pages/Werk';
 import { GebruikerDetail, Gebruikers } from './pages/Gebruikers';
 import { Businessunits } from './pages/Businessunits';
+import { AiRegister } from './pages/AiRegister';
 
 interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: GebruikersRol; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean; accountUrl?: string }
 
@@ -70,7 +71,7 @@ const MENU: MenuGroep[] = [
   { titel: 'Overzicht', items: [{ naar: '/dagboek', label: 'Dagboek' }, { naar: '/onderwerpen', label: 'Onderwerpen', ook: '/onderwerp/', alleenBeheerder: true }, { naar: '/dashboard', label: 'Dashboard', alleenBeheerder: true }] },
   { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/consultancy', label: 'Consultancy' }, { naar: '/samenverder', label: 'SamenVerder' }, { naar: '/kwaliteit', label: 'Kwaliteit' }] },
   { titel: 'Gesprekken', alleenBeheerder: true, items: [{ naar: '/gesprekken', label: 'Gesprekken' }, { naar: '/planning', label: 'Planning' }, { naar: '/suggesties', label: 'Suggesties' }] },
-  { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/businessunits', label: 'Businessunits' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/woordenlijst', label: 'Woordenlijst' }, { naar: '/instellingen', label: 'Instellingen' }] },
+  { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/businessunits', label: 'Businessunits' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/woordenlijst', label: 'Woordenlijst' }, { naar: '/ai-register', label: 'AI-register' }, { naar: '/instellingen', label: 'Instellingen' }] },
 ];
 
 /** Administratie beheert alleen de stamgegevens van klanten: geen werkregister, gesprekken of instellingen. */
@@ -132,6 +133,7 @@ export function App() {
               {me.gebruikersbeheer && <Route path="/gebruikers/:id" element={<GebruikerDetail ikEmail={me.email ?? ''} />} />}
               <Route path="/projecten" element={<Projecten />} />
               <Route path="/businessunits" element={<Businessunits />} />
+              <Route path="/ai-register" element={<AiRegister />} />
               <Route path="/gesprekken" element={<Gesprekken />} />
               <Route path="/spraakmotoren" element={<Spraakmotoren />} />
               <Route path="*" element={<Navigate to="/dagboek" replace />} />

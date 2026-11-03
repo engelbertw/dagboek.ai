@@ -7,6 +7,7 @@ import { maakJiraClient } from './jira.js';
 import { maakOidc } from './oidc.js';
 import { maakKeycloakBeheer } from './gebruikers.js';
 import { maakLlmClient } from './llm.js';
+import { schrijfActiviteit } from './ai-register.js';
 import { startScheduler } from './scheduler.js';
 import { voerOpschoningUit } from './opschoning.js';
 import { herstelVastgelopen } from './samenvatten.js';
@@ -30,7 +31,7 @@ if (nieuw.length) log('info', 'start.migraties', { toegepast: nieuw.join(',') })
 
 const hier = dirname(fileURLToPath(import.meta.url));
 const voice = maakVoiceClient(config);
-const llm = maakLlmClient(config);
+const llm = maakLlmClient(config, (g) => schrijfActiviteit(handle.db, g));
 const herstelVoice = maakVoiceHerstel(config);
 const app = buildApp({ db: handle.db, config, voice, llm, jira: maakJiraClient(config), herstel: herstelVoice,
   oidc: config.keycloak ? maakOidc(config.keycloak) : undefined,

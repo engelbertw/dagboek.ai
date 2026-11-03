@@ -1,3 +1,4 @@
+import { ruimAiActiviteitenOp } from './ai-register.js';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { logGebeurtenis } from './call-log.js';
 import type { Db } from './db.js';
@@ -28,6 +29,7 @@ export async function ruimTranscriptenOp(db: Db, dagen: number, nu = new Date())
 export async function voerOpschoningUit(db: Db, dagen: number, nu = new Date()): Promise<{ status: 'ok' | 'mislukt'; gewist: number }> {
   try {
     const gewist = await ruimTranscriptenOp(db, dagen, nu);
+    await ruimAiActiviteitenOp(db, undefined, nu); // het AI-register bewaart alleen metadata, maar niet onbeperkt
     await db.insert(opschoningRuns).values({ bron: 'web', gestartOp: nu, klaarOp: new Date(), status: 'ok', gewist });
     if (gewist) log('info', 'opschoning.gewist', { gewist, dagen });
     return { status: 'ok', gewist };

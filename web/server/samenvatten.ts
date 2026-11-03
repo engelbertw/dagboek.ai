@@ -226,7 +226,7 @@ export async function samenvattenGesprek({ db, llm }: { db: Db; llm: LlmClient }
     const vandaag = vandaagNL();
     let ruw: string;
     try {
-      ruw = await llm(SYSTEEM_PROMPT(toestemmingNodig) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''), bouwGebruikersBericht(medewerker.naam, call.onderwerpen, transcript, { vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint }));
+      ruw = await llm(SYSTEEM_PROMPT(toestemmingNodig) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''), bouwGebruikersBericht(medewerker.naam, call.onderwerpen, transcript, { vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint }), { functie: 'dagboekverslag', referentie: callId });
     } catch (e) {
       throw new Error(`Taalmodel niet bereikbaar: ${(e as Error).message}`);
     }

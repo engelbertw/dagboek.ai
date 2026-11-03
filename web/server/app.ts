@@ -38,6 +38,7 @@ import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
 import { registreerOpvolging } from './opvolging.js';
 import { registreerDagboekFeed } from './dagboek-feed.js';
+import { registreerAiRegister } from './ai-register.js';
 import { registreerBusinessunits, synchroniseerNaarProfiel, unitBestaat } from './businessunits.js';
 import { registreerConsultancy } from './consultancy.js';
 import { registreerConsultantRoutes } from './consultant-routes.js';
@@ -605,6 +606,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerConsultancy(app, db);
   registreerOpvolging(app, db, (req) => leesSessie(req.cookies[COOKIE], config.sessionSecret));
   registreerBusinessunits(app, db);
+  registreerAiRegister(app, db, config);
   registreerDagboekFeed(app, { db, llm, achtergrond, sessie: (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret), basisUrl: publiekeUrl });
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.

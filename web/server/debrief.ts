@@ -187,7 +187,7 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
       ruw = await llm(SYSTEEM_PROMPT_DEBRIEF(toestemmingNodig) + (hint ? `\n\n${WOORDENLIJST_REGEL}` : ''), bouwDebriefBericht(medewerker.naam, bekendeKlanten.map((k) => k.naam), transcript, {
         vandaag, collegas: collegas.map((c) => c.naam), woordenlijst: hint,
         openPunten: openRijen.map((r, i) => ({ nr: i + 1, klant: r.klant, soort: r.soort, omschrijving: r.omschrijving })),
-      }));
+      }), { functie: 'verkoopdebrief', referentie: callId });
     } catch (e) {
       throw new Error(`Taalmodel niet bereikbaar: ${(e as Error).message}`);
     }

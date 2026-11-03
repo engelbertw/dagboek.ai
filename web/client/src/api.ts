@@ -180,3 +180,11 @@ export interface DigestStand { tekst: string | null; gemaaktOp: string | null; a
 export interface FeedToken { id: string; label: string; createdAt: string; laatstGebruikt: string | null }
 
 export interface BusinessUnit { id: string; naam: string; afkorting: string; volgorde: number; actief: boolean }
+
+export interface AiVerwerking {
+  sleutel: string; naam: string; stap: string; doel: string; leverancier: string; model: string; invoer: string; nietIn: string; uitvoer: string;
+  menselijkeControle: string; bewaartermijn: string; bron: string; gelogd: boolean;
+  laatste30Dagen: { aanroepen: number; tokensIn: number; tokensUit: number; fouten: number; laatst: string | null } | { gesprekken: number };
+}
+export interface AiRegisterStand { verwerkingen: AiVerwerking[]; totaal: { aanroepen: number; tokens: number; fouten: number }; bewaarDagen: number }
+export interface AiActiviteit { id: string; tijdstip: string; functie: string; model: string; tokensIn: number; tokensUit: number; duurMs: number; uitkomst: 'ok' | 'fout'; foutCode: string | null; referentie: string | null }

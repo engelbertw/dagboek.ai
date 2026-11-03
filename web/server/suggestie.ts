@@ -50,7 +50,7 @@ export function schoonSuggestie(ruw: string, max: number): string {
 
 export async function stelInstructieVoor(llm: LlmClient, onderwerpen: OnderwerpVoorSuggestie[], doel: 'planning' | 'onderwerp'): Promise<string> {
   if (!onderwerpen.length) throw new Error('Geen onderwerpen om een suggestie voor te maken');
-  const tekst = schoonSuggestie(await llm(doel === 'planning' ? PROMPT_PLANNING : PROMPT_ONDERWERP, bouwSuggestieBericht(onderwerpen)), doel === 'planning' ? 1200 : 500);
+  const tekst = schoonSuggestie(await llm(doel === 'planning' ? PROMPT_PLANNING : PROMPT_ONDERWERP, bouwSuggestieBericht(onderwerpen), { functie: 'instructiesuggestie' }), doel === 'planning' ? 1200 : 500);
   if (!tekst) throw new Error('Taalmodel gaf een leeg antwoord');
   return tekst;
 }

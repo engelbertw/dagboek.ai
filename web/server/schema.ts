@@ -473,3 +473,17 @@ export const gebruikersprofielen = pgTable('gebruikersprofielen', {
   businessUnitId: uuid('business_unit_id').references(() => businessUnits.id, { onDelete: 'set null' }),
   bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Logboek van aanroepen van het taalmodel (AI-register). Alleen metadata, geen gespreksinhoud. */
+export const aiActiviteiten = pgTable('ai_activiteiten', {
+  id: id(),
+  tijdstip: timestamp('tijdstip', { withTimezone: true }).notNull().defaultNow(),
+  functie: text('functie').notNull(),
+  model: text('model').notNull().default(''),
+  tokensIn: integer('tokens_in').notNull().default(0),
+  tokensUit: integer('tokens_uit').notNull().default(0),
+  duurMs: integer('duur_ms').notNull().default(0),
+  uitkomst: text('uitkomst', { enum: ['ok', 'fout'] }).notNull(),
+  foutCode: text('fout_code'),
+  referentie: text('referentie'),
+}, (t) => [index('ai_activiteiten_tijdstip').on(t.tijdstip), index('ai_activiteiten_functie').on(t.functie, t.tijdstip)]);

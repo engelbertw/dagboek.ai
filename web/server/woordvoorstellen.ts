@@ -100,13 +100,13 @@ export function leesModelVoorstellen(antwoord: string, beurten: Beurt[], lijst: 
 }
 
 /** Eén kleine aanroep met alleen wat de beller zei. Mislukken is stil: dan blijven de vaste voorstellen over. */
-export async function vraagModelVoorstellen(llm: LlmClient, beurten: Beurt[], lijst: Woord[], namen: string[]): Promise<Kandidaat[]> {
+export async function vraagModelVoorstellen(llm: LlmClient, beurten: Beurt[], lijst: Woord[], namen: string[], callId?: string): Promise<Kandidaat[]> {
   try {
     const tekst = beurten.filter((b) => b?.role === 'user' && typeof b.content === 'string').map((b) => schoonVoorPrompt(b.content, 1500)).filter(Boolean).join('\n').slice(0, 12000);
     if (tekst.length < MIN_TEKENS_VOOR_MODEL) return [];
     const bekend = lijst.flatMap((w) => [w.term, ...w.gehoordAls]).map((t) => schoonVoorPrompt(t, 100)).filter(Boolean).slice(0, 300).join(', ');
     const bekendeNamen = [...new Set(namen.map((n) => schoonVoorPrompt(n, 100)).filter(Boolean))].slice(0, 300).join(', ');
-    const antwoord = await llm(MODEL_SYSTEEM, `<bekend>${bekend}</bekend>\n<namen>${bekendeNamen}</namen>\n<transcript>${tekst}</transcript>`);
+    const antwoord = await llm(MODEL_SYSTEEM, `<bekend>${bekend}</bekend>\n<namen>${bekendeNamen}</namen>\n<transcript>${tekst}</transcript>`, { functie: 'woordvoorstellen', referentie: callId });
     return leesModelVoorstellen(antwoord, beurten, lijst);
   } catch { return []; }
 }
@@ -117,7 +117,7 @@ export async function verzamelVoorstellen(db: Db, callId: string, beurten: Beurt
     const [medewerkers, contacten] = await Promise.all([db.select({ naam: employees.naam }).from(employees), db.select({ naam: klantContacten.naam }).from(klantContacten)]);
     const namen = [...medewerkers, ...contacten].map((r) => r.naam);
     const vast = vindKandidaten(beurten, lijst, namen);
-    const model = llm ? await vraagModelVoorstellen(llm, beurten, lijst, namen) : [];
+    const model = llm ? await vraagModelVoorstellen(llm, beurten, lijst, namen, callId) : [];
     const sleutel = (k: Kandidaat) => `${normaliseer(k.gehoordAls)}|${normaliseer(k.term)}`;
     const gezien = new Set(vast.map(sleutel));
     const kandidaten = [...vast, ...model.filter((k) => !gezien.has(sleutel(k)))];
