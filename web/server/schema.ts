@@ -431,3 +431,25 @@ export const kwaliteitBesluiten = pgTable('kwaliteit_besluiten', {
   door: text('door'),
   op: timestamp('op', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/** Persoonlijke RSS-link: alleen de hash van het geheim wordt bewaard, de rol is die van het moment van aanmaken. */
+export const feedTokens = pgTable('feed_tokens', {
+  id: id(),
+  email: text('email').notNull(),
+  rol: text('rol').notNull(),
+  label: text('label').notNull().default(''),
+  tokenHash: text('token_hash').notNull().unique(),
+  createdAt: createdAt(),
+  laatstGebruikt: timestamp('laatst_gebruikt', { withTimezone: true }),
+  ingetrokkenOp: timestamp('ingetrokken_op', { withTimezone: true }),
+});
+
+/** Bewaarde samenvatting van de verslagen van de afgelopen `dagen`; actueel zolang er geen nieuwer verslag is dan `laatsteItem`. */
+export const dagboekDigests = pgTable('dagboek_digests', {
+  id: id(),
+  dagen: integer('dagen').notNull(),
+  tekst: text('tekst').notNull(),
+  aantalItems: integer('aantal_items').notNull().default(0),
+  laatsteItem: timestamp('laatste_item', { withTimezone: true }),
+  gemaaktOp: timestamp('gemaakt_op', { withTimezone: true }).notNull().defaultNow(),
+});

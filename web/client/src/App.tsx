@@ -3,6 +3,7 @@ import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { api, type GebruikersRol } from './api';
 import { Melding, Veld, foutTekst } from './ui';
 import { Dagboek } from './pages/Dagboek';
+import { DagboekActueel } from './pages/DagboekActueel';
 import { Dashboard } from './pages/Dashboard';
 import { Gesprekken } from './pages/Gesprekken';
 import { Spraakmotoren } from './pages/Spraakmotoren';
@@ -62,10 +63,10 @@ function Inloggen({ me, klaar }: { me: Me; klaar: () => void }) {
   );
 }
 
-interface MenuGroep { titel: string; items: { naar: string; label: string; einde?: boolean; ook?: string }[]; alleenBeheerder?: boolean }
+interface MenuGroep { titel: string; items: { naar: string; label: string; einde?: boolean; ook?: string; alleenBeheerder?: boolean }[]; alleenBeheerder?: boolean }
 
 const MENU: MenuGroep[] = [
-  { titel: 'Overzicht', alleenBeheerder: true, items: [{ naar: '/', label: 'Dagboek', einde: true, ook: '/onderwerp' }, { naar: '/dashboard', label: 'Dashboard' }] },
+  { titel: 'Overzicht', items: [{ naar: '/dagboek', label: 'Dagboek' }, { naar: '/onderwerpen', label: 'Onderwerpen', ook: '/onderwerp/', alleenBeheerder: true }, { naar: '/dashboard', label: 'Dashboard', alleenBeheerder: true }] },
   { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/consultancy', label: 'Consultancy' }, { naar: '/samenverder', label: 'SamenVerder' }, { naar: '/kwaliteit', label: 'Kwaliteit' }] },
   { titel: 'Gesprekken', alleenBeheerder: true, items: [{ naar: '/gesprekken', label: 'Gesprekken' }, { naar: '/planning', label: 'Planning' }, { naar: '/suggesties', label: 'Suggesties' }] },
   { titel: 'Beheer', alleenBeheerder: true, items: [{ naar: '/medewerkers', label: 'Medewerkers' }, { naar: '/projecten', label: 'Projecten' }, { naar: '/spraakmotoren', label: 'Spraakmotoren' }, { naar: '/woordenlijst', label: 'Woordenlijst' }, { naar: '/instellingen', label: 'Instellingen' }] },
@@ -73,7 +74,7 @@ const MENU: MenuGroep[] = [
 
 /** Administratie beheert alleen de stamgegevens van klanten: geen werkregister, gesprekken of instellingen. */
 /** Een consultant leest alleen het consultancywerk. */
-const MENU_CONSULTANT: MenuGroep[] = [{ titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/consultancy', label: 'Consultancy' }, { naar: '/samenverder', label: 'SamenVerder' }] }];
+const MENU_CONSULTANT: MenuGroep[] = [{ titel: 'Overzicht', items: [{ naar: '/dagboek', label: 'Dagboek' }] }, { titel: 'Werk', items: [{ naar: '/werk', label: 'Werk' }, { naar: '/klanten', label: 'Klanten' }, { naar: '/consultancy', label: 'Consultancy' }, { naar: '/samenverder', label: 'SamenVerder' }] }];
 
 const MENU_ADMINISTRATIE: MenuGroep[] = [{ titel: 'Klantgegevens', items: [{ naar: '/klanten', label: 'Klanten' }, { naar: '/contactpersonen', label: 'Contactpersonen' }, { naar: '/kwaliteit', label: 'Kwaliteit' }] }];
 
@@ -108,7 +109,7 @@ export function App() {
         {groepen.map((g) => (
           <div key={g.titel} className="menugroep">
             <h2 className="menutitel">{g.titel}</h2>
-            {g.items.map((i) => <NavLink key={i.naar} to={i.naar} end={i.einde} className={actief(i.naar, i.ook) ? 'actief' : ''}>{i.label}</NavLink>)}
+            {g.items.filter((i) => beheerder || !i.alleenBeheerder).map((i) => <NavLink key={i.naar} to={i.naar} end={i.einde} className={actief(i.naar, i.ook) ? 'actief' : ''}>{i.label}</NavLink>)}
             {g.titel === 'Beheer' && me.gebruikersbeheer && <NavLink to="/gebruikers" className={actief('/gebruikers') ? 'actief' : ''}>Gebruikers</NavLink>}
           </div>
         ))}
@@ -117,7 +118,8 @@ export function App() {
         <Routes>
           {beheerder ? (
             <>
-              <Route path="/" element={<Dagboek />} />
+              <Route path="/" element={<Navigate to="/dagboek" replace />} />
+              <Route path="/onderwerpen" element={<Dagboek />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/planning" element={<Planning />} />
               <Route path="/suggesties" element={<Suggesties />} />
@@ -129,9 +131,10 @@ export function App() {
               <Route path="/projecten" element={<Projecten />} />
               <Route path="/gesprekken" element={<Gesprekken />} />
               <Route path="/spraakmotoren" element={<Spraakmotoren />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/dagboek" replace />} />
             </>
-          ) : <Route path="*" element={<Navigate to={administratie ? '/klanten' : '/werk'} replace />} />}
+          ) : <Route path="*" element={<Navigate to={administratie ? '/klanten' : '/dagboek'} replace />} />}
+          {!administratie && <Route path="/dagboek" element={<DagboekActueel rol={rol} />} />}
           {!administratie && (
             <>
               <Route path="/werk" element={<Werk alleenLezen={consultant} />} />

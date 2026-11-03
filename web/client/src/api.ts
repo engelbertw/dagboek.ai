@@ -174,3 +174,7 @@ export interface Woordvoorstel { id: string; term: string; gehoordAls: string; s
 export interface WoordToepassing { voorbeeld: boolean; transcripten: number; teksten: Record<string, number>; regels: { waar: string; voor: string; na: string }[] }
 export interface Woord { term: string; soort: WoordSoort; gehoordAls: string[]; toelichting: string }
 export interface Woordenlijst { items: Woord[]; vorige: Woord[] }
+
+export interface FeedItem { id: string; soort: 'update' | 'bezoek' | 'consultant'; datum: string; klantId: string | null; klantNaam: string | null; titel: string; tekst: string; door: string | null; pad: string }
+export interface DigestStand { tekst: string | null; gemaaktOp: string | null; aantalItems: number; dagen: number; verouderd: boolean; bezig?: boolean }
+export interface FeedToken { id: string; label: string; createdAt: string; laatstGebruikt: string | null }

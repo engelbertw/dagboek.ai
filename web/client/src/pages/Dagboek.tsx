@@ -28,7 +28,7 @@ export function Dagboek() {
   return (
     <div className="stapel">
       <div className="rij spreid">
-        <div><h1>Dagboek</h1><p className="zacht">Alle onderwerpen die we volgen tot ze zijn afgerond.</p></div>
+        <div><h1>Onderwerpen</h1><p className="zacht">Alle onderwerpen die we volgen tot ze zijn afgerond.</p></div>
         <button className="primair" onClick={() => { setNieuw(nieuw ? null : LEGE_TOPIC); setFout(null); }}>{nieuw ? 'Annuleren' : 'Nieuw onderwerp'}</button>
       </div>
 

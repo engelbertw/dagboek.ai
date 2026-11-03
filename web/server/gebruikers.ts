@@ -18,6 +18,7 @@ const ROL_OMSCHRIJVING: Record<GebruikersRol, string> = {
   administratie: 'Administratie: beheert de stamgegevens van klanten (inwoners, contactpersonen) van dagboek.ai.',
 };
 import { log } from './log.js';
+import { trekFeedTokensIn } from './dagboek-feed.js';
 
 type Haal = typeof fetch;
 
@@ -234,7 +235,9 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
     const { actief } = z.object({ actief: z.boolean() }).parse(req.body);
     return metFout(reply, async () => {
       if (!actief) await beschermd(beheer, id, req);
+      const email = !actief ? (await beheer.lijst()).find((g) => g.id === id)?.email : undefined;
       await beheer.zetActief(id, actief);
+      if (email) await trekFeedTokensIn(db, email); // RSS-links van een uitgezet account vervallen
       log('info', actief ? 'gebruiker.aangezet' : 'gebruiker.uitgezet', {});
       return { ok: true };
     });
@@ -250,6 +253,7 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
       if (!doel) throw new BeheerFout(404, 'Gebruiker niet gevonden');
       if (rol !== BEHEERDER_ROL) await beschermd(beheer, id, req, 'De rol van je eigen account kun je niet wijzigen', 'De laatste actieve beheerder kan geen accountmanager worden');
       await beheer.zetRol(id, rol);
+      await trekFeedTokensIn(db, doel.email); // een RSS-link houdt de rol van het moment van aanmaken
       log('info', 'gebruiker.rol_gewijzigd', { rol });
       return { ok: true };
     });
@@ -281,7 +285,9 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
     const id = uuid.parse((req.params as any).id);
     return metFout(reply, async () => {
       await beschermd(beheer, id, req);
+      const email = (await beheer.lijst()).find((g) => g.id === id)?.email;
       await beheer.verwijder(id);
+      if (email) await trekFeedTokensIn(db, email);
       log('info', 'gebruiker.verwijderd', {});
       return { ok: true };
     });

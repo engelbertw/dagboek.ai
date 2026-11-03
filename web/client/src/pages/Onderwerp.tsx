@@ -94,12 +94,12 @@ export function Onderwerp() {
   }
   async function verwijder() {
     if (!confirm(`‘${topic.data!.titel}’ en alle updates verwijderen? Dit kan niet ongedaan worden.`)) return;
-    try { await api('DELETE', `/topics/${id}`); navigeer('/'); } catch (err) { setMelding({ tekst: foutTekst(err), soort: 'fout' }); }
+    try { await api('DELETE', `/topics/${id}`); navigeer('/onderwerpen'); } catch (err) { setMelding({ tekst: foutTekst(err), soort: 'fout' }); }
   }
 
   return (
     <div className="stapel">
-      <p><Link to="/">← Dagboek</Link></p>
+      <p><Link to="/onderwerpen">← Onderwerpen</Link></p>
       <h1>{topic.data.titel}</h1>
       {topic.data.klantId && <p className="zacht">Gemeente: <Link to={`/klanten/${topic.data.klantId}`}>{klanten.data?.find((k) => k.id === topic.data!.klantId)?.naam ?? 'bekijken'}</Link></p>}
 
