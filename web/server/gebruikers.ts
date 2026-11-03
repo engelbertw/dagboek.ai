@@ -19,6 +19,7 @@ const ROL_OMSCHRIJVING: Record<GebruikersRol, string> = {
 };
 import { log } from './log.js';
 import { trekFeedTokensIn } from './dagboek-feed.js';
+import { bewaarProfiel, leesProfielen, profielBody, unitBestaat, wisProfiel } from './businessunits.js';
 
 type Haal = typeof fetch;
 
@@ -152,6 +153,8 @@ const nieuweGebruiker = z.object({
   email: z.string().trim().toLowerCase().email().max(200),
   naam: z.string().trim().min(1).max(150),
   rol: z.enum(ROLLEN).default(BEHEERDER_ROL),
+  functie: z.string().trim().max(100).default(''),
+  businessUnitId: z.string().uuid().nullable().default(null),
 });
 
 /** `ikEmail` geeft het e-mailadres van wie ingelogd is, zodat je jezelf niet kunt uitzetten of verwijderen. */
@@ -167,7 +170,24 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
 
   app.get('/api/gebruikers', async (_req, reply) => {
     if (!beheer) return ontbreekt(reply);
-    return metFout(reply, () => beheer.lijst());
+    return metFout(reply, async () => {
+      const [gebruikers, profielen] = await Promise.all([beheer.lijst(), leesProfielen(db)]);
+      return gebruikers.map((g) => ({ ...g, functie: profielen.get(g.email.toLowerCase())?.functie ?? '', businessUnitId: profielen.get(g.email.toLowerCase())?.businessUnitId ?? null }));
+    });
+  });
+
+  // Functie en businessunit van een gebruiker (staan in onze database, niet in Keycloak).
+  app.put('/api/gebruikers/:id/profiel', async (req, reply) => {
+    if (!beheer) return ontbreekt(reply);
+    const id = uuid.parse((req.params as any).id);
+    const p = profielBody.parse(req.body);
+    if (!(await unitBestaat(db, p.businessUnitId))) return reply.code(400).send({ fout: 'Onbekende businessunit' });
+    return metFout(reply, async () => {
+      const doel = (await beheer.lijst()).find((g) => g.id === id);
+      if (!doel) throw new BeheerFout(404, 'Gebruiker niet gevonden');
+      await bewaarProfiel(db, doel.email, p);
+      return { ok: true, ...p };
+    });
   });
 
   // Medewerkers die een account kunnen krijgen: met een e-mailadres en nog zonder account in Keycloak.
@@ -211,10 +231,12 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
 
   app.post('/api/gebruikers', async (req, reply) => {
     if (!beheer) return ontbreekt(reply);
-    const b = nieuweGebruiker.parse(req.body);
+    const { functie, businessUnitId, ...b } = nieuweGebruiker.parse(req.body);
+    if (!(await unitBestaat(db, businessUnitId))) return reply.code(400).send({ fout: 'Onbekende businessunit' });
     return metFout(reply, async () => {
       const wachtwoord = tijdelijkWachtwoord();
       const id = await beheer.maak({ ...b, wachtwoord });
+      if (functie || businessUnitId) await bewaarProfiel(db, b.email, { functie, businessUnitId });
       log('info', 'gebruiker.aangemaakt', { rol: b.rol });
       return reply.code(201).send({ id, tijdelijkWachtwoord: wachtwoord });
     });
@@ -287,7 +309,7 @@ export function registreerGebruikers(app: FastifyInstance, beheer: KeycloakBehee
       await beschermd(beheer, id, req);
       const email = (await beheer.lijst()).find((g) => g.id === id)?.email;
       await beheer.verwijder(id);
-      if (email) await trekFeedTokensIn(db, email);
+      if (email) { await trekFeedTokensIn(db, email); await wisProfiel(db, email); }
       log('info', 'gebruiker.verwijderd', {});
       return { ok: true };
     });

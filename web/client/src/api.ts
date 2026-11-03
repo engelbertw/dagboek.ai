@@ -7,7 +7,7 @@ export interface KlantenImportUitkomst {
   fouten: string[]; toegevoegd: { gemeenten: number; contacten: number; bijgewerkt: number };
 }
 export interface ImportUitkomst { regels: ImportRegel[]; toegevoegd: number }
-export interface Medewerker { id: string; naam: string; telefoon: string; email: string; locgovGebruikersnaam: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string; rol: Rol; consultant?: boolean }
+export interface Medewerker { functie?: string; businessUnitId?: string | null; id: string; naam: string; telefoon: string; email: string; locgovGebruikersnaam: string; taal: 'nl' | 'en'; actief: boolean; toestemmingOp: string | null; notitie: string; rol: Rol; consultant?: boolean }
 export interface Project { id: string; naam: string; omschrijving: string; status: 'actief' | 'afgerond' }
 export type TopicStatus = 'actief' | 'wacht' | 'afgerond';
 export type TopicType = 'project' | 'thema' | 'taak';
@@ -178,3 +178,5 @@ export interface Woordenlijst { items: Woord[]; vorige: Woord[] }
 export interface FeedItem { id: string; soort: 'update' | 'bezoek' | 'consultant'; datum: string; klantId: string | null; klantNaam: string | null; titel: string; tekst: string; door: string | null; pad: string }
 export interface DigestStand { tekst: string | null; gemaaktOp: string | null; aantalItems: number; dagen: number; verouderd: boolean; bezig?: boolean }
 export interface FeedToken { id: string; label: string; createdAt: string; laatstGebruikt: string | null }
+
+export interface BusinessUnit { id: string; naam: string; afkorting: string; volgorde: number; actief: boolean }

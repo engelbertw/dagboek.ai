@@ -38,6 +38,7 @@ import { vraagHerstel } from './gesprek-herstel.js';
 import { registreerVerkoop } from './verkoop.js';
 import { registreerOpvolging } from './opvolging.js';
 import { registreerDagboekFeed } from './dagboek-feed.js';
+import { registreerBusinessunits, synchroniseerNaarProfiel, unitBestaat } from './businessunits.js';
 import { registreerConsultancy } from './consultancy.js';
 import { registreerConsultantRoutes } from './consultant-routes.js';
 import { registreerVoorbereiding } from './voorbereiding.js';
@@ -67,6 +68,7 @@ const medewerkerBody = z.object({
   actief: z.boolean().default(true), notitie: z.string().max(2000).default(''), toestemming: z.boolean().optional(),
   rol: z.enum(['medewerker', 'accountmanager']).default('medewerker'),
   consultant: z.boolean().default(false),
+  functie: z.string().trim().max(100).default(''), businessUnitId: uuid.nullable().default(null),
 });
 const projectBody = z.object({
   naam: nonEmpty.max(150), omschrijving: z.string().max(2000).default(''), status: z.enum(['actief', 'afgerond']).default('actief'),
@@ -239,9 +241,11 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   });
   app.post('/api/employees', async (req, reply) => {
     const b = medewerkerBody.parse(req.body);
+    if (!(await unitBestaat(db, b.businessUnitId))) return reply.code(400).send({ fout: 'Onbekende businessunit' });
     const rij = await db.transaction(async (tx) => {
       const [nieuw] = await tx.insert(employees).values({
         naam: b.naam, telefoon: b.telefoon, email: b.email, locgovGebruikersnaam: b.locgovGebruikersnaam, taal: b.taal, actief: b.actief, notitie: b.notitie, rol: b.rol, consultant: b.consultant,
+        functie: b.functie, businessUnitId: b.businessUnitId,
       }).returning();
       if (!b.toestemming) return nieuw;
       await leggToestemmingVast(tx, { employeeId: nieuw.id, besluit: 'gegeven', bron: 'beheerder' });
@@ -254,6 +258,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const b = deelwijziging(medewerkerBody).parse(req.body);
     const { toestemming, ...rest } = b;
     if (!Object.keys(rest).length && toestemming === undefined) return reply.code(400).send({ fout: 'Niets te wijzigen' });
+    if (!(await unitBestaat(db, rest.businessUnitId))) return reply.code(400).send({ fout: 'Onbekende businessunit' });
     const rij = await db.transaction(async (tx) => {
       // De rij blijft vergrendeld tot het einde, zodat een samenvatting die tegelijk loopt de toestemming niet halverwege ziet veranderen.
       const [huidig] = await tx.select().from(employees).where(eq(employees.id, id)).for('update');
@@ -264,6 +269,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
       if (toestemming === false && huidig.toestemmingOp) await leggToestemmingVast(tx, { employeeId: id, besluit: 'ingetrokken', bron: 'beheerder' });
       return (await tx.select().from(employees).where(eq(employees.id, id)))[0];
     });
+    if (rij && (rest.functie !== undefined || rest.businessUnitId !== undefined)) await synchroniseerNaarProfiel(db, rij.email, { functie: rij.functie, businessUnitId: rij.businessUnitId });
     return rij ?? reply.code(404).send({ fout: 'Medewerker niet gevonden' });
   });
   app.delete('/api/employees/:id', async (req, reply) => {
@@ -598,6 +604,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerActiviteiten(app, db);
   registreerConsultancy(app, db);
   registreerOpvolging(app, db, (req) => leesSessie(req.cookies[COOKIE], config.sessionSecret));
+  registreerBusinessunits(app, db);
   registreerDagboekFeed(app, { db, llm, achtergrond, sessie: (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret), basisUrl: publiekeUrl });
 
   // Suggesties voor een instructie. Worden nooit opgeslagen: de beheerder beslist of hij ze overneemt.

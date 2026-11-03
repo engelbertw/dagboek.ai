@@ -22,6 +22,8 @@ export const employees = pgTable('employees', {
   rol: text('rol', { enum: ['medewerker', 'accountmanager'] }).notNull().default('medewerker'),
   /** Een consultant belt in voor een consultantdebrief (project, implementatie of SamenVerder); los van de rol en van de rechten in de webapplicatie. */
   consultant: boolean('consultant').notNull().default(false),
+  functie: text('functie').notNull().default(''),
+  businessUnitId: uuid('business_unit_id').references((): AnyPgColumn => businessUnits.id, { onDelete: 'set null' }),
   toestemmingOp: timestamp('toestemming_op', { withTimezone: true }),
   notitie: text('notitie').notNull().default(''),
   createdAt: createdAt(),
@@ -452,4 +454,22 @@ export const dagboekDigests = pgTable('dagboek_digests', {
   aantalItems: integer('aantal_items').notNull().default(0),
   laatsteItem: timestamp('laatste_item', { withTimezone: true }),
   gemaaktOp: timestamp('gemaakt_op', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Organisatie-eenheden (bijvoorbeeld Publiekszaken). Afdelingen per unit komen later. */
+export const businessUnits = pgTable('business_units', {
+  id: id(),
+  naam: text('naam').notNull().unique(),
+  afkorting: text('afkorting').notNull().unique(),
+  volgorde: integer('volgorde').notNull().default(100),
+  actief: boolean('actief').notNull().default(true),
+  createdAt: createdAt(),
+});
+
+/** Functie en businessunit van een gebruiker (die zelf in Keycloak staat), op kleine-letters e-mailadres. */
+export const gebruikersprofielen = pgTable('gebruikersprofielen', {
+  email: text('email').primaryKey(),
+  functie: text('functie').notNull().default(''),
+  businessUnitId: uuid('business_unit_id').references(() => businessUnits.id, { onDelete: 'set null' }),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
 });

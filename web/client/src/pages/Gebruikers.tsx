@@ -2,11 +2,12 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+import { FunctieUnitVelden, functieRegel, useBusinessUnits } from './FunctieUnit';
 
 type GebruikersRol = 'beheerder' | 'accountmanager' | 'administratie' | 'consultant';
 const ROL_LABEL: Record<GebruikersRol, string> = { beheerder: 'Beheerder', accountmanager: 'Accountmanager', administratie: 'Administratie', consultant: 'Consultant' };
 
-interface Gebruiker { id: string; email: string; naam: string; rol: GebruikersRol; actief: boolean; mfa: boolean; aangemaakt: string | null }
+interface Gebruiker { id: string; email: string; naam: string; rol: GebruikersRol; actief: boolean; mfa: boolean; aangemaakt: string | null; functie: string; businessUnitId: string | null }
 
 interface Kandidaat { id: string; naam: string; email: string; actief: boolean; status: 'kan' | 'heeft_account' | 'geen_email' }
 interface BulkRegel { id: string; naam: string; email: string; status: 'aangemaakt' | 'heeft_account' | 'geen_email' | 'ongeldig_email' | 'fout'; tijdelijkWachtwoord?: string; reden?: string }
@@ -88,6 +89,8 @@ const GEBRUIKER_PAD = '/gebruikers';
 /** Een rustige lijst: naam en e-mail, de rol en alleen wat aandacht vraagt. Alles wat je met een gebruiker kunt doen staat op het vervolgscherm. */
 export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   const lijst = useLaden(() => api<Gebruiker[]>('GET', '/gebruikers'));
+  const eenheden = useBusinessUnits();
+  const [profiel, setProfiel] = useState<{ functie: string; businessUnitId: string | null }>({ functie: '', businessUnitId: null });
   const [fout, setFout] = useState<string | null>(null);
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
@@ -98,9 +101,9 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   async function voegToe(e: FormEvent) {
     e.preventDefault();
     try {
-      const r = await api<{ tijdelijkWachtwoord: string }>('POST', '/gebruikers', { naam, email, rol });
+      const r = await api<{ tijdelijkWachtwoord: string }>('POST', '/gebruikers', { naam, email, rol, ...profiel });
       setWachtwoord({ voor: email, waarde: r.tijdelijkWachtwoord });
-      setNaam(''); setEmail(''); setFout(null); setToeOpen(false); lijst.ververs();
+      setNaam(''); setEmail(''); setProfiel({ functie: '', businessUnitId: null }); setFout(null); setToeOpen(false); lijst.ververs();
     } catch (err) { setFout(foutTekst(err)); }
   }
 
@@ -124,6 +127,7 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
               {(Object.keys(ROL_LABEL) as GebruikersRol[]).map((r) => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
             </select>
           </Veld>
+          <FunctieUnitVelden waarden={profiel} zet={setProfiel} units={eenheden.data ?? []} />
         </div>
         <div className="rij"><button className="primair" type="submit">Toevoegen</button><button type="button" onClick={() => setToeOpen(false)}>Annuleren</button></div>
       </form>}
@@ -139,7 +143,7 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
                 <Link to={`${GEBRUIKER_PAD}/${g.id}`} className={g.actief ? '' : 'uit'}>
                   <span className="gebruiker-wie">
                     <strong>{g.naam}</strong>{ik && <> <Badge>jij</Badge></>}
-                    <span className="zacht klein">{g.email}</span>
+                    <span className="zacht klein">{[g.email, functieRegel(eenheden.data, g.functie, g.businessUnitId)].filter(Boolean).join(' · ')}</span>
                   </span>
                   <span className="gebruiker-meta">
                     {!g.actief && <span className="gebruiker-let">uitgezet</span>}
@@ -178,6 +182,8 @@ export function GebruikerDetail({ ikEmail }: { ikEmail: string }) {
   const { id } = useParams();
   const navigeer = useNavigate();
   const lijst = useLaden(() => api<Gebruiker[]>('GET', '/gebruikers'));
+  const eenheden = useBusinessUnits();
+  const [profiel, setProfiel] = useState<{ functie: string; businessUnitId: string | null } | null>(null);
   const [fout, setFout] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [wachtwoord, setWachtwoord] = useState<{ voor: string; waarde: string } | null>(null);
@@ -185,7 +191,7 @@ export function GebruikerDetail({ ikEmail }: { ikEmail: string }) {
   const ik = !!g && g.email.toLowerCase() === ikEmail.toLowerCase();
 
   async function doe(taak: () => Promise<unknown>, melding: string) {
-    try { await taak(); setFout(null); setOk(melding); lijst.ververs(); } catch (e) { setOk(null); setFout(foutTekst(e)); }
+    try { await taak(); setFout(null); setOk(melding); lijst.ververs(); return true; } catch (e) { setOk(null); setFout(foutTekst(e)); return false; }
   }
   async function reset() {
     if (!g || !window.confirm(`Nieuw tijdelijk wachtwoord voor ${g.naam}? Het huidige wachtwoord werkt dan niet meer.`)) return;
@@ -221,6 +227,10 @@ export function GebruikerDetail({ ikEmail }: { ikEmail: string }) {
             )}
           </dd>
         </dl>
+        <form className="stapel" onSubmit={(e) => { e.preventDefault(); const p = profiel ?? { functie: g.functie, businessUnitId: g.businessUnitId }; void doe(() => api('PUT', `/gebruikers/${g.id}/profiel`, p), 'Opgeslagen').then((gelukt) => { if (gelukt) setProfiel(null); }); }}>
+          <div className="raster"><FunctieUnitVelden waarden={profiel ?? { functie: g.functie, businessUnitId: g.businessUnitId }} zet={setProfiel} units={eenheden.data ?? []} /></div>
+          <div><button type="submit" disabled={!profiel}>Opslaan</button></div>
+        </form>
         {ik && <p className="zacht klein">Je kunt je eigen rol niet wijzigen en je eigen account niet uitzetten of verwijderen.</p>}
       </section>
 
