@@ -35,6 +35,11 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
       setMelding({ tekst: 'Opgeslagen.', soort: 'ok' }); kaart.ververs();
     } catch (er) { fout(er); }
   }
+  async function wisBezoek(bezoekId: string) {
+    const n = kaart.data?.activiteiten.filter((a) => a.bezoekId === bezoekId).length ?? 0;
+    if (!window.confirm(`Dit verwijdert het bezoek en ${n} bijbehorende ${n === 1 ? 'punt' : 'punten'}. Dit kan niet worden teruggedraaid.`)) return;
+    try { await api('DELETE', `/bezoeken/${bezoekId}`); setMelding(null); kaart.ververs(); punten.ververs(); } catch (er) { fout(er); }
+  }
   async function bevestig(status: 'klant' | 'prospect') {
     try { await api('POST', `/klanten/${id}/controle`, { besluit: 'goedkeuren', status }); setMelding(null); kaart.ververs(); } catch (er) { fout(er); }
   }
@@ -115,6 +120,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
             <h3>{b.datum ? datum(b.datum) : datum(b.createdAt)} · {b.soort || 'bezoek'}{b.tevredenheid !== null && <> · tevredenheid <Badge>{b.tevredenheid}/10</Badge></>}</h3>
             <span className="zacht klein">{b.accountmanagerNaam ? `Gemeld door ${b.accountmanagerNaam}` : 'Gemeld door een accountmanager'}</span>
             {b.samenvatting && <p>{b.samenvatting}</p>}
+            {rol === 'beheerder' && <div><button type="button" onClick={() => void wisBezoek(b.id)}>Verwijderen</button></div>}
           </div>
         ))}
       </section>

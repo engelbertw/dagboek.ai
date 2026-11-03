@@ -129,6 +129,11 @@ export function DagboekActueel({ rol }: { rol: GebruikersRol }) {
   const dagen = Number(params.get('dagen')) || 14;
   const klanten = useLaden(() => api<KlantRegel[]>('GET', '/klanten'));
   const feed = useLaden(() => api<FeedItem[]>('GET', `/dagboek/feed?dagen=${dagen}&limit=100${klantId ? `&klant=${klantId}` : ''}`), [dagen, klantId]);
+  const [wisFout, setWisFout] = useState<string | null>(null);
+  async function wis(i: FeedItem) {
+    if (!window.confirm('Dit verslag en de bijbehorende punten verwijderen? Dit kan niet worden teruggedraaid.')) return;
+    try { await api('DELETE', `/${i.soort === 'bezoek' ? 'bezoeken' : 'consultant-debriefs'}/${i.id}`); setWisFout(null); void feed.ververs(); } catch (e) { setWisFout(foutTekst(e)); }
+  }
   const zet = (sleutel: string, waarde: string) => { const p = new URLSearchParams(params); if (waarde) p.set(sleutel, waarde); else p.delete(sleutel); zetParams(p, { replace: true }); };
 
   return (
@@ -148,7 +153,7 @@ export function DagboekActueel({ rol }: { rol: GebruikersRol }) {
         ))}
       </div>
 
-      <Melding tekst={feed.fout} />
+      <Melding tekst={feed.fout ?? wisFout} />
       {feed.data && feed.data.length === 0 && <Leeg>Geen verslagen in deze periode{klantId ? ' voor deze gemeente' : ''}.</Leeg>}
       <div className="stapel">
         {feed.data?.map((i) => (
@@ -158,7 +163,10 @@ export function DagboekActueel({ rol }: { rol: GebruikersRol }) {
               <Badge>{SOORT_LABEL[i.soort]}</Badge>
             </div>
             <p style={{ whiteSpace: 'pre-line' }}>{i.tekst}</p>
-            <p className="zacht klein">{datumTijd(i.datum)}{i.door ? ` · ${i.door}` : ''}</p>
+            <div className="rij spreid">
+              <p className="zacht klein">{datumTijd(i.datum)}{i.door ? ` · ${i.door}` : ''}</p>
+              {rol === 'beheerder' && i.soort !== 'update' && <button type="button" onClick={() => void wis(i)}>Verwijderen</button>}
+            </div>
           </article>
         ))}
       </div>

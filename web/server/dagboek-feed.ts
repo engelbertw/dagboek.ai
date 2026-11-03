@@ -15,7 +15,7 @@ import type { Db } from './db.js';
 import type { LlmClient } from './llm.js';
 import { foutcode, log } from './log.js';
 import { BEHEERDER_ROL, magDoen, normaleRol } from './rollen.js';
-import { bezoeken, calls, consultantDebriefs, dagboekDigests, employees, feedTokens, klanten, topics, updates } from './schema.js';
+import { activiteiten, bezoeken, calls, consultantDebriefs, dagboekDigests, employees, feedTokens, klanten, opvolgingen, topics, updates } from './schema.js';
 import { schoonVoorPrompt } from './vertrouwen.js';
 
 export interface FeedItem {
@@ -205,6 +205,46 @@ export function registreerDagboekFeed(app: FastifyInstance, { db, llm, achtergro
       log('warn', 'dagboek.digest_mislukt', { foutcode: foutcode(e) });
       return reply.code(502).send({ fout: 'De samenvatting kon niet worden gemaakt' });
     }
+  });
+
+  // Verslagen verwijderen (alleen beheerders, zie rollen.ts). De punten uit hetzelfde gesprek gaan mee, behalve als er al over een vervolgsignaal is besloten:
+  // dat besluit en het citaat blijven de herleiding naar het gesprek. De bewaarde samenvatting wordt gewist, zodat het verslag er niet in blijft staan.
+  const heeftBesluit = async (tx: Db, voorwaarde: ReturnType<typeof eq>) =>
+    (await tx.select({ id: opvolgingen.id }).from(opvolgingen).innerJoin(activiteiten, eq(activiteiten.id, opvolgingen.signaalId)).where(voorwaarde).limit(1)).length > 0;
+  const BESLUIT_FOUT = 'Over een vervolgsignaal uit dit verslag is besloten; dat blijft bewaard';
+
+  app.delete('/api/bezoeken/:id', async (req, reply) => {
+    const id = z.string().uuid().parse((req.params as { id: string }).id);
+    const uitkomst = await db.transaction(async (tx) => {
+      const [bezoek] = await tx.select({ id: bezoeken.id }).from(bezoeken).where(eq(bezoeken.id, id));
+      if (!bezoek) return 404 as const;
+      if (await heeftBesluit(tx as unknown as Db, eq(activiteiten.bezoekId, id))) return 409 as const;
+      const punten = await tx.delete(activiteiten).where(eq(activiteiten.bezoekId, id)).returning({ id: activiteiten.id });
+      await tx.delete(bezoeken).where(eq(bezoeken.id, id));
+      await tx.delete(dagboekDigests);
+      return punten.length;
+    });
+    if (uitkomst === 404) return reply.code(404).send({ fout: 'Bezoek niet gevonden' });
+    if (uitkomst === 409) return reply.code(409).send({ fout: BESLUIT_FOUT });
+    log('info', 'bezoek.verwijderd', {});
+    return { ok: true, punten: uitkomst };
+  });
+
+  app.delete('/api/consultant-debriefs/:id', async (req, reply) => {
+    const id = z.string().uuid().parse((req.params as { id: string }).id);
+    const uitkomst = await db.transaction(async (tx) => {
+      const [debrief] = await tx.select({ callId: consultantDebriefs.callId }).from(consultantDebriefs).where(eq(consultantDebriefs.id, id));
+      if (!debrief) return 404 as const;
+      if (await heeftBesluit(tx as unknown as Db, eq(activiteiten.callId, debrief.callId))) return 409 as const;
+      const punten = await tx.delete(activiteiten).where(eq(activiteiten.callId, debrief.callId)).returning({ id: activiteiten.id });
+      await tx.delete(consultantDebriefs).where(eq(consultantDebriefs.id, id));
+      await tx.delete(dagboekDigests);
+      return punten.length;
+    });
+    if (uitkomst === 404) return reply.code(404).send({ fout: 'Debrief niet gevonden' });
+    if (uitkomst === 409) return reply.code(409).send({ fout: BESLUIT_FOUT });
+    log('info', 'debrief.verwijderd', {});
+    return { ok: true, punten: uitkomst };
   });
 
   // Eigen RSS-links.
