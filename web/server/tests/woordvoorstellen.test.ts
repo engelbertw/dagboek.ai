@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
 import { maakSessie } from '../auth.js';
 import { activiteiten, bezoeken, calls, employees, klantContacten, klanten, updates, woordvoorstellen } from '../schema.js';
-import { vindKandidaten } from '../woordvoorstellen.js';
+import { leesModelVoorstellen, vindKandidaten } from '../woordvoorstellen.js';
 import { haalStopwoordenWeg, corrigeerTranscript, type Woord } from '../woordenlijst.js';
 import { SERVICE_KEY, maakTestApp } from './helpers.js';
 
@@ -58,6 +58,27 @@ const als = (t: T, rol: string) => {
   const cookies = { dagboek_sessie: maakSessie(`${rol}@test.nl`, t.config.sessionSecret, Date.now(), { naam: rol, rol }) };
   return (method: string, url: string, payload?: unknown) => t.app.inject({ method: method as any, url, payload: payload as any, cookies });
 };
+
+describe('voorstellen van het taalmodel', () => {
+  const beurten = [user('We werken samen met Roby van Pluspunt, versie 52.0 staat klaar.'), { role: 'assistant', content: 'Hallo Rombout' }];
+  const lijst: Woord[] = [{ term: 'iBurgerzaken', soort: 'product', gehoordAls: ['e-burgerzaken'], toelichting: '' }];
+  it('houdt alleen voorstellen over die letterlijk in een beurt van de beller staan', () => {
+    const antwoord = JSON.stringify({ voorstellen: [
+      { gehoord_als: 'Roby', voorstel: 'Robbie', soort: 'persoon' },
+      { gehoord_als: 'Pluspunt', voorstel: 'Plus Punt', soort: 'onzin' },
+      { gehoord_als: '52.0', voorstel: 'v5.2', soort: 'overig' },
+      { gehoord_als: 'Hallo', voorstel: 'Hello', soort: 'overig' }, // alleen in de assistent
+      { gehoord_als: 'verzonnen', voorstel: 'iets', soort: 'product' },
+      { gehoord_als: 'e-burgerzaken', voorstel: 'iBurgerzaken', soort: 'product' }, // al bekend
+      { gehoord_als: 'ab', voorstel: 'abc', soort: 'product' }, // te kort
+    ] });
+    expect(leesModelVoorstellen(`Hier:\n${antwoord}`, beurten, lijst).map((k) => [k.gehoordAls, k.term, k.soort, k.bron])).toEqual([
+      ['Roby', 'Robbie', 'persoon', 'model'], ['Pluspunt', 'Plus Punt', 'overig', 'model'], ['52.0', 'v5.2', 'overig', 'model']]);
+  });
+  it('geeft niets bij rommel', () => {
+    for (const a of ['', 'geen json', '{"voorstellen": "x"}', '[1,2]', '{"voorstellen":[null,5]}']) expect(leesModelVoorstellen(a, beurten, [])).toEqual([]);
+  });
+});
 
 describe('voorstellen uit gesprekken', () => {
   it('maakt voorstellen bij binnenkomst, telt ze op, en laat een afgewezen voorstel niet terugkomen', async () => {
@@ -139,5 +160,33 @@ describe('terugwerkend toepassen', () => {
     expect((await t.db.select().from(updates).where(eq(updates.id, u.id)))[0].samenvatting).toBe('Rombout past iBurgerzaken aan');
     // Herhalen verandert niets meer.
     expect((await t.api('POST', '/api/instellingen/woordenlijst/toepassen', { voorbeeld: false })).json()).toMatchObject({ transcripten: 0, teksten: {} });
+  });
+});
+
+describe('modelvoorstellen bij binnenkomst', () => {
+  const lang = 'We zijn gisteren bij de gemeente geweest en hebben met Roby van Pluspunt gesproken over de planning van de livegang. '.repeat(3);
+  async function melding(llm: (s: string, g: string) => Promise<string>) {
+    const t = await maakTestApp({ gebeld: true, call_id: 'v1' }, llm);
+    open.push(t);
+    const m = (await t.api('POST', '/api/employees', { naam: 'Daan', telefoon: '0612345678', toestemming: false })).json();
+    const { callId } = (await t.api('POST', `/api/employees/${m.id}/bel`)).json();
+    const r = await t.app.inject({ method: 'POST', url: `/api/intern/calls/${callId}/resultaat`, headers: { 'x-service-key': SERVICE_KEY }, payload: { status: 'gesproken', transcript: [user(lang)] } });
+    await t.klaarMetAchtergrond();
+    return { t, r };
+  }
+  it('bewaart een geverifieerd voorstel met bron model en stuurt het transcript als gegevens', async () => {
+    const gezien: string[] = [];
+    const { t } = await melding(async (systeem, gebruiker) => {
+      if (systeem.includes('woordenlijst')) { gezien.push(gebruiker); return JSON.stringify({ voorstellen: [{ gehoord_als: 'Pluspunt', voorstel: 'Plus Punt', soort: 'overig' }, { gehoord_als: 'niet gezegd', voorstel: 'X Y Z', soort: 'overig' }] }); }
+      return JSON.stringify({ toestemming: 'gegeven', onderwerpen: [] });
+    });
+    expect(gezien[0]).toMatch(/^<bekend>.*<\/bekend>\n<namen>.*<\/namen>\n<transcript>/s);
+    const rijen = await t.db.select().from(woordvoorstellen).where(eq(woordvoorstellen.bron, 'model'));
+    expect(rijen.map((r) => [r.gehoordAls, r.term, r.status])).toEqual([['Pluspunt', 'Plus Punt', 'voorgesteld']]);
+  });
+  it('blijft stil als het model faalt: het gesprek wordt gewoon verwerkt', async () => {
+    const { t, r } = await melding(async () => { throw new Error('llm stuk'); });
+    expect(r.statusCode).toBe(200);
+    expect(await t.db.select().from(woordvoorstellen).where(eq(woordvoorstellen.bron, 'model'))).toEqual([]);
   });
 });

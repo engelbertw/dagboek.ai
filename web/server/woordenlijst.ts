@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { normaliseer, schoonVoorPrompt, type Beurt } from './vertrouwen.js';
 
 export const WOORD_SOORTEN = ['product', 'afdeling', 'persoon', 'overig'] as const;
+export type WoordSoort = typeof WOORD_SOORTEN[number];
 export const MAX_WOORDEN = 200;
 const MIN_VARIANT_TEKENS = 3;
 

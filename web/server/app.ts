@@ -749,7 +749,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
       ...(eind ? { afgerondOp: new Date() } : {}),
     }, 'voice');
     if (!gewijzigd) return { ok: true, genegeerd: true };
-    if (Array.isArray(b.transcript)) void verzamelVoorstellen(db, id, b.transcript as Beurt[], await leesWoordenlijst(db));
+    if (Array.isArray(b.transcript)) achtergrond(verzamelVoorstellen(db, id, b.transcript as Beurt[], await leesWoordenlijst(db), llm));
     if (b.transcript !== undefined && b.transcript !== null) await bepaalBewaartermijn(db, config, id, b.status);
     if (b.status === 'gesproken') achtergrond(samenvattenGesprek({ db, llm }, id));
     return { ok: true };

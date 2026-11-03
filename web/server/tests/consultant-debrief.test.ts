@@ -48,6 +48,7 @@ type Opties = { rol?: 'accountmanager' | 'medewerker'; consultant?: boolean; fla
 async function scenario(extractie: unknown, opties: Opties = {}) {
   const vragen: { systeem: string; gebruiker: string }[] = [];
   const t = await maakTestApp({ gebeld: true, call_id: 'c1' }, async (systeem, gebruiker) => {
+    if (systeem.includes('woordenlijst voor spraakherkenning')) return '{"voorstellen":[]}'; // woordvoorstellen: eigen aanroep, hier niet van belang
     vragen.push({ systeem, gebruiker });
     const antwoord = systeem.includes('Je bepaalt uit een telefoongesprek') ? opties.route ?? { route: '', bron: '', citaat: '' } : extractie;
     return typeof antwoord === 'string' ? antwoord : JSON.stringify(antwoord);

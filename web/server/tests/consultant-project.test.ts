@@ -39,7 +39,7 @@ const antwoord = (over: Record<string, unknown> = {}, onderwerp: Record<string, 
 
 async function scenario(extractie: unknown, opzet: { klantProject?: 'zelfde' | 'andere' | 'geen'; verhaal?: string } = {}) {
   const vragen: string[] = [];
-  const t = await maakTestApp({ gebeld: true, call_id: 'c1' }, async (_s, gebruiker) => { vragen.push(gebruiker); return JSON.stringify(extractie); });
+  const t = await maakTestApp({ gebeld: true, call_id: 'c1' }, async (systeem, gebruiker) => { if (systeem.includes('woordenlijst voor spraakherkenning')) return '{"voorstellen":[]}'; vragen.push(gebruiker); return JSON.stringify(extractie); });
   open.push(t);
   await t.api('PUT', '/api/instellingen/inkomend', { aan: true });
   await t.api('PUT', '/api/instellingen/consultant-debrief', { aan: true });

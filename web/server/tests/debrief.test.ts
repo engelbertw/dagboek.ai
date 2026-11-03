@@ -33,6 +33,7 @@ const GOED = {
 async function scenario(llmAntwoord: unknown, opties: { rol?: 'accountmanager' | 'medewerker'; toestemming?: boolean; transcript?: unknown } = {}) {
   const vragen: { systeem: string; gebruiker: string }[] = [];
   const t = await maakTestApp({ gebeld: true, call_id: 'v1' }, async (systeem, gebruiker) => {
+    if (systeem.includes('woordenlijst voor spraakherkenning')) return '{"voorstellen":[]}'; // woordvoorstellen: eigen aanroep, hier niet van belang
     vragen.push({ systeem, gebruiker });
     return typeof llmAntwoord === 'string' ? llmAntwoord : JSON.stringify(llmAntwoord);
   });
