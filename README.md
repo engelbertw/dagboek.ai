@@ -266,6 +266,30 @@ Beheer → **Businessunits** bevat de organisatie-eenheden (gezaaid: PZ, IV, P&S
 
 Beheer → **AI-register** (alleen beheerder) toont twee dingen. De **inventaris** staat in code (`web/server/ai-register.ts`, `AI_VERWERKINGEN`): per verwerking (dagboekverslag, verkoop-debrief, route bepalen, consultantdebrief, weekoverzicht, instructie voorstellen, woordvoorstellen, en het gesprek zelf via Pipecat of de ElevenLabs-agent) het doel, de leverancier en het model, welke gegevens erin gaan en welke bewust niet, de menselijke controle, de bewaartermijn en de bron in de code. Het **logboek** (`ai_activiteiten`) legt elke aanroep van het taalmodel vast: functie, model, tokens, duur, uitkomst en een verwijzing naar het gesprek, nooit prompt, transcript, antwoord, namen of nummers; het wordt 365 dagen bewaard (opschoning). Elke aanroep van `llm(...)` moet een `{ functie: '…' }` meegeven; een test controleert dat en dat elke functie in de inventaris staat. Gesprekken via de voice-service staan niet in het logboek (alleen het aantal per motor). API: `GET /api/ai-register`, `GET /api/ai-register/activiteiten`.
 
+## Pilot (december 2026)
+
+Voorstel voor een pilot met de werkvloer: een heisessie in december met één collega per team dat klanten bezoekt (projectmanager, consultant, customer success manager, productchamp, accountmanager), daarna twee weken proefdraaien en een nieuw besluit (doorgaan, bijsturen of stoppen). Het voorstel op twee pagina's staat in [`pilotvoorstel.pptx`](pilotvoorstel.pptx).
+
+**Toegevoegde waarde.** Tijdwinst (verslag via de telefoon, in de auto of direct na een overleg); acties met eigenaar en deadline vallen niet tussen wal en schip; één actueel beeld per gemeente voor het hele team; alleen wat letterlijk in het gesprek staat telt (anders *Controle nodig*); toestemming per persoon, AI-melding en AI-register.
+
+**Architectuur.** ![Architectuur](docs/architectuur.png) (bron: `docs/architectuur.svg`)
+
+**Kosten van de pilot** (uurtarief € 75 is kostprijs; met * zijn aannames die nog bevestigd moeten worden):
+
+| Post | Bedrag |
+|---|---|
+| Heisessie, personeel (6 personen × 5 uur × € 75) | € 2.250 |
+| Locatie heisessie * | € 500 |
+| Deelnemers twee weken (5 × 4 uur × € 75) * | € 1.500 |
+| Projectteam (20 uur × € 75) * | € 1.500 |
+| ElevenLabs, 1 maand van € 12.000 per jaar * | € 1.000 |
+| Telefoonnummer en belminuten * | € 100 |
+| Hosting Railway, 1 maand * | € 50 |
+| Domeinnaam dagboek.ai | € 130 |
+| **Totaal pilot** | **€ 7.030** |
+
+Het jaarabonnement van ElevenLabs (€ 12.000) is een besluit bij doorgaan, geen pilotkost; het verbruik van het taalmodel (T-Systems) wordt in de pilot gemeten. **Succescriteria:** tijd per verslag (nu tegenover met dagboek.ai), aantal gesprekken per deelnemer, kwaliteit van het verslag (beoordeling 1 tot 5 per gesprek) en geen privacy-incidenten. Open: datum en locatie, of ElevenLabs maandelijks opzegbaar is, de exacte belprijs van Twilio.
+
 ## Kwaliteit van de registratie
 Scherm **Kwaliteit** (`/kwaliteit`, ook via de klantpagina; voor beheerder en accountmanager) controleert wat al is vastgelegd. Alles is deterministisch (geen taalmodel) en alleen een aanwijzing: de accountmanager beoordeelt en voert uit; er wordt nooit automatisch samengevoegd of verwijderd.
 - **Meldingen** (`GET /api/kwaliteit`, code in `datakwaliteit.ts` en `namen.ts`): dubbele contactpersonen (zelfde e-mail of telefoon, dezelfde naam of een bijna gelijke naam bij dezelfde gemeente, ook als e-mail of telefoon in het naamveld staat), dubbele gemeenten, dubbele open punten (zelfde soort, inhoudelijk gelijk), gegevens in het naamveld (met een voorstel om ze te verplaatsen), onvolledige naam, afwijkend of onvolledig e-mail/telefoon, en ontbrekende functie en rol. Een bijna gelijke achternaam (een of twee letters verschil, zelfde voornaam) vangt spelfouten van de spraakherkenning ("Muntinga", "Mentenga", "Munterga").
