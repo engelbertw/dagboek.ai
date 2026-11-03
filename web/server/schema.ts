@@ -389,6 +389,26 @@ export const opvolgingen = pgTable('opvolgingen', {
   nieuwActiviteitId: uuid('nieuw_activiteit_id').references((): AnyPgColumn => activiteiten.id, { onDelete: 'set null' }),
 });
 
+export const WOORDVOORSTEL_BRONNEN = ['e_voorvoegsel', 'naam_lijkt_op', 'model'] as const;
+export const WOORDVOORSTEL_STATUSSEN = ['voorgesteld', 'goedgekeurd', 'afgewezen'] as const;
+
+/** Een voorstel voor de woordenlijst, uit een gesprek. Verandert niets totdat de beheerder het goedkeurt. */
+export const woordvoorstellen = pgTable('woordvoorstellen', {
+  id: id(),
+  term: text('term').notNull(),
+  gehoordAls: text('gehoord_als').notNull(),
+  soort: text('soort', { enum: ['product', 'afdeling', 'persoon', 'overig'] }).notNull().default('product'),
+  bron: text('bron', { enum: WOORDVOORSTEL_BRONNEN }).notNull(),
+  sleutel: text('sleutel').notNull().unique(),
+  aantal: integer('aantal').notNull().default(1),
+  eersteCallId: uuid('eerste_call_id').references(() => calls.id, { onDelete: 'set null' }),
+  status: text('status', { enum: WOORDVOORSTEL_STATUSSEN }).notNull().default('voorgesteld'),
+  beslistDoor: text('beslist_door'),
+  beslistOp: timestamp('beslist_op', { withTimezone: true }),
+  createdAt: createdAt(),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const BUDGET_SOORTEN = ['start', 'uitbreiding', 'correctie'] as const;
 export type BudgetSoort = (typeof BUDGET_SOORTEN)[number];
 

@@ -41,8 +41,8 @@ describe('corrigeerTranscript', () => {
 
   it('doet niets zonder lijst of zonder varianten', () => {
     const b = [user('e-burgerzaken')];
-    expect(corrigeerTranscript(b, [])).toBe(b);
-    expect(corrigeerTranscript(b, [{ term: 'X', soort: 'overig', gehoordAls: [], toelichting: '' }])).toBe(b);
+    expect(corrigeerTranscript(b, [])).toEqual(b);
+    expect(corrigeerTranscript(b, [{ term: 'X', soort: 'overig', gehoordAls: [], toelichting: '' }])).toEqual(b);
   });
 
   it('laat een citaat met de goede schrijfwijze kloppen met het gecorrigeerde transcript', () => {

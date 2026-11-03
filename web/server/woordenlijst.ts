@@ -2,12 +2,12 @@
  * Woordenlijst voor producten en afdelingen. Spraakherkenning verstaat eigen termen fout ("e-burgerzaken" voor iBurgerzaken, "PNS" voor P&S).
  * De beheerder legt per term vast hoe die vaak verkeerd wordt gehoord; die varianten worden in het transcript door de juiste term vervangen, en de
  * lijst gaat als hint mee naar het taalmodel dat het verslag schrijft. Alleen hele woorden, alleen in wat de beller zelf zei, en in één doorgang
- * (een vervanging wordt nooit opnieuw vervangen), zodat het toepassen herhaald kan worden zonder verschil.
+ * (een vervanging wordt nooit opnieuw vervangen), zodat het toepassen herhaald kan worden zonder verschil. Ook stopwoorden (uh, uhm, eh) worden uit wat de beller zei gehaald.
  */
 import { z } from 'zod';
 import { normaliseer, schoonVoorPrompt, type Beurt } from './vertrouwen.js';
 
-export const WOORD_SOORTEN = ['product', 'afdeling', 'overig'] as const;
+export const WOORD_SOORTEN = ['product', 'afdeling', 'persoon', 'overig'] as const;
 export const MAX_WOORDEN = 200;
 const MIN_VARIANT_TEKENS = 3;
 
@@ -54,13 +54,35 @@ function bouwPatroon(lijst: Woord[]): { regex: RegExp; naarTerm: Map<string, str
   return { regex: new RegExp(`(?<![\\p{L}\\p{N}])(?:${delen.join('|')})(?![\\p{L}\\p{N}])`, 'giu'), naarTerm };
 }
 
-/** Vervangt bekende verkeerd-gehoorde varianten door de juiste term, alleen in wat de beller zei. Geeft nieuwe beurten terug en muteert niets. */
+/** Zinnen als "Die, uh, zat bij de balie" worden "Die, zat bij de balie". Alleen hele stopwoorden, met de komma of punten erachter; "ah" en "oh" blijven staan. */
+const STOPWOORD = /(?<![\p{L}\p{N}])(?:uhm+|uh+|ehm+|eh+|euh+|hmm+|hm+)(?![\p{L}\p{N}])(?:\s*(?:[,.…]|--)+)?/giu;
+
+export function haalStopwoordenWeg(tekst: string): string {
+  if (!STOPWOORD.test(tekst)) { STOPWOORD.lastIndex = 0; return tekst; }
+  STOPWOORD.lastIndex = 0;
+  let uit = tekst.replace(STOPWOORD, ' ').replace(/\s+([,.!?;:])/g, '$1').replace(/([,;:])(?:\s*[,;:])+/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  uit = uit.replace(/^[,;:\s]+/, '');
+  uit = uit.replace(/[,;:]\s*$/, '.'); // een zin die op een stopwoord eindigde, eindigt nu op een punt
+  // Begon de beurt met een stopwoord, dan begint de zin nu met het volgende woord: weer met een hoofdletter.
+  if (uit && /^[\p{Lu}]/u.test(tekst.trim()) && /^\p{Ll}/u.test(uit)) uit = uit[0].toUpperCase() + uit.slice(1);
+  return uit;
+}
+
+/** Vervangt bekende verkeerd-gehoorde varianten in een gewone tekst (verslagen, omschrijvingen). Geen stopwoorden: die staan alleen in transcripten. */
+export function vervangVarianten(tekst: string, lijst: Woord[]): string {
+  const p = bouwPatroon(lijst);
+  return p && typeof tekst === 'string' ? tekst.replace(p.regex, (gevonden) => p.naarTerm.get(normaliseer(gevonden)) ?? gevonden) : tekst;
+}
+
+/** Haalt stopwoorden weg en vervangt bekende verkeerd-gehoorde varianten, alleen in wat de beller zei. Geeft nieuwe beurten terug en muteert niets. */
 export function corrigeerTranscript<T extends Beurt>(beurten: T[], lijst: Woord[]): T[] {
   const p = bouwPatroon(lijst);
-  if (!p) return beurten;
-  return beurten.map((m) => (m && typeof m === 'object' && m.role === 'user' && typeof m.content === 'string'
-    ? { ...m, content: m.content.replace(p.regex, (gevonden) => p.naarTerm.get(normaliseer(gevonden)) ?? gevonden) }
-    : m));
+  return beurten.map((m) => {
+    if (!m || typeof m !== 'object' || m.role !== 'user' || typeof m.content !== 'string') return m;
+    let tekst = haalStopwoordenWeg(m.content);
+    if (p) tekst = tekst.replace(p.regex, (gevonden) => p.naarTerm.get(normaliseer(gevonden)) ?? gevonden);
+    return tekst === m.content ? m : { ...m, content: tekst };
+  });
 }
 
 /** Eén regel voor het taalmodel: hoe producten en afdelingen geschreven worden. Uit de lijst zelf, dus ook hier onbetrouwbare invoer: schoon en begrensd. */

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, MOTOR_LABEL, type DebriefVragen, type Houding, type JiraInstelling, type Motor, type Woord, type Woordenlijst as WoordenlijstData } from '../api';
+import { api, MOTOR_LABEL, type DebriefVragen, type Houding, type JiraInstelling, type Motor, type Woord, type Woordenlijst as WoordenlijstData, type Woordvoorstel, type WoordToepassing } from '../api';
 import { Melding, Systeemstatus, Veld, foutTekst, useLaden } from '../ui';
 
 function Instelling({ titel, uitleg, label, pad, rijen }: { titel: string; uitleg: string; label: string; pad: string; rijen: number }) {
@@ -181,7 +181,7 @@ function Woordenlijst() {
           <Veld label="Juiste term"><input value={r.term} onChange={(e) => zet(i, { term: e.target.value })} maxLength={100} placeholder="iBurgerzaken" /></Veld>
           <Veld label="Soort">
             <select value={r.soort} onChange={(e) => zet(i, { soort: e.target.value as Woord['soort'] })}>
-              <option value="product">Product</option><option value="afdeling">Afdeling</option><option value="overig">Overig</option>
+              <option value="product">Product</option><option value="afdeling">Afdeling</option><option value="persoon">Persoon</option><option value="overig">Overig</option>
             </select>
           </Veld>
           <Veld label="Ook gehoord als"><input value={r.gehoordAls} onChange={(e) => zet(i, { gehoordAls: e.target.value })} placeholder="e-burgerzaken, eburgerzaken" /></Veld>
@@ -200,6 +200,81 @@ function Woordenlijst() {
   );
 }
 
+const BRON_UITLEG: Record<Woordvoorstel['bron'], string> = { e_voorvoegsel: 'e- voor een productnaam', naam_lijkt_op: 'lijkt op een bekende naam', model: 'voorgesteld door het taalmodel' };
+
+function Voorstellen({ naLijst }: { naLijst: () => void }) {
+  const lijst = useLaden(() => api<Woordvoorstel[]>('GET', '/instellingen/woordenlijst/voorstellen'));
+  const [termen, setTermen] = useState<Record<string, string>>({});
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  async function besluit(v: Woordvoorstel, b: 'goedkeuren' | 'afwijzen') {
+    try {
+      await api('POST', `/instellingen/woordenlijst/voorstellen/${v.id}`, { besluit: b, ...(termen[v.id]?.trim() ? { term: termen[v.id].trim() } : {}) });
+      setMelding({ tekst: b === 'goedkeuren' ? `“${v.gehoordAls}” staat nu in de woordenlijst. Pas de lijst eventueel toe op bestaande gesprekken.` : 'Voorstel afgewezen; het komt niet terug.', soort: 'ok' });
+      lijst.ververs();
+      if (b === 'goedkeuren') naLijst();
+    } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  const items = lijst.data ?? [];
+  if (!items.length && !melding) return null;
+  return (
+    <section className="paneel stapel">
+      <h3>Voorstellen uit gesprekken ({items.length})</h3>
+      <p className="zacht klein">Woorden die in gesprekken lijken verkeerd verstaan. Er verandert niets totdat je goedkeurt; je kunt de juiste term nog aanpassen. Een echt woord (bijvoorbeeld eHerkenning) wijs je af en komt dan niet terug.</p>
+      {items.map((v) => (
+        <div key={v.id} className="rij" style={{ alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <span><strong>{v.gehoordAls}</strong> <span className="zacht klein">({BRON_UITLEG[v.bron]}, {v.aantal}×)</span> →</span>
+          <input aria-label={`Juiste term voor ${v.gehoordAls}`} value={termen[v.id] ?? v.term} onChange={(e) => setTermen({ ...termen, [v.id]: e.target.value })} maxLength={100} />
+          <button type="button" className="primair" onClick={() => void besluit(v, 'goedkeuren')}>Goedkeuren</button>
+          <button type="button" onClick={() => void besluit(v, 'afwijzen')}>Afwijzen</button>
+        </div>
+      ))}
+      <Melding tekst={melding?.tekst ?? lijst.fout} soort={melding?.soort} />
+    </section>
+  );
+}
+
+function ToepassenOpBestaand() {
+  const [voorbeeld, setVoorbeeld] = useState<WoordToepassing | null>(null);
+  const [klaar, setKlaar] = useState<WoordToepassing | null>(null);
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  const totaal = (t: WoordToepassing) => t.transcripten + Object.values(t.teksten).reduce((a, b) => a + b, 0);
+  async function bekijk() {
+    try { setKlaar(null); setMelding(null); setVoorbeeld(await api<WoordToepassing>('POST', '/instellingen/woordenlijst/toepassen', { voorbeeld: true })); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  async function pasToe() {
+    if (!confirm('Dit overschrijft transcripten en verslagen met de gecorrigeerde tekst en is niet terug te draaien. Doorgaan?')) return;
+    try { const r = await api<WoordToepassing>('POST', '/instellingen/woordenlijst/toepassen', { voorbeeld: false }); setKlaar(r); setVoorbeeld(null); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  const overzicht = (t: WoordToepassing) => [`${t.transcripten} transcripten`, ...Object.entries(t.teksten).map(([k, n]) => `${n} ${k}`)].join(', ');
+  return (
+    <section className="paneel stapel">
+      <h3>Toepassen op bestaande gesprekken</h3>
+      <p className="zacht klein">Haalt stopwoorden (uh, uhm, eh) uit bewaarde transcripten en zet de woorden uit de lijst goed in transcripten, verslagen, punten en citaten die al bestaan. Bekijk eerst het voorbeeld; toepassen is niet terug te draaien.</p>
+      <div className="rij"><button type="button" onClick={() => void bekijk()}>Voorbeeld bekijken</button></div>
+      {voorbeeld && (
+        <div className="stapel">
+          <p>{totaal(voorbeeld) === 0 ? 'Er is niets te wijzigen.' : `Zou wijzigen: ${overzicht(voorbeeld)}.`}</p>
+          {voorbeeld.regels.map((r, i) => <p key={i} className="zacht klein"><strong>{r.waar}</strong>: “…{r.voor}…” → “…{r.na}…”</p>)}
+          {totaal(voorbeeld) > 0 && <div className="rij"><button type="button" className="gevaar" onClick={() => void pasToe()}>Nu toepassen</button></div>}
+        </div>
+      )}
+      {klaar && <p>Toegepast: {totaal(klaar) === 0 ? 'er was niets te wijzigen' : overzicht(klaar)}.</p>}
+      <Melding tekst={melding?.tekst ?? null} soort={melding?.soort} />
+    </section>
+  );
+}
+
+function WoordenlijstBeheer() {
+  const [versie, setVersie] = useState(0); // na goedkeuren van een voorstel opnieuw laden
+  return (
+    <div className="stapel">
+      <Woordenlijst key={versie} />
+      <Voorstellen naLijst={() => setVersie((v) => v + 1)} />
+      <ToepassenOpBestaand />
+    </div>
+  );
+}
+
 export function Instellingen() {
   return (
     <div className="stapel">
@@ -210,7 +285,7 @@ export function Instellingen() {
       <Jira />
       <Debrief />
       <Consultant />
-      <Woordenlijst />
+      <WoordenlijstBeheer />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}
         uitleg="Zo gedraagt de assistent zich in elk gesprek. De AI-melding, de grenzen en de regel om één vraag per keer te stellen blijven altijd gelden, wat je hier ook invult." />
       <Instelling titel="Algemene gespreksinstructie" label="Gespreksinstructie" pad="/instellingen/gespreksinstructie" rijen={9}

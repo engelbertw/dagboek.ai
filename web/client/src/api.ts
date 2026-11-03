@@ -169,6 +169,8 @@ export interface KwaliteitBevinding {
 export interface KwaliteitAntwoord { bevindingen: KwaliteitBevinding[]; perSoort: Partial<Record<KwaliteitSoort, number>>; totaal: number }
 export interface SamenvoegUitkomst { behouden: string; samengevoegd: number; aangevuld: string[]; conflicten: string[] }
 
-export type WoordSoort = 'product' | 'afdeling' | 'overig';
+export type WoordSoort = 'product' | 'afdeling' | 'persoon' | 'overig';
+export interface Woordvoorstel { id: string; term: string; gehoordAls: string; soort: WoordSoort; bron: 'e_voorvoegsel' | 'naam_lijkt_op' | 'model'; aantal: number }
+export interface WoordToepassing { voorbeeld: boolean; transcripten: number; teksten: Record<string, number>; regels: { waar: string; voor: string; na: string }[] }
 export interface Woord { term: string; soort: WoordSoort; gehoordAls: string[]; toelichting: string }
 export interface Woordenlijst { items: Woord[]; vorige: Woord[] }

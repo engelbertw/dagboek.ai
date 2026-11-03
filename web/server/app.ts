@@ -11,7 +11,7 @@ import { OidcFout, type Oidc } from './oidc.js';
 import { registreerGebruikers, type KeycloakBeheer } from './gebruikers.js';
 import { noodloginAan, ontbrekendeInstellingen, type Config } from './config.js';
 import { migratieNamen, type Db } from './db.js';
-import { callLog, calls, consultantDebriefs, employees, activiteiten, implementaties, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates } from './schema.js';
+import { callLog, calls, consultantDebriefs, employees, activiteiten, implementaties, instellingen, klanten, opschoningRuns, overzichtToegang, projects, scheduleEmployees, schedules, suggesties, topics, updateHistorie, updates, woordvoorstellen } from './schema.js';
 import type { LlmClient } from './llm.js';
 import { startGesprek } from './gesprek-starten.js';
 import { foutcode, log } from './log.js';
@@ -22,8 +22,10 @@ import { JiraFout, geldigProject, geldigTeamId, schoneSite, type JiraClient, typ
 import { startInkomendGesprek } from './inkomend.js';
 import { registreerMcp } from './mcp.js';
 import { normaliseerCodewoord } from './gesprek-tools.js';
-import { corrigeerTranscript } from './woordenlijst.js';
-import type { Beurt } from './vertrouwen.js';
+import { corrigeerTranscript, woordenlijstSchema } from './woordenlijst.js';
+import { verzamelVoorstellen } from './woordvoorstellen.js';
+import { pasWoordenlijstToeOpBestaand } from './woordenlijst-toepassen.js';
+import { normaliseer, type Beurt } from './vertrouwen.js';
 import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie, bewaarWoordenlijst, leesWoordenlijst, leesVorigeWoordenlijst } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
@@ -404,6 +406,36 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     await bewaarWoordenlijst(db, items);
     return { items: await leesWoordenlijst(db), vorige: await leesVorigeWoordenlijst(db) };
   });
+  // Voorstellen uit gesprekken (e- voor een productnaam, een naam die lijkt op een bekende collega); pas na goedkeuring in de lijst.
+  app.get('/api/instellingen/woordenlijst/voorstellen', async () => db.select().from(woordvoorstellen).where(eq(woordvoorstellen.status, 'voorgesteld')).orderBy(desc(woordvoorstellen.aantal), asc(woordvoorstellen.gehoordAls)));
+  app.post('/api/instellingen/woordenlijst/voorstellen/:id', async (req, reply) => {
+    const id = uuid.parse((req.params as any).id);
+    const b = z.object({ besluit: z.enum(['goedkeuren', 'afwijzen']), term: z.string().trim().min(1).max(100).optional(), soort: z.enum(['product', 'afdeling', 'persoon', 'overig']).optional() }).parse(req.body);
+    const [voorstel] = await db.select().from(woordvoorstellen).where(eq(woordvoorstellen.id, id));
+    if (!voorstel) return reply.code(404).send({ fout: 'Voorstel niet gevonden' });
+    if (voorstel.status !== 'voorgesteld') return reply.code(409).send({ fout: 'Over dit voorstel is al besloten' });
+    const door = leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email ?? 'beheerder';
+    if (b.besluit === 'goedkeuren') {
+      const term = b.term ?? voorstel.term;
+      const soort = b.soort ?? voorstel.soort;
+      const lijst = await leesWoordenlijst(db);
+      const bestaand = lijst.find((w) => normaliseer(w.term) === normaliseer(term));
+      const nieuw = bestaand
+        ? lijst.map((w) => (w === bestaand ? { ...w, gehoordAls: [...new Set([...w.gehoordAls, voorstel.gehoordAls])] } : w))
+        : [...lijst, { term, soort, gehoordAls: [voorstel.gehoordAls], toelichting: '' }];
+      woordenlijstSchema.parse(nieuw); // een conflict (te kort, dubbel, bij twee termen) geeft een duidelijke 400 en laat het voorstel staan
+      await bewaarWoordenlijst(db, nieuw);
+    }
+    await db.update(woordvoorstellen).set({ status: b.besluit === 'goedkeuren' ? 'goedgekeurd' : 'afgewezen', beslistDoor: door, beslistOp: new Date(), bijgewerktOp: new Date() }).where(eq(woordvoorstellen.id, id));
+    return { ok: true, items: await leesWoordenlijst(db) };
+  });
+  // Terugwerkend toepassen: eerst een voorbeeld, daarna pas echt. Niet terug te draaien.
+  app.post('/api/instellingen/woordenlijst/toepassen', async (req) => {
+    const { voorbeeld } = z.object({ voorbeeld: z.boolean().default(true) }).parse(req.body ?? {});
+    const toegepast = await pasWoordenlijstToeOpBestaand(db, await leesWoordenlijst(db), voorbeeld);
+    if (!voorbeeld) log('info', 'woordenlijst.toegepast', { transcripten: toegepast.transcripten, ...Object.fromEntries(Object.entries(toegepast.teksten).map(([k, v]) => [`n_${k}`, v])) });
+    return toegepast;
+  });
   app.get('/api/instellingen/gespreksmotor', async () => ({ motor: await leesGespreksmotor(db) }));
   app.put('/api/instellingen/gespreksmotor', async (req) => {
     const { motor } = z.object({ motor: z.enum(MOTOREN) }).parse(req.body);
@@ -717,6 +749,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
       ...(eind ? { afgerondOp: new Date() } : {}),
     }, 'voice');
     if (!gewijzigd) return { ok: true, genegeerd: true };
+    if (Array.isArray(b.transcript)) void verzamelVoorstellen(db, id, b.transcript as Beurt[], await leesWoordenlijst(db));
     if (b.transcript !== undefined && b.transcript !== null) await bepaalBewaartermijn(db, config, id, b.status);
     if (b.status === 'gesproken') achtergrond(samenvattenGesprek({ db, llm }, id));
     return { ok: true };
