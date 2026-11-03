@@ -158,6 +158,13 @@ export async function legContactenVast(tx: Db | Tx, klantId: string, callId: str
 
 export interface BekendeKlant { id: string; naam: string }
 
+/** Vergelijkingssleutel voor een klantnaam: "Gemeente Bronckhorst" en "Bronckhorst" zijn dezelfde klant. */
+export function klantSleutel(naam: string): string {
+  const n = normaliseer(naam);
+  const zonder = n.replace(/^gemeente /, '');
+  return zonder || n;
+}
+
 /**
  * Welke gemeente is bedoeld? Een klant uit de lijst (zoals het model hem aanwees, of op genormaliseerde naam), anders een nieuwe klant als voorstel, maar alleen
  * als de naam echt in het gesprek voorkomt. Het resultaat `nieuw: true` betekent: moet worden aangemaakt als voorstel (status 'voorgesteld') en gecontroleerd.
@@ -166,7 +173,7 @@ export function kiesKlant(genoemd: string, aangewezen: string, bekende: BekendeK
   const naam = genoemd.trim();
   const gekozen = aangewezen.trim().toLowerCase();
   let klant = gekozen ? bekende.find((k) => k.naam.toLowerCase() === gekozen) : undefined;
-  if (!klant && naam) klant = bekende.find((k) => normaliseer(k.naam) === normaliseer(naam));
+  if (!klant && naam) klant = bekende.find((k) => klantSleutel(k.naam) === klantSleutel(naam));
   if (klant) return { klantId: klant.id, nieuweNaam: null };
   return { klantId: null, nieuweNaam: naam && komtVoorInGesprek(naam, transcript) ? naam.slice(0, 200) : null };
 }

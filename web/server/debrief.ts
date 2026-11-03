@@ -11,6 +11,7 @@ import { bezoeken, calls, employees, activiteiten, klantContacten, klanten, type
 import { logGebeurtenis } from './call-log.js';
 import { log } from './log.js';
 import { leggToestemmingVast, TOESTEMMING_DEBRIEF } from './toestemming.js';
+import { klantSleutel } from './debrief-gedeeld.js';
 import { citaatKomtVoor, komtVoorInGesprek, normaliseer, schoonVoorPrompt } from './vertrouwen.js';
 import { corrigeerTranscript, woordenlijstVoorPrompt, WOORDENLIJST_REGEL } from './woordenlijst.js';
 import { leesWoordenlijst } from './instellingen.js';
@@ -216,7 +217,7 @@ export async function verwerkDebrief({ db, llm }: { db: Db; llm: LlmClient }, ca
         const genoemd = uitkomst.klant.naam.trim();
         const gekozen = uitkomst.klant.bestaand.trim().toLowerCase();
         let klant = gekozen ? bekendeKlanten.find((k) => k.naam.toLowerCase() === gekozen) : undefined;
-        if (!klant && genoemd) klant = bekendeKlanten.find((k) => normaliseer(k.naam) === normaliseer(genoemd));
+        if (!klant && genoemd) klant = bekendeKlanten.find((k) => klantSleutel(k.naam) === klantSleutel(genoemd));
         let klantId: string | null = klant?.id ?? null;
         let nieuweKlant = false;
         if (!klantId && genoemd && komtVoorInGesprek(genoemd, transcript)) {
