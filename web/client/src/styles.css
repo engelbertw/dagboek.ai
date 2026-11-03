@@ -166,3 +166,14 @@ button.werk-soort[aria-pressed="true"] { border-color: currentColor; box-shadow:
 @media print { .voorbereiding .knop-link, .zijmenu, .kop { display: none; } body { background: #fff; color: #000; } .voorbereiding .paneel { border: 0; background: #fff; color: #000; } }
 
 .digest { margin: .5rem 0 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
+
+/* Gebruikers: rustige lijst, acties staan op het vervolgscherm. */
+.gebruikerslijst { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.gebruikerslijst a { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .85rem 1.1rem; background: var(--paneel); border: 1px solid var(--rand); border-radius: var(--radius); text-decoration: none; color: inherit; }
+.gebruikerslijst a:hover, .gebruikerslijst a:focus-visible { border-color: var(--paars); }
+.gebruikerslijst a.uit { opacity: .65; }
+.gebruiker-wie { display: grid; gap: .15rem; min-width: 0; } .gebruiker-wie .klein { overflow: hidden; text-overflow: ellipsis; }
+.gebruiker-meta { display: flex; align-items: center; gap: .9rem; white-space: nowrap; }
+.gebruiker-let { font-size: .8rem; color: var(--zacht); border: 1px solid var(--rand); border-radius: 999px; padding: .1rem .55rem; }
+.gegevens { display: grid; grid-template-columns: max-content 1fr; gap: .6rem 1.5rem; margin: 0; align-items: center; } .gegevens dt { color: var(--zacht); } .gegevens dd { margin: 0; }
+@media (max-width: 600px) { .gebruiker-meta .zacht:not([aria-hidden]) { display: none; } }

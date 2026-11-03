@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
 
@@ -82,100 +83,37 @@ function UitMedewerkers({ klaar }: { klaar: () => void }) {
   );
 }
 
+const GEBRUIKER_PAD = '/gebruikers';
+
+/** Een rustige lijst: naam en e-mail, de rol en alleen wat aandacht vraagt. Alles wat je met een gebruiker kunt doen staat op het vervolgscherm. */
 export function Gebruikers({ ikEmail }: { ikEmail: string }) {
   const lijst = useLaden(() => api<Gebruiker[]>('GET', '/gebruikers'));
   const [fout, setFout] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
   const [naam, setNaam] = useState('');
   const [email, setEmail] = useState('');
   const [rol, setRol] = useState<GebruikersRol>('beheerder');
   const [wachtwoord, setWachtwoord] = useState<{ voor: string; waarde: string } | null>(null);
-
-  async function doe(taak: () => Promise<unknown>, melding?: string) {
-    try { await taak(); setFout(null); setOk(melding ?? null); lijst.ververs(); } catch (e) { setOk(null); setFout(foutTekst(e)); }
-  }
-
   const [toeOpen, setToeOpen] = useState(false);
+
   async function voegToe(e: FormEvent) {
     e.preventDefault();
     try {
       const r = await api<{ tijdelijkWachtwoord: string }>('POST', '/gebruikers', { naam, email, rol });
       setWachtwoord({ voor: email, waarde: r.tijdelijkWachtwoord });
-      setNaam(''); setEmail(''); setFout(null); setOk(null); setToeOpen(false); lijst.ververs();
-    } catch (err) { setFout(foutTekst(err)); }
-  }
-
-  async function reset(g: Gebruiker) {
-    if (!window.confirm(`Nieuw tijdelijk wachtwoord voor ${g.naam}? Het huidige wachtwoord werkt dan niet meer.`)) return;
-    try {
-      const r = await api<{ tijdelijkWachtwoord: string }>('POST', `/gebruikers/${g.id}/wachtwoord`);
-      setWachtwoord({ voor: g.email, waarde: r.tijdelijkWachtwoord }); setFout(null); setOk(null);
+      setNaam(''); setEmail(''); setFout(null); setToeOpen(false); lijst.ververs();
     } catch (err) { setFout(foutTekst(err)); }
   }
 
   return (
     <div className="stapel">
-      <h1>Gebruikers</h1>
-      <p className="zacht">Een beheerder ziet alle gegevens en beheert gebruikers. Een accountmanager ziet alleen het werk en de klanten. Bij de eerste keer inloggen kiest iemand een eigen wachtwoord en koppelt een authenticator-app (MFA).</p>
+      <div className="rij spreid">
+        <div><h1>Gebruikers</h1><p className="zacht">Kies een gebruiker om de rol te wijzigen of het account te beheren.</p></div>
+        {!toeOpen && <button type="button" className="primair" onClick={() => setToeOpen(true)}>Gebruiker toevoegen</button>}
+      </div>
       <Melding tekst={fout} />
-      <Melding tekst={ok} soort="ok" />
 
-      {wachtwoord && (
-        <section className="paneel stapel" aria-live="polite">
-          <h2>Tijdelijk wachtwoord voor {wachtwoord.voor}</h2>
-          <div className="wachtwoordvak">{wachtwoord.waarde}</div>
-          <p className="zacht klein">Dit wordt maar één keer getoond. Geef het veilig door; de gebruiker moet het bij de eerste login wijzigen.</p>
-          <div className="rij">
-            <button type="button" onClick={() => void navigator.clipboard?.writeText(wachtwoord.waarde)}>Kopiëren</button>
-            <button type="button" onClick={() => setWachtwoord(null)}>Klaar, verberg</button>
-          </div>
-        </section>
-      )}
+      {wachtwoord && <TijdelijkWachtwoord voor={wachtwoord.voor} waarde={wachtwoord.waarde} verberg={() => setWachtwoord(null)} />}
 
-      <section className="paneel">
-        {lijst.fout && <Melding tekst={lijst.fout} />}
-        {lijst.data && !lijst.data.length && <Leeg>Nog geen gebruikers.</Leeg>}
-        {lijst.data && lijst.data.length > 0 && (
-          <div className="tabelrand">
-            <table>
-              <thead><tr><th>Naam</th><th>E-mail</th><th>Rol</th><th>Status</th><th>MFA</th><th /></tr></thead>
-              <tbody>
-                {lijst.data.map((g) => {
-                  const ik = g.email.toLowerCase() === ikEmail.toLowerCase();
-                  return (
-                    <tr key={g.id}>
-                      <td>{g.naam}{ik && <> <Badge>jij</Badge></>}</td>
-                      <td>{g.email}</td>
-                      <td>
-                        {ik ? ROL_LABEL[g.rol] : (
-                          <select aria-label={`Rol van ${g.naam}`} value={g.rol}
-                            onChange={(e) => { if (window.confirm(`${g.naam} wordt ${ROL_LABEL[e.target.value as GebruikersRol].toLowerCase()}. Doorgaan?`)) void doe(() => api('POST', `/gebruikers/${g.id}/rol`, { rol: e.target.value }), 'Rol gewijzigd'); }}>
-                            {(Object.keys(ROL_LABEL) as GebruikersRol[]).map((r) => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
-                          </select>
-                        )}
-                      </td>
-                      <td><Badge soort={g.actief ? 'afgerond' : 'mislukt'}>{g.actief ? 'actief' : 'uitgezet'}</Badge></td>
-                      <td><Badge soort={g.mfa ? 'afgerond' : 'wacht'}>{g.mfa ? 'actief' : 'nog niet ingesteld'}</Badge></td>
-                      <td>
-                        <div className="rij">
-                          {!ik && <button type="button" onClick={() => void doe(() => api('PATCH', `/gebruikers/${g.id}`, { actief: !g.actief }), g.actief ? 'Gebruiker uitgezet' : 'Gebruiker aangezet')}>{g.actief ? 'Uitzetten' : 'Aanzetten'}</button>}
-                          <button type="button" onClick={() => void reset(g)}>Wachtwoord resetten</button>
-                          <button type="button" onClick={() => { if (window.confirm(`MFA van ${g.naam} resetten? Bij de volgende login moet een nieuwe authenticator worden gekoppeld.`)) void doe(() => api('POST', `/gebruikers/${g.id}/mfa-reset`), 'MFA is gereset'); }}>MFA resetten</button>
-                          {!ik && <button type="button" className="gevaar" onClick={() => { if (window.confirm(`${g.naam} definitief verwijderen?`)) void doe(() => api('DELETE', `/gebruikers/${g.id}`), 'Gebruiker verwijderd'); }}>Verwijderen</button>}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <UitMedewerkers klaar={lijst.ververs} />
-
-      {!toeOpen && <div><button type="button" className="primair" onClick={() => setToeOpen(true)}>Gebruiker toevoegen</button></div>}
       {toeOpen && <form className="paneel stapel" onSubmit={voegToe}>
         <h2>Gebruiker toevoegen</h2>
         <div className="raster">
@@ -189,6 +127,119 @@ export function Gebruikers({ ikEmail }: { ikEmail: string }) {
         </div>
         <div className="rij"><button className="primair" type="submit">Toevoegen</button><button type="button" onClick={() => setToeOpen(false)}>Annuleren</button></div>
       </form>}
+
+      {lijst.fout && <Melding tekst={lijst.fout} />}
+      {lijst.data && !lijst.data.length && <Leeg>Nog geen gebruikers.</Leeg>}
+      {lijst.data && lijst.data.length > 0 && (
+        <ul className="gebruikerslijst" aria-label="Gebruikers">
+          {lijst.data.map((g) => {
+            const ik = g.email.toLowerCase() === ikEmail.toLowerCase();
+            return (
+              <li key={g.id}>
+                <Link to={`${GEBRUIKER_PAD}/${g.id}`} className={g.actief ? '' : 'uit'}>
+                  <span className="gebruiker-wie">
+                    <strong>{g.naam}</strong>{ik && <> <Badge>jij</Badge></>}
+                    <span className="zacht klein">{g.email}</span>
+                  </span>
+                  <span className="gebruiker-meta">
+                    {!g.actief && <span className="gebruiker-let">uitgezet</span>}
+                    {g.actief && !g.mfa && <span className="gebruiker-let">MFA nog niet ingesteld</span>}
+                    <span className="zacht">{ROL_LABEL[g.rol]}</span>
+                    <span aria-hidden="true" className="zacht">›</span>
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <UitMedewerkers klaar={lijst.ververs} />
+    </div>
+  );
+}
+
+function TijdelijkWachtwoord({ voor, waarde, verberg }: { voor: string; waarde: string; verberg: () => void }) {
+  return (
+    <section className="paneel stapel" aria-live="polite">
+      <h2>Tijdelijk wachtwoord voor {voor}</h2>
+      <div className="wachtwoordvak">{waarde}</div>
+      <p className="zacht klein">Dit wordt maar één keer getoond. Geef het veilig door; de gebruiker moet het bij de eerste login wijzigen.</p>
+      <div className="rij">
+        <button type="button" onClick={() => void navigator.clipboard?.writeText(waarde)}>Kopiëren</button>
+        <button type="button" onClick={verberg}>Klaar, verberg</button>
+      </div>
+    </section>
+  );
+}
+
+/** Vervolgscherm: de gegevens van één gebruiker en alle acties daarop. */
+export function GebruikerDetail({ ikEmail }: { ikEmail: string }) {
+  const { id } = useParams();
+  const navigeer = useNavigate();
+  const lijst = useLaden(() => api<Gebruiker[]>('GET', '/gebruikers'));
+  const [fout, setFout] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [wachtwoord, setWachtwoord] = useState<{ voor: string; waarde: string } | null>(null);
+  const g = lijst.data?.find((x) => x.id === id);
+  const ik = !!g && g.email.toLowerCase() === ikEmail.toLowerCase();
+
+  async function doe(taak: () => Promise<unknown>, melding: string) {
+    try { await taak(); setFout(null); setOk(melding); lijst.ververs(); } catch (e) { setOk(null); setFout(foutTekst(e)); }
+  }
+  async function reset() {
+    if (!g || !window.confirm(`Nieuw tijdelijk wachtwoord voor ${g.naam}? Het huidige wachtwoord werkt dan niet meer.`)) return;
+    try {
+      const r = await api<{ tijdelijkWachtwoord: string }>('POST', `/gebruikers/${g.id}/wachtwoord`);
+      setWachtwoord({ voor: g.email, waarde: r.tijdelijkWachtwoord }); setFout(null); setOk(null);
+    } catch (err) { setFout(foutTekst(err)); }
+  }
+
+  if (lijst.fout) return <div className="stapel"><Melding tekst={lijst.fout} /><Link to={GEBRUIKER_PAD}>← Gebruikers</Link></div>;
+  if (!lijst.data) return null;
+  if (!g) return <div className="stapel"><Leeg>Deze gebruiker bestaat niet (meer).</Leeg><Link to={GEBRUIKER_PAD}>← Gebruikers</Link></div>;
+
+  return (
+    <div className="stapel">
+      <div><Link to={GEBRUIKER_PAD}>← Gebruikers</Link><h1>{g.naam}{ik && <> <Badge>jij</Badge></>}</h1><p className="zacht">{g.email}</p></div>
+      <Melding tekst={fout} />
+      <Melding tekst={ok} soort="ok" />
+      {wachtwoord && <TijdelijkWachtwoord voor={wachtwoord.voor} waarde={wachtwoord.waarde} verberg={() => setWachtwoord(null)} />}
+
+      <section className="paneel stapel" aria-label="Account">
+        <h2>Account</h2>
+        <dl className="gegevens">
+          <dt>Status</dt><dd><Badge soort={g.actief ? 'afgerond' : 'mislukt'}>{g.actief ? 'actief' : 'uitgezet'}</Badge></dd>
+          <dt>MFA</dt><dd><Badge soort={g.mfa ? 'afgerond' : 'wacht'}>{g.mfa ? 'actief' : 'nog niet ingesteld'}</Badge></dd>
+          <dt>Rol</dt>
+          <dd>
+            {ik ? ROL_LABEL[g.rol] : (
+              <select aria-label={`Rol van ${g.naam}`} value={g.rol}
+                onChange={(e) => { if (window.confirm(`${g.naam} wordt ${ROL_LABEL[e.target.value as GebruikersRol].toLowerCase()}. Doorgaan?`)) void doe(() => api('POST', `/gebruikers/${g.id}/rol`, { rol: e.target.value }), 'Rol gewijzigd'); }}>
+                {(Object.keys(ROL_LABEL) as GebruikersRol[]).map((r) => <option key={r} value={r}>{ROL_LABEL[r]}</option>)}
+              </select>
+            )}
+          </dd>
+        </dl>
+        {ik && <p className="zacht klein">Je kunt je eigen rol niet wijzigen en je eigen account niet uitzetten of verwijderen.</p>}
+      </section>
+
+      <section className="paneel stapel" aria-label="Acties">
+        <h2>Acties</h2>
+        <div className="rij">
+          <button type="button" onClick={() => void reset()}>Wachtwoord resetten</button>
+          <button type="button" onClick={() => { if (window.confirm(`MFA van ${g.naam} resetten? Bij de volgende login moet een nieuwe authenticator worden gekoppeld.`)) void doe(() => api('POST', `/gebruikers/${g.id}/mfa-reset`), 'MFA is gereset'); }}>MFA resetten</button>
+          {!ik && <button type="button" onClick={() => void doe(() => api('PATCH', `/gebruikers/${g.id}`, { actief: !g.actief }), g.actief ? 'Gebruiker uitgezet' : 'Gebruiker aangezet')}>{g.actief ? 'Uitzetten' : 'Aanzetten'}</button>}
+        </div>
+        {!ik && (
+          <div>
+            <button type="button" className="gevaar" onClick={async () => {
+              if (!window.confirm(`${g.naam} definitief verwijderen?`)) return;
+              try { await api('DELETE', `/gebruikers/${g.id}`); navigeer(GEBRUIKER_PAD); } catch (e) { setOk(null); setFout(foutTekst(e)); }
+            }}>Verwijderen</button>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -23,7 +23,7 @@ import { Suggesties } from './pages/Suggesties';
 import { Planning } from './pages/Planning';
 import { Projecten } from './pages/Projecten';
 import { Werk } from './pages/Werk';
-import { Gebruikers } from './pages/Gebruikers';
+import { GebruikerDetail, Gebruikers } from './pages/Gebruikers';
 
 interface Me { ingelogd: boolean; email?: string; naam?: string; rol?: GebruikersRol; keycloak: boolean; noodlogin: boolean; gebruikersbeheer: boolean; accountUrl?: string }
 
@@ -128,6 +128,7 @@ export function App() {
               <Route path="/onderwerp/:id" element={<Onderwerp />} />
               <Route path="/medewerkers" element={<Medewerkers />} />
               {me.gebruikersbeheer && <Route path="/gebruikers" element={<Gebruikers ikEmail={me.email ?? ''} />} />}
+              {me.gebruikersbeheer && <Route path="/gebruikers/:id" element={<GebruikerDetail ikEmail={me.email ?? ''} />} />}
               <Route path="/projecten" element={<Projecten />} />
               <Route path="/gesprekken" element={<Gesprekken />} />
               <Route path="/spraakmotoren" element={<Spraakmotoren />} />
