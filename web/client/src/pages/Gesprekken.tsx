@@ -19,6 +19,9 @@ const SAMENVATTING: Record<SamenvattingStatus, { label: string; uitleg: string }
 const OPHALEN: Record<string, string> = {
   afgerond: 'Het gesprek is opgehaald. De samenvatting volgt zo.', nog_bezig: 'Het gesprek loopt bij ElevenLabs nog of wordt nog verwerkt. Probeer het zo opnieuw.',
   geen_gesprek: 'ElevenLabs kent dit gesprek niet (meer).', mislukt: 'Bij ElevenLabs is niemand aan het woord geweest, dus er is niets op te halen.',
+  sleutel_ongeldig: 'De ElevenLabs-API-sleutel van de voice-service is ongeldig (401). Zet een nieuwe sleutel als ELEVENLABS_API_KEY bij de voice-service en probeer het opnieuw.',
+  sleutel_geen_recht: 'De ElevenLabs-API-sleutel mag geen gesprekken lezen (403). Geef de sleutel leesrechten op Conversational AI.',
+  niet_bereikbaar: 'ElevenLabs was niet bereikbaar of gaf een storing. Probeer het later opnieuw.',
   genegeerd: 'Dit gesprek was al afgeleverd.', onbekend: 'De voice-service kent dit gesprek niet.',
 };
 
