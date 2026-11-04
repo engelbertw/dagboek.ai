@@ -365,3 +365,12 @@ def test_inkomend_onbekend_type_valt_terug_op_het_dagboek(monkeypatch):
     monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, {**WEB_ANTWOORD, "type": "toekomstig_type"}))
     antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_onb"})
     assert antw["dynamic_variables"]["prompt_version"] == "dagboek-v4"
+
+
+@pytest.mark.parametrize("status,uitkomst", [(401, "sleutel_ongeldig"), (403, "sleutel_geen_recht"), (500, "niet_bereikbaar"), (404, "geen_gesprek")])
+def test_herstel_gesprek_onderscheidt_de_reden_dat_ophalen_mislukt(monkeypatch, gemeld, status, uitkomst):
+    cid = opdracht()
+    calls.update_opdracht(cid, agent_conversation_id="conv_1", status="belt")
+    monkeypatch.setattr(agent.httpx, "get", lambda *a, **k: type("R", (), {"status_code": status, "json": lambda self: {}})())
+    assert agent.herstel_gesprek(cid) == uitkomst
+    assert gemeld == []

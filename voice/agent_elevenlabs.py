@@ -254,23 +254,47 @@ def verwerk_webhook(gebeurtenis: dict) -> str:
     return "afgerond"
 
 
+class GesprekOphalenMislukt(Exception):
+    """ElevenLabs gaf geen gesprek terug om een andere reden dan 'bestaat niet': `uitkomst` is de code die het scherm toont."""
+
+    def __init__(self, uitkomst: str):
+        super().__init__(uitkomst)
+        self.uitkomst = uitkomst
+
+
 def haal_gesprek_op(conversation_id: str) -> dict | None:
-    """Vangnet: het gesprek zelf opvragen als de webhook niet aankwam."""
+    """Vangnet: het gesprek zelf opvragen als de webhook niet aankwam. Geeft None terug als ElevenLabs het gesprek niet kent (404);
+    bij een ongeldige sleutel (401), te weinig rechten (403) of een storing volgt GesprekOphalenMislukt, zodat dat niet als 'onbekend gesprek' wordt getoond."""
     try:
         r = httpx.get(f"{API}/v1/convai/conversations/{conversation_id}", headers={"xi-api-key": _sleutel()}, timeout=15)
-        return r.json() if r.status_code == 200 else None
-    except (httpx.HTTPError, ValueError):
+    except httpx.HTTPError as e:
+        logger.warning(f"Gesprek ophalen bij ElevenLabs mislukt: {type(e).__name__}")
+        raise GesprekOphalenMislukt("niet_bereikbaar")
+    if r.status_code == 404:
         return None
+    if r.status_code in (401, 403):
+        logger.error(f"ElevenLabs weigert de API-sleutel bij gesprek ophalen: {r.status_code}")
+        raise GesprekOphalenMislukt("sleutel_ongeldig" if r.status_code == 401 else "sleutel_geen_recht")
+    if r.status_code != 200:
+        logger.warning(f"Gesprek ophalen bij ElevenLabs mislukt: {r.status_code}")
+        raise GesprekOphalenMislukt("niet_bereikbaar")
+    try:
+        return r.json()
+    except ValueError:
+        raise GesprekOphalenMislukt("niet_bereikbaar")
 
 
 def herstel_gesprek(call_id: str) -> str:
     """Haalt een agent-gesprek bij ElevenLabs op en verwerkt het als de webhook. Geeft 'afgerond', 'mislukt', 'genegeerd', 'nog_bezig',
-    'geen_gesprek' of 'onbekend' terug."""
+    'geen_gesprek' (404), 'sleutel_ongeldig' (401), 'sleutel_geen_recht' (403), 'niet_bereikbaar' of 'onbekend' terug."""
     spec = calls.lees_opdracht(call_id)
     if not spec or spec.get("engine") != "elevenlabs_agent" or not spec.get("agent_conversation_id"):
         return "onbekend"
     conv = spec["agent_conversation_id"]
-    gesprek = haal_gesprek_op(conv)
+    try:
+        gesprek = haal_gesprek_op(conv)
+    except GesprekOphalenMislukt as e:
+        return e.uitkomst
     if gesprek is None:
         return "geen_gesprek"
     if gesprek.get("status") not in ("done", "failed"):
