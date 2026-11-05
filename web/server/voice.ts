@@ -9,6 +9,10 @@ export interface BelOpdracht {
   houding?: string;
   instructie?: string;
   engine?: 'pipecat' | 'elevenlabs_agent';
+  /** Wat voor gesprek: standaard het dagboek; een debrief heeft eigen prompt en vragenlijst in voice. */
+  soort?: 'dagboek' | 'verkoop_debrief' | 'consultant_debrief' | 'debrief_keuze';
+  varianten?: string[];
+  voorstel?: { variant: 'samenverder'; klant: string } | null;
 }
 
 export interface Onderwerp {

@@ -8,6 +8,8 @@ import { logGebeurtenis } from './call-log.js';
 import { zetStatus } from './gesprek-status.js';
 import { log } from './log.js';
 import type { Onderwerp, VoiceClient } from './voice.js';
+import { beschikbareVarianten, gespreksOpzet, routeVoor } from './gespreks-opzet.js';
+import type { GesprekType } from './schema.js';
 
 export interface PlanningInfo { scheduleId: string; slotStart: Date; poging: number }
 export type StartUitkomst =
@@ -39,19 +41,30 @@ export async function stelOnderwerpenSamen(db: Db, employeeId: string): Promise<
   return { onderwerpen, momentopname };
 }
 
-/** Stelt de onderwerpen van een medewerker samen en start het gesprek. Gebruikt door 'Bel nu' en door de scheduler. */
-export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }, employeeId: string, planning?: PlanningInfo, gekozenMotor?: Motor): Promise<StartUitkomst> {
+/**
+ * Stelt de onderwerpen van een medewerker samen en start het gesprek. Gebruikt door 'Bel nu' en door de scheduler.
+ * `route`: 'dagboek' (standaard) of 'rol' (alleen bij 'Bel nu'): dan volgt het gesprekstype de rol van de medewerker, zoals bij inkomende gesprekken
+ * (accountmanager → verkoop-debrief, consultant → consultantdebrief, beide → keuze in het gesprek). Een geplande poging is altijd een dagboekgesprek.
+ */
+export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }, employeeId: string, planning?: PlanningInfo, gekozenMotor?: Motor, route: 'dagboek' | 'rol' = 'dagboek'): Promise<StartUitkomst> {
   const [m] = await db.select().from(employees).where(eq(employees.id, employeeId));
   if (!m) return { ok: false, status: 404, fout: 'Medewerker niet gevonden' };
   if (!m.actief) return { ok: false, status: 409, fout: 'Deze medewerker is niet actief' };
-  const { onderwerpen, momentopname } = await stelOnderwerpenSamen(db, employeeId);
-  // De planning bepaalt de instructie; heeft die er geen (of 'Bel nu'), dan geldt de algemene instructie uit Instellingen.
-  const [pl] = planning ? await db.select({ i: schedules.gespreksinstructie }).from(schedules).where(eq(schedules.id, planning.scheduleId)) : [];
   const motor = gekozenMotor ?? (await leesGespreksmotor(db));
-  const instructie = pl?.i?.trim() || (await leesInstructie(db)).waarde;
+  const varianten = route === 'rol' && !planning ? await beschikbareVarianten(db) : [];
+  const type: GesprekType = route === 'rol' && !planning ? routeVoor(m, varianten) : 'dagboek';
+  const debrief = type !== 'dagboek';
+  // Een debrief wordt alleen door de ElevenLabs-agent gevoerd; liever nu een duidelijke weigering dan een dagboekgesprek zonder dat iemand het merkt.
+  if (debrief && motor !== 'elevenlabs_agent') return { ok: false, status: 409, fout: 'Een debrief kan alleen met de ElevenLabs-agent als gespreksmotor. Kies die motor, of bel voor een dagboekgesprek.' };
+  const { onderwerpen, momentopname } = debrief ? { onderwerpen: [], momentopname: [] } : await stelOnderwerpenSamen(db, employeeId);
+  // De planning bepaalt de instructie; heeft die er geen (of 'Bel nu'), dan geldt de algemene instructie uit Instellingen. Een debrief heeft zijn eigen vragenlijst.
+  const [pl] = planning ? await db.select({ i: schedules.gespreksinstructie }).from(schedules).where(eq(schedules.id, planning.scheduleId)) : [];
+  const opzet = debrief ? await gespreksOpzet(db, m, type, varianten) : null;
+  const instructie = opzet?.instructie ?? (pl?.i?.trim() || (await leesInstructie(db)).waarde);
   // Bij een geplande poging is de unieke index de claim: zo start een herstart of tweede proces nooit hetzelfde gesprek dubbel.
   const [call] = await db.insert(calls).values({
-    employeeId, status: 'gepland', bron: planning ? 'schema' : 'handmatig', onderwerpen: momentopname, instructie, engine: motor,
+    employeeId, status: 'gepland', bron: planning ? 'schema' : 'handmatig', type, onderwerpen: momentopname, instructie, engine: motor,
+    ...(opzet?.context ? { context: opzet.context } : {}),
     ...(planning ? { scheduleId: planning.scheduleId, slotStart: planning.slotStart, poging: planning.poging } : {}),
   }).onConflictDoNothing().returning();
   if (!call) return { ok: false, status: 409, fout: 'Dit gesprek is al gestart' };
@@ -61,7 +74,8 @@ export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }
   // Vlak vóór de aanroep naar 'verzenden': vanaf hier is niet meer zeker of er gebeld is, ook als het antwoord uitblijft.
   if (!(await zetStatus(db, call.id, 'verzenden', {}, bron))) return { ok: false, status: 409, fout: 'Dit gesprek is al gestart', callId: call.id };
   const resultaat = await voice({
-    telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde, instructie, engine: motor,
+    telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: opzet ? opzet.toestemmingNodig : !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde, instructie, engine: motor,
+    ...(debrief ? { soort: type, varianten: varianten.map((v) => v.id), voorstel: opzet?.voorstel ?? null } : {}),
   });
   if (!resultaat.gebeld) {
     // Bij een onzekere uitkomst (time-out) blijft de status 'verzenden': het herstel vraagt voice later wat er echt is gebeurd en belt nooit blind opnieuw.

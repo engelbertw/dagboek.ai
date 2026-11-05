@@ -691,8 +691,8 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   });
 
   app.post('/api/employees/:id/bel', async (req, reply) => {
-    const { motor } = z.object({ motor: z.enum(MOTOREN).optional() }).parse(req.body ?? {});
-    const r = await startGesprek({ db, voice }, uuid.parse((req.params as any).id), undefined, motor);
+    const { motor, route } = z.object({ motor: z.enum(MOTOREN).optional(), route: z.enum(['dagboek', 'rol']).optional() }).parse(req.body ?? {});
+    const r = await startGesprek({ db, voice }, uuid.parse((req.params as any).id), undefined, motor, route);
     if (!r.ok) return reply.code(r.status).send({ fout: r.fout, ...(r.callId ? { callId: r.callId } : {}) });
     return reply.code(202).send({ callId: r.callId, onderwerpen: r.onderwerpen });
   });

@@ -38,14 +38,22 @@ function MedewerkerKaart({ m, ververs, overzicht, units }: { m: Medewerker; verv
   const [motor, setMotorState] = useState<'' | Motor>(() => { try { return (localStorage.getItem(sleutel) as '' | Motor | null) ?? ''; } catch { return ''; } });
   const setMotor = (k: '' | Motor) => { setMotorState(k); try { k ? localStorage.setItem(sleutel, k) : localStorage.removeItem(sleutel); } catch { /* alleen een gemak */ } };
 
+  // Wie accountmanager of consultant is, wordt bij 'Bel nu' standaard voor een debrief gebeld (de rol bepaalt welke); een geplande poging blijft altijd het dagboek.
+  const heeftDebrief = m.rol === 'accountmanager' || m.consultant;
+  const routeSleutel = `route-${m.id}`;
+  const [gesprek, setGesprekState] = useState<'rol' | 'dagboek'>(() => { try { return (localStorage.getItem(routeSleutel) as 'rol' | 'dagboek' | null) ?? (heeftDebrief ? 'rol' : 'dagboek'); } catch { return heeftDebrief ? 'rol' : 'dagboek'; } });
+  const setGesprek = (k: 'rol' | 'dagboek') => { setGesprekState(k); try { localStorage.setItem(routeSleutel, k); } catch { /* alleen een gemak */ } };
+  const debriefNaam = m.rol === 'accountmanager' && m.consultant ? 'verkoop- of consultancy-debrief' : m.consultant ? 'consultancy-debrief' : 'verkoop-debrief';
+
   const wijzig = async (body: object) => { try { await api('PATCH', `/employees/${m.id}`, body); setMelding(null); ververs(); } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); } };
 
   async function bel() {
-    if (!confirm(`${m.naam} nu bellen op ${m.telefoon}?`)) return;
+    const alsDebrief = heeftDebrief && gesprek === 'rol';
+    if (!confirm(`${m.naam} nu bellen op ${m.telefoon} voor ${alsDebrief ? `een ${debriefNaam}` : 'het dagboek'}?`)) return;
     setBezig(true);
     try {
-      const r = await api<{ onderwerpen: number }>('POST', `/employees/${m.id}/bel`, motor ? { motor } : {});
-      setMelding({ tekst: `Gesprek gestart. ${r.onderwerpen} ${r.onderwerpen === 1 ? 'onderwerp' : 'onderwerpen'} meegegeven. Zie Gesprekken voor de uitkomst.`, soort: 'ok' });
+      const r = await api<{ onderwerpen: number }>('POST', `/employees/${m.id}/bel`, { ...(motor ? { motor } : {}), ...(heeftDebrief ? { route: gesprek } : {}) });
+      setMelding({ tekst: alsDebrief && r.onderwerpen === 0 ? 'Debrief gestart. Zie Gesprekken voor de uitkomst.' : `Gesprek gestart. ${r.onderwerpen} ${r.onderwerpen === 1 ? 'onderwerp' : 'onderwerpen'} meegegeven. Zie Gesprekken voor de uitkomst.`, soort: 'ok' });
     } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); } finally { setBezig(false); }
   }
   async function wis() {
@@ -62,6 +70,11 @@ function MedewerkerKaart({ m, ververs, overzicht, units }: { m: Medewerker; verv
             <option value="">Motor: standaard (zie Instellingen)</option>
             {(Object.keys(MOTOR_LABEL) as Motor[]).map((k) => <option key={k} value={k}>{MOTOR_LABEL[k]}</option>)}
           </select>
+          {heeftDebrief && (
+            <select aria-label="Soort gesprek voor dit gesprek" value={gesprek} onChange={(e) => setGesprek(e.target.value as 'rol' | 'dagboek')}>
+              <option value="rol">Gesprek: debrief (volgt de rol)</option><option value="dagboek">Gesprek: dagboek</option>
+            </select>
+          )}
           <button className="primair" onClick={bel} disabled={bezig || !m.actief}>{bezig ? 'Bezig…' : 'Bel nu'}</button>
           <button onClick={() => setOpen(!open)} aria-expanded={open}>{open ? 'Sluiten' : 'Instellingen'}</button>
         </div>
