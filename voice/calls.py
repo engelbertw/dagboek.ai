@@ -47,13 +47,15 @@ def _schrijf(pad: Path, spec: dict) -> None:
     os.replace(tmp, pad)
 
 
-def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat", soort: str = "dagboek", varianten: list[str] | None = None, voorstel: dict | None = None) -> str:
+def maak_opdracht(nummer: str, medewerker: str, onderwerpen: list[dict], toestemming_nodig: bool = True, web_call_id: str = "", houding: str = "", instructie: str = "", call_id: str = "", engine: str = "pipecat", soort: str = "dagboek", varianten: list[str] | None = None, voorstel: dict | None = None, begroeting: dict | None = None) -> str:
     call_id = call_id or uuid.uuid4().hex
     spec = {
         "call_id": call_id, "nummer": nummer, "medewerker": medewerker, "onderwerpen": onderwerpen,
         "toestemming_nodig": toestemming_nodig, "web_call_id": web_call_id, "houding": houding, "instructie": instructie, "engine": engine, "soort": soort, "varianten": [v for v in (varianten or []) if isinstance(v, str)][:10],
         # Alleen een planningsvoorstel met een gemeentenaam; het geldt pas als de consultant het bevestigt.
         "voorstel": {"variant": "samenverder", "klant": voorstel["klant"][:200]} if isinstance(voorstel, dict) and voorstel.get("variant") == "samenverder" and isinstance(voorstel.get("klant"), str) and voorstel["klant"].strip() else None,
+        # Alleen bekende sleutels met tekst; de voice-service begrenst en schoont de tekst bij het gebruik (prompts._vrij).
+        "begroeting": {k: v for k, v in begroeting.items() if k in ("aanloopInkomend", "aanloopUitgaand", "opening", "openingUitgaand") and isinstance(v, str)} if isinstance(begroeting, dict) else {},
         "aangemaakt": time.time(),
         "bijgewerkt": time.time(),
     }

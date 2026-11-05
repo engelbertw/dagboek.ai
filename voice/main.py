@@ -210,6 +210,8 @@ class BelVerzoek(BaseModel):
     soort: str = Field(default="dagboek", max_length=30)
     varianten: list[str] = Field(default_factory=list, max_length=10)
     voorstel: dict | None = None
+    # Aanpasbare delen van de begroeting (aanloopzin en openingsvraag) uit de instellingen van de web-app; de AI-melding en toestemmingsvraag staan vast.
+    begroeting: dict[str, str] | None = None
 
 
 @app.post("/bel")
@@ -247,7 +249,7 @@ async def bel(verzoek: BelVerzoek, authorization: str = Header(default="")):
             calls.update_opdracht(call_id, status="mislukt", fout=reden, geweigerd=True, onderwerpen=[])
         return {"gebeld": False, "reden": reden}
     call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie, call_id=call_id, engine=engine,
-                               soort=soort, varianten=verzoek.varianten, voorstel=verzoek.voorstel)
+                               soort=soort, varianten=verzoek.varianten, voorstel=verzoek.voorstel, begroeting=verzoek.begroeting)
     resultaat = calls.start_gesprek(call_id)
     if not resultaat.get("gebeld") and not resultaat.get("onzeker"):
         calls.rapporteer(call_id, "mislukt", fout=resultaat.get("reden"))

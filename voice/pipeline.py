@@ -170,7 +170,7 @@ async def run_voice_pipeline(websocket, token_geverifieerd: bool = False) -> Non
     async def on_client_connected(transport, client):
         checkpoint_taak.append(asyncio.create_task(_checkpoints()))
         logger.info(f"Client verbonden (prompt {PROMPT_VERSION})")
-        groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")))
+        groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")), begroeting=spec.get("begroeting"))
         # Geen handmatige context.add_message: de assistant-aggregator vangt een TTSSpeakFrame zelf op.
         await worker.queue_frames([TTSSpeakFrame(groet)])
 

@@ -115,8 +115,10 @@ met een concrete vraag: wat, wie en wanneer.
 Het gesprek heeft drie stappen. Het kan een klantbezoek zijn, een tweede gesprek over een eerder bezoek of een update over afspraken en acties van eerder: laat de accountmanager zelf bepalen waar het over gaat.
 1. Eerst vertelt de accountmanager vrij. Begin na de begroeting met een open uitnodiging, bijvoorbeeld "Vertel maar, wat wil je kwijt?". Luister dan zonder te onderbreken en stel in deze stap geen vragen. \
 Reageer alleen kort ("oké", "ga maar door"). Valt er een stilte of lijkt het af, vraag dan één keer "Nog iets?". Zegt de accountmanager dat het alles was, ga dan naar stap 2.
-2. Dan vul je aan. Onder "Onderwerpen om na te lopen" staat waar een verslag minimaal over gaat. Bepaal zelf welke onderwerpen de accountmanager al heeft genoemd en vraag er niet opnieuw naar. \
+2. Dan vul je aan, en dat doe je slim. Onder "Onderwerpen om na te lopen" staat waar een verslag minimaal over gaat. Loop die lijst eerst in gedachten langs en streep af wat de accountmanager in het vrije verhaal al heeft gezegd, ook als het in andere woorden, tussendoor of maar half is gezegd. \
+Daar vraag je er niet opnieuw naar; alleen bij een echt vaag antwoord stel je één korte controlevraag. Geef dan in één zin terug wat je hebt begrepen en noem wat nog ontbreekt, bijvoorbeeld "Ik heb de klant, de afspraken en twee acties; ik mis nog of er een kans of risico is." \
 Vraag per onderwerp dat ontbreekt één korte vraag, in je eigen woorden, en ga dan naar het volgende. "Niets te melden" of "weet ik niet" is een prima antwoord. \
+Stel in deze stap niet meer dan zes vragen. Sla onderwerpen over die bij dit bezoek duidelijk niet spelen, en ga naar stap 3 zodra de kern er is (de klant, wat is afgesproken, de acties, en of er een kans of risico is) of zodra de accountmanager zegt dat het genoeg is. \
 Ging het gesprek alleen over een update van eerdere afspraken of acties, vraag dan alleen bij welke klant het was en of er nog meer is, en loop de lijst niet af.
 3. Aan het einde vat je het kort samen in een paar zinnen: bij welke klant, wat er is afgesproken, welke acties er zijn en of er een commerciële kans of een risico is. \
 Vraag dan altijd: "Klopt dit, en ontbreekt er nog iets?" Verwerk een correctie in een korte nieuwe samenvatting. \
@@ -267,31 +269,50 @@ def build_system_prompt(opdrachtgever: str, medewerker: str, onderwerpen: list[d
     return "\n\n".join(delen)
 
 
-def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, nu: datetime | None = None, inkomend: bool = False, soort: str = SOORT_DAGBOEK, varianten: list[str] | None = None, voorstel: dict | None = None) -> str:
-    """Vaste begroeting zonder LLM-aanroep: AI-melding is verplicht (EU AI Act art. 50) en moet altijd gezegd worden."""
+# De vrije delen van de begroeting zijn aanpasbaar in de web-app (Instellingen). De AI-melding en de toestemmingsvraag staan vast: die zijn verplicht
+# (EU AI-verordening art. 50, AVG) en horen bij de toestemmingsversie. De standaardteksten staan ook in web/server/instellingen.ts (voor het scherm).
+BEGROETING_STANDAARD: dict[str, dict[str, str]] = {
+    SOORT_DAGBOEK: {"aanloopInkomend": "Fijn dat je belt voor je update.", "aanloopUitgaand": "", "opening": "Waar wil je mee beginnen?", "openingUitgaand": "Heb je nu even tijd voor een korte update?"},
+    SOORT_DEBRIEF: {"aanloopInkomend": "Fijn dat je belt over je klant.", "aanloopUitgaand": "Ik bel voor de debrief van je klantbezoek.", "opening": "Vertel maar, wat wil je kwijt?"},
+    SOORT_CONSULTANT: {"aanloopInkomend": "Fijn dat je belt over je werk bij de klant.", "aanloopUitgaand": "Ik bel voor de debrief van je werk bij de klant."},
+    SOORT_KEUZE: {"aanloopInkomend": "Fijn dat je belt over je klant of je werk.", "aanloopUitgaand": "Ik bel voor een debrief van je klant of je werk."},
+}
+BEGROETING_MAX = 200
+
+
+def _vrij(begroeting: dict | None, soort: str, sleutel: str) -> str:
+    """Een eigen tekst uit de instellingen (één regel, begrensd) of anders de standaard."""
+    standaard = BEGROETING_STANDAARD.get(soort, {}).get(sleutel, "")
+    eigen = begroeting.get(sleutel) if isinstance(begroeting, dict) else None
+    if isinstance(eigen, str):
+        schoon = " ".join(eigen.split())[:BEGROETING_MAX].strip()
+        if schoon:
+            return schoon
+    return standaard
+
+
+def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, nu: datetime | None = None, inkomend: bool = False, soort: str = SOORT_DAGBOEK, varianten: list[str] | None = None, voorstel: dict | None = None, begroeting: dict | None = None) -> str:
+    """Begroeting zonder LLM-aanroep: AI-melding is verplicht (EU AI Act art. 50) en moet altijd gezegd worden. De aanloopzin en de openingsvraag zijn aanpasbaar via `begroeting`."""
     uur = (nu or datetime.now(TIJDZONE)).astimezone(TIJDZONE).hour
     groet = "Goedemorgen" if 6 <= uur < 12 else "Goedemiddag" if 12 <= uur < 18 else "Goedenavond"
     tekst = (
         f"{groet} {medewerker}. Je spreekt met de digitale assistent van {opdrachtgever}. "
         "Dit gesprek wordt gevoerd door een AI-systeem. "
     )
+    aanloop = _vrij(begroeting, soort, "aanloopInkomend" if inkomend else "aanloopUitgaand")
+    if aanloop:
+        tekst += aanloop + " "
     if soort == SOORT_DEBRIEF:
-        tekst += "Fijn dat je belt over je klant. " if inkomend else "Ik bel voor de debrief van je klantbezoek. "
-        return tekst + ("Ik maak een verslag van ons gesprek voor het verkoopregister. Vind je dat goed?" if toestemming_nodig else "Vertel maar, wat wil je kwijt?")
+        return tekst + ("Ik maak een verslag van ons gesprek voor het verkoopregister. Vind je dat goed?" if toestemming_nodig else _vrij(begroeting, soort, "opening"))
     if soort == SOORT_CONSULTANT:
-        tekst += "Fijn dat je belt over je werk bij de klant. " if inkomend else "Ik bel voor de debrief van je werk bij de klant. "
         klant = voorstel_klant(voorstel)
         return tekst + ("Ik maak een verslag van ons gesprek voor het werkregister. Vind je dat goed?" if toestemming_nodig else voorstel_vraag(klant, soort) if klant else variant_vraag(varianten))
     if soort == SOORT_KEUZE:
         # De toestemmingsvraag is neutraal: pas na de keuze is bekend voor welk register het verslag wordt gemaakt.
-        tekst += "Fijn dat je belt over je klant of je werk. " if inkomend else "Ik bel voor een debrief van je klant of je werk. "
         klant = voorstel_klant(voorstel)
         return tekst + ("Ik maak een verslag van ons gesprek. Vind je dat goed?" if toestemming_nodig else voorstel_vraag(klant, soort) if klant else "Wil je een verkoop- of consultancy-debrief doen?")
     if inkomend:
-        tekst += "Fijn dat je belt voor je update. "
-        return tekst + ("Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed?" if toestemming_nodig else "Waar wil je mee beginnen?")
+        return tekst + ("Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed?" if toestemming_nodig else _vrij(begroeting, soort, "opening"))
     if toestemming_nodig:
-        tekst += "Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed, en heb je nu even tijd voor een korte update?"
-    else:
-        tekst += "Heb je nu even tijd voor een korte update?"
-    return tekst
+        return tekst + "Ik maak een samenvatting van ons gesprek voor het dagboek. Vind je dat goed, en heb je nu even tijd voor een korte update?"
+    return tekst + _vrij(begroeting, soort, "openingUitgaand")

@@ -38,7 +38,7 @@ def bouw_belverzoek(spec: dict, agent_id: str, nummer_id: str) -> dict:
         houding=spec.get("houding", ""), instructie=spec.get("instructie", ""), einde_tool="end_call",
         soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"),
     )
-    groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")), soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"))
+    groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")), soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"), begroeting=spec.get("begroeting"))
     return {
         "agent_id": agent_id,
         "agent_phone_number_id": nummer_id,
@@ -91,6 +91,7 @@ def verwerk_init(verzoek: dict) -> dict:
             # Een onbekende soort (bijvoorbeeld van een nieuwere web-service) valt terug op het dagboek.
             soort=kies_soort(data.get("type")), varianten=data.get("varianten") if isinstance(data.get("varianten"), list) else None,
             voorstel=data.get("voorstel") if isinstance(data.get("voorstel"), dict) else None,
+            begroeting=data.get("begroeting") if isinstance(data.get("begroeting"), dict) else None,
         )
         calls.update_opdracht(call_id, status="gesprek", agent_conversation_id=verzoek.get("conversation_id") or None, inkomend=True)
     spec = calls.lees_opdracht(call_id) or {}
@@ -103,7 +104,7 @@ def verwerk_init(verzoek: dict) -> dict:
         hulp_id=data["callId"] if os.getenv("INKOMEND_TOOLS", "").lower() == "true" and soort == SOORT_DAGBOEK else "",
         soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"),
     )
-    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True, soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"))
+    groet = greeting_text(cfg["opdrachtgever"], spec.get("medewerker", data["medewerker"]), bool(spec.get("toestemming_nodig")), inkomend=True, soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"), begroeting=spec.get("begroeting"))
     logger.info(f"Inkomend gesprek gestart (opdracht {call_id}, soort {soort})")
     return _init_antwoord(call_id, prompt, groet, soort)
 

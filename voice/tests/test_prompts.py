@@ -158,7 +158,10 @@ def test_debrief_prompt_laat_eerst_vrij_vertellen_en_vult_daarna_aan():
     tekst = prompts.build_system_prompt("Engelbert", "Irma", [], nu=NU, instructie="1. Bezoek: bij welke klant was je?", inkomend=True, soort=prompts.SOORT_DEBRIEF)
     assert "Eerst vertelt de accountmanager vrij" in tekst and "stel in deze stap geen vragen" in tekst
     assert "Onderwerpen om na te lopen" in tekst and "1. Bezoek: bij welke klant was je?" in tekst
-    assert "vraag er niet opnieuw naar" in tekst and "één korte vraag" in tekst
+    assert "vraag je er niet opnieuw naar" in tekst and "één korte vraag" in tekst
+    # Slim aanvullen: eerst afstrepen wat al is gezegd, teruggeven wat is begrepen, een maximum aan vragen en een stopcriterium.
+    assert "streep af wat de accountmanager in het vrije verhaal al heeft gezegd" in tekst
+    assert "niet meer dan zes vragen" in tekst and "zodra de kern er is" in tekst
     assert "alleen over een update van eerdere afspraken of acties" in tekst
     # De gespreksgrenzen en de bevestiging aan het eind blijven staan; er wordt niets voorgelezen en niets beloofd.
     assert "Klopt dit, en ontbreekt er nog iets?" in tekst and "beloof nooit een mail" in tekst
@@ -257,3 +260,41 @@ def test_promptversie_consultant_en_onbekende_soort_is_dagboek():
     assert prompts.prompt_versie(prompts.SOORT_KEUZE) == "debrief-keuze-v1"
     assert prompts.kies_soort("iets_nieuws") == prompts.SOORT_DAGBOEK and prompts.kies_soort(None) == prompts.SOORT_DAGBOEK
     assert prompts.kies_soort("consultant_debrief") == prompts.SOORT_CONSULTANT
+
+
+# ── Aanpasbare begroeting ────────────────────────────────────────────────────
+
+def test_begroeting_zonder_eigen_tekst_blijft_zoals_voorheen():
+    for soort in prompts.SOORTEN:
+        for inkomend in (True, False):
+            assert prompts.greeting_text("E", "I", False, nu=NU, inkomend=inkomend, soort=soort, begroeting={}) == prompts.greeting_text("E", "I", False, nu=NU, inkomend=inkomend, soort=soort)
+    assert prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_DEBRIEF).endswith("Fijn dat je belt over je klant. Vertel maar, wat wil je kwijt?")
+
+
+def test_eigen_aanloopzin_en_openingsvraag_vervangen_de_standaard():
+    eigen = {"aanloopInkomend": "Leuk dat je even belt.", "aanloopUitgaand": "Ik bel je even over je bezoek.", "opening": "Waar zullen we mee beginnen?", "openingUitgaand": "Past het nu?"}
+    inkomend = prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_DEBRIEF, begroeting=eigen)
+    assert inkomend.endswith("Leuk dat je even belt. Waar zullen we mee beginnen?") and "Fijn dat je belt" not in inkomend
+    uitgaand = prompts.greeting_text("E", "I", False, nu=NU, inkomend=False, soort=prompts.SOORT_DEBRIEF, begroeting=eigen)
+    assert "Ik bel je even over je bezoek. Waar zullen we mee beginnen?" in uitgaand
+    dagboek = prompts.greeting_text("E", "I", False, nu=NU, inkomend=False, soort=prompts.SOORT_DAGBOEK, begroeting=eigen)
+    assert dagboek.endswith("Ik bel je even over je bezoek. Past het nu?")  # het dagboek heeft een eigen uitgaande aanloopzin en openingsvraag
+
+
+def test_de_ai_melding_en_toestemmingsvraag_blijven_vast_ook_met_eigen_tekst():
+    eigen = {"aanloopInkomend": "Hoi!", "aanloopUitgaand": "Hoi!", "opening": "Zeg het maar.", "openingUitgaand": "Zeg het maar."}
+    for soort in prompts.SOORTEN:
+        for inkomend in (True, False):
+            t = prompts.greeting_text("Engelbert", "Irma", True, nu=NU, inkomend=inkomend, soort=soort, begroeting=eigen)
+            assert "Dit gesprek wordt gevoerd door een AI-systeem." in t and "Vind je dat goed" in t
+            assert "Zeg het maar." not in t  # de openingsvraag komt pas na de toestemming
+
+
+def test_eigen_begroeting_wordt_begrensd_en_onzin_valt_terug_op_de_standaard():
+    lang = prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_DEBRIEF, begroeting={"opening": "a\n\n  b " + "x" * 500})
+    assert "\n" not in lang and len(lang) < 400
+    for slecht in ({"opening": 5}, {"opening": "   "}, {"onbekend": "x"}, None, "tekst", ["x"]):
+        assert prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_DEBRIEF, begroeting=slecht).endswith("Vertel maar, wat wil je kwijt?")  # type: ignore[arg-type]
+    # Bij een consultant- of keuzedebrief blijft de openingsvraag dynamisch (variant of planningsvoorstel); alleen de aanloopzin is aanpasbaar.
+    keuze = prompts.greeting_text("E", "I", False, nu=NU, inkomend=True, soort=prompts.SOORT_KEUZE, begroeting={"aanloopInkomend": "Hoi.", "opening": "Zeg het maar."})
+    assert keuze.endswith("Hoi. Wil je een verkoop- of consultancy-debrief doen?")

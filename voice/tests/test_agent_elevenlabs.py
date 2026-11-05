@@ -318,6 +318,14 @@ def test_inkomend_debrief_geeft_de_debrief_prompt_zonder_hulpmiddelen_en_met_eig
     assert again["dynamic_variables"]["prompt_version"] == "debrief-v1"
 
 
+def test_inkomend_gebruikt_de_eigen_begroeting_uit_de_web_service_en_houdt_de_ai_melding(monkeypatch):
+    web = {**WEB_ANTWOORD, "type": "verkoop_debrief", "onderwerpen": [], "instructie": "x", "toestemmingNodig": False,
+           "begroeting": {"aanloopInkomend": "Leuk dat je belt.", "opening": "Zeg het maar."}}
+    monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, web))
+    groet = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_g"})["conversation_config_override"]["agent"]["first_message"]
+    assert "AI-systeem" in groet and groet.endswith("Leuk dat je belt. Zeg het maar.")
+
+
 def test_inkomend_zonder_type_blijft_het_dagboek(monkeypatch):
     monkeypatch.setattr(calls, "vraag_inkomend", lambda beller: (200, WEB_ANTWOORD))
     antw = agent.verwerk_init({"caller_id": "+31612345678", "agent_id": "agent_1", "conversation_id": "conv_e"})
