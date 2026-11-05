@@ -143,6 +143,11 @@ export const klanten = pgTable('klanten', {
   samenwerkingsverband: text('samenwerkingsverband').notNull().default(''),
   inwoners: integer('inwoners'),
   bron: text('bron', { enum: ['handmatig', 'gesprek', 'afas'] }).notNull().default('handmatig'),
+  website: text('website'),
+  huisstijlKleur: text('huisstijl_kleur'),
+  huisstijlLogo: text('huisstijl_logo'),
+  huisstijlLogoType: text('huisstijl_logo_type'),
+  huisstijlBevestigdOp: timestamp('huisstijl_bevestigd_op', { withTimezone: true }),
   bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
   createdAt: createdAt(),
 });

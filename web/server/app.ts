@@ -43,6 +43,7 @@ import { registreerBusinessunits, synchroniseerNaarProfiel, unitBestaat } from '
 import { registreerConsultancy } from './consultancy.js';
 import { registreerConsultantRoutes } from './consultant-routes.js';
 import { registreerVoorbereiding } from './voorbereiding.js';
+import { registreerHuisstijl } from './huisstijl.js';
 import { registreerImplementaties } from './implementaties.js';
 import { registreerSamenverder } from './samenverder.js';
 import { registreerKwaliteit } from './datakwaliteit.js';
@@ -599,6 +600,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerVerkoop(app, db, (req) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.rol);
   registreerConsultantRoutes(app, db, llm);
   registreerVoorbereiding(app, db);
+  registreerHuisstijl(app, db);
   registreerImplementaties(app, db);
   registreerKwaliteit(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
   registreerSamenverder(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);

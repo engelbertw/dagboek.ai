@@ -7,6 +7,7 @@ import { and, asc, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
+import { leesHuisstijl } from './huisstijl.js';
 import { maakKlantRapport, rapportBestandsnaam } from './klant-rapport.js';
 import { activiteiten, bezoeken, consultantDebriefContacten, consultantDebriefs, employees, implementaties, klantContacten, klanten, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, topics, updates } from './schema.js';
 import { berekenBudget, type Budget } from './samenverder-budget.js';
@@ -128,7 +129,7 @@ export function registreerVoorbereiding(app: FastifyInstance, db: Db) {
     const v = await bouwVoorbereiding(db, id.data);
     if (!v) return reply.code(404).send({ fout: 'Klant niet gevonden' });
     const nu = new Date();
-    const pdf = await maakKlantRapport(v, { gemaaktOp: nu });
+    const pdf = await maakKlantRapport(v, { gemaaktOp: nu, huisstijl: await leesHuisstijl(db, id.data) });
     return reply.header('content-type', 'application/pdf').header('content-disposition', `attachment; filename="${rapportBestandsnaam(v.klant.naam, nu)}"`)
       .header('cache-control', 'no-store').send(pdf);
   });

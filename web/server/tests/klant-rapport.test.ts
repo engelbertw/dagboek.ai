@@ -84,4 +84,18 @@ describe('klantrapport als PDF', () => {
     const paginas = (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
     expect(paginas).toBeGreaterThan(3);
   });
+
+  it('gebruikt een bevestigde huisstijl in het rapport en stuurt het logo niet mee in gewone klantantwoorden', async () => {
+    const t = await maakTestApp(); open.push(t);
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const [k] = await t.db.insert(klanten).values({ naam: 'Gemeente Venlo', status: 'klant', bron: 'handmatig', huisstijlKleur: '#00807f', huisstijlLogo: png, huisstijlLogoType: 'png', huisstijlBevestigdOp: new Date() }).returning();
+    const r = await t.api('GET', `/api/klanten/${k.id}/rapport.pdf`);
+    expect(r.statusCode).toBe(200);
+    const kaart = (await t.api('GET', `/api/klanten/${k.id}`)).json();
+    expect(kaart.klant.huisstijlKleur).toBe('#00807f');
+    expect(kaart.klant).not.toHaveProperty('huisstijlLogo');
+    // Niet-bevestigd: de kleur wordt niet gebruikt (zelfde route blijft werken).
+    const [k2] = await t.db.insert(klanten).values({ naam: 'Gemeente Dijk en Waard', status: 'klant', bron: 'handmatig', huisstijlKleur: '#a5d80e' }).returning();
+    expect((await t.api('GET', `/api/klanten/${k2.id}/rapport.pdf`)).statusCode).toBe(200);
+  });
 });

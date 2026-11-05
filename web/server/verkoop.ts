@@ -27,6 +27,9 @@ const contactBody = z.object({
   email: z.string().trim().max(200).refine((e) => !e || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e), 'Ongeldig e-mailadres').default(''), telefoon: z.string().trim().max(30).default(''),
 });
 
+/** Het logo voor het rapport (base64) hoort niet in gewone klantantwoorden; het staat alleen in het beheerpaneel Huisstijl. */
+const zonderLogo = <T extends { huisstijlLogo?: unknown }>(k: T): Omit<T, 'huisstijlLogo'> => { const { huisstijlLogo: _l, ...rest } = k; return rest; };
+
 export function registreerVerkoop(app: FastifyInstance, db: Db, rolVan: (req: FastifyRequest) => string | undefined = () => undefined) {
   // ── Vragen van de debrief (bewerkbaar; de grenzen staan vast in de voice-service) ──
   app.get('/api/instellingen/debrief-vragen', async () => ({ ...(await leesDebriefVragen(db)), vorige: await leesVorigeDebriefVragen(db) }));
@@ -115,7 +118,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db, rolVan: (req: Fa
       }).from(bezoeken).leftJoin(employees, eq(bezoeken.accountmanagerId, employees.id)).where(eq(bezoeken.klantId, id)).orderBy(sql`${bezoeken.datum} desc nulls last`, desc(bezoeken.createdAt)),
       db.select().from(activiteiten).where(eq(activiteiten.klantId, id)).orderBy(desc(activiteiten.createdAt)),
     ]);
-    return { klant, contacten, bezoeken: bezoekRijen, activiteiten: punten };
+    return { klant: zonderLogo(klant), contacten, bezoeken: bezoekRijen, activiteiten: punten };
   });
 
   app.patch('/api/klanten/:id', async (req, reply) => {
@@ -131,7 +134,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db, rolVan: (req: Fa
     if (!magAndereKlantveldenWijzigen(rol) && gewijzigd.some((k) => k !== 'inwoners')) return reply.code(403).send({ fout: 'Administratie past alleen het aantal inwoners aan' });
     // Een beheerder die iets wijzigt wordt de bron van die klantgegevens.
     const [rij] = await db.update(klanten).set({ ...b, bron: 'handmatig', bijgewerktOp: new Date() }).where(eq(klanten.id, id)).returning();
-    return rij;
+    return rij && zonderLogo(rij);
   });
 
   // Een klant die uit een gesprek is voorgesteld: goedkeuren, of samenvoegen met een bestaande klant om dubbelen te voorkomen.
@@ -148,7 +151,7 @@ export function registreerVerkoop(app: FastifyInstance, db: Db, rolVan: (req: Fa
       const [rij] = await db.update(klanten).set({ status: b.status, bijgewerktOp: new Date() }).where(eq(klanten.id, id)).returning();
       // Activiteiten waarvan alleen de klant onzeker was, zijn nu ook gecontroleerd.
       await db.update(activiteiten).set({ controleNodig: false, controleReden: null }).where(and(eq(activiteiten.klantId, id), eq(activiteiten.controleReden, 'klant_niet_herkend')));
-      return rij;
+      return rij && zonderLogo(rij);
     }
     if (b.met === id) return reply.code(400).send({ fout: 'Kies een andere klant' });
     return db.transaction(async (tx) => {

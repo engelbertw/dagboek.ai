@@ -183,3 +183,4 @@ button.werk-soort[aria-pressed="true"] { border-color: currentColor; box-shadow:
 .ai-verwerking { background: var(--paneel); border: 1px solid var(--rand); border-radius: var(--radius); padding: .85rem 1.1rem; }
 .ai-verwerking > summary { display: flex; justify-content: space-between; align-items: center; gap: 1rem; cursor: pointer; list-style: none; } .ai-verwerking > summary::-webkit-details-marker { display: none; }
 .ai-verwerking[open] > summary { margin-bottom: .8rem; } .ai-verwerking:hover { border-color: var(--paars); }
+.huisstijl-kleurvlak { display: inline-block; width: 1rem; height: 1rem; border-radius: 3px; border: 1px solid #999; vertical-align: -.15rem; }
