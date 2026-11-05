@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, datumTijd, type DigestStand, type FeedItem, type FeedToken, type GebruikersRol, type KlantRegel } from '../api';
+import { api, datum, datumTijd, type BezoekTeller, type DigestStand, type FeedItem, type FeedToken, type GebruikersRol, type KlantRegel, type TellerPeriode } from '../api';
 import { Badge, Leeg, Melding, foutTekst, useLaden } from '../ui';
 
 const PERIODES = [[7, 'Week'], [14, '2 weken'], [30, 'Maand']] as const;
@@ -123,6 +123,45 @@ function RssLinks({ klantId }: { klantId: string }) {
   );
 }
 
+const TELLER_PERIODES: [TellerPeriode, string][] = [['jaar', 'Dit jaar'], ['kwartaal', 'Dit kwartaal'], ['maand', 'Deze maand']];
+const TELLER_SLEUTEL = 'bezoekteller-periode';
+const leesPeriode = (): TellerPeriode => { try { const p = localStorage.getItem(TELLER_SLEUTEL); return p === 'kwartaal' || p === 'maand' ? p : 'jaar'; } catch { return 'jaar'; } };
+
+/** Het aantal klantbezoeken van het team in de gekozen periode, met uitsplitsing per accountmanager. */
+function Bezoekteller() {
+  const [periode, setPeriode] = useState<TellerPeriode>(leesPeriode);
+  const teller = useLaden(() => api<BezoekTeller>('GET', `/dagboek/bezoekteller?periode=${periode}`), [periode]);
+  const kies = (p: TellerPeriode) => { setPeriode(p); try { localStorage.setItem(TELLER_SLEUTEL, p); } catch { /* opslag niet beschikbaar */ } };
+  const t = teller.data;
+  return (
+    <section className="paneel stapel" aria-labelledby="teller-kop">
+      <div className="rij spreid">
+        <h2 id="teller-kop">Klantbezoeken van het team</h2>
+        <div className="rij" role="group" aria-label="Periode">
+          {TELLER_PERIODES.map(([p, label]) => <button key={p} className={periode === p ? 'primair' : ''} aria-pressed={periode === p} onClick={() => kies(p)}>{label}</button>)}
+        </div>
+      </div>
+      <Melding tekst={teller.fout} />
+      {t && (
+        <>
+          <dl className="rij" style={{ gap: '2rem' }}>
+            <div><dt className="zacht klein">Klantbezoeken</dt><dd style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>{t.bezoeken}</dd></div>
+            <div><dt className="zacht klein">Gemeenten bezocht</dt><dd style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>{t.klanten}</dd></div>
+            {t.evaluaties !== undefined && <div><dt className="zacht klein">iThermometer-evaluaties</dt><dd style={{ fontSize: '2rem', fontWeight: 700, margin: 0 }}>{t.evaluaties}</dd></div>}
+          </dl>
+          <p className="zacht klein">{datum(t.van)} t/m {datum(t.tot)}. Geteld op de datum van het bezoek.</p>
+          {t.perAccountmanager.length > 0 && (
+            <details>
+              <summary>Per accountmanager</summary>
+              <ul className="lijst-kaarten">{t.perAccountmanager.map((a) => <li key={a.naam} className="rij spreid"><span>{a.naam}</span><strong>{a.aantal}</strong></li>)}</ul>
+            </details>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function DagboekActueel({ rol }: { rol: GebruikersRol }) {
   const [params, zetParams] = useSearchParams();
   const klantId = params.get('klant') ?? '';
@@ -139,6 +178,7 @@ export function DagboekActueel({ rol }: { rol: GebruikersRol }) {
   return (
     <div className="stapel">
       <div><h1>Dagboek</h1><p className="zacht">Wat er speelt bij de gemeenten: de nieuwste verslagen, samengevat.</p></div>
+      <Bezoekteller />
       <Digest rol={rol} />
 
       <div className="rij" role="group" aria-label="Filter">

@@ -176,6 +176,8 @@ export interface Woord { term: string; soort: WoordSoort; gehoordAls: string[]; 
 export interface Woordenlijst { items: Woord[]; vorige: Woord[] }
 
 export interface FeedItem { id: string; soort: 'update' | 'bezoek' | 'consultant'; datum: string; klantId: string | null; klantNaam: string | null; titel: string; tekst: string; door: string | null; pad: string }
+export type TellerPeriode = 'jaar' | 'kwartaal' | 'maand';
+export interface BezoekTeller { periode: TellerPeriode; van: string; tot: string; bezoeken: number; klanten: number; perAccountmanager: { naam: string; aantal: number }[]; evaluaties?: number }
 export interface DigestStand { tekst: string | null; gemaaktOp: string | null; aantalItems: number; dagen: number; verouderd: boolean; bezig?: boolean }
 export interface FeedToken { id: string; label: string; createdAt: string; laatstGebruikt: string | null }
 

@@ -35,7 +35,7 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET', 'POST'], pad: /^\/api\/klant-contacten$/ },
   { methode: ['PATCH', 'DELETE'], pad: new RegExp(`^/api/klant-contacten/${ID}$`) },
   // Dagboek-feed (verslagen van alle gemeenten, alleen samenvattingen) en de eigen RSS-links. Een RSS-link aanmaken wijzigt geen bedrijfsgegevens.
-  { methode: ['GET'], pad: /^\/api\/dagboek\/(feed|digest)$/ },
+  { methode: ['GET'], pad: /^\/api\/dagboek\/(feed|digest|bezoekteller)$/ },
   { methode: ['GET', 'POST'], pad: /^\/api\/dagboek\/feed-tokens$/ },
   { methode: ['DELETE'], pad: new RegExp(`^/api/dagboek/feed-tokens/${ID}$`) },
   { methode: ['GET'], pad: /^\/api\/employees$/ },
@@ -66,7 +66,7 @@ const CONSULTANT_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET'], pad: /^\/api\/samenverder\/programmas$/ },
   { methode: ['GET'], pad: new RegExp(`^/api/samenverder/programmas/${ID}$`) },
   // Dagboek-feed (verslagen van alle gemeenten, alleen samenvattingen) en de eigen RSS-links. Een RSS-link aanmaken wijzigt geen bedrijfsgegevens.
-  { methode: ['GET'], pad: /^\/api\/dagboek\/(feed|digest)$/ },
+  { methode: ['GET'], pad: /^\/api\/dagboek\/(feed|digest|bezoekteller)$/ },
   { methode: ['GET', 'POST'], pad: /^\/api\/dagboek\/feed-tokens$/ },
   { methode: ['DELETE'], pad: new RegExp(`^/api/dagboek/feed-tokens/${ID}$`) },
   { methode: ['GET'], pad: /^\/api\/employees$/ },
