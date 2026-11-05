@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { klanten } from '../schema.js';
 import { magDoen } from '../rollen.js';
-import { pdfTekst, rapportBestandsnaam, maakKlantRapport } from '../klant-rapport.js';
+import { pdfTekst, rapportBestandsnaam, maakKlantRapport, contrast, leesbaarOpWit, tekstOp, geldigeKleur } from '../klant-rapport.js';
 import { maakTestApp } from './helpers.js';
 
 type T = Awaited<ReturnType<typeof maakTestApp>>;
@@ -59,5 +59,29 @@ describe('klantrapport als PDF', () => {
     } as never, { gemaaktOp: new Date('2026-11-05T10:00:00Z') });
     expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect(pdf.length).toBeGreaterThan(5000);
+  });
+
+  it('houdt een gemeentekleur leesbaar: lichte kleuren worden verdonkerd, donkere blijven staan', () => {
+    expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 0);
+    expect(contrast('#a5d80e', '#ffffff')).toBeLessThan(3);
+    expect(contrast(leesbaarOpWit('#a5d80e'), '#ffffff')).toBeGreaterThanOrEqual(3);
+    expect(leesbaarOpWit('#00807f')).toBe('#00807f');
+    expect(tekstOp('#a5d80e')).toBe('#1a1a1a');
+    expect(tekstOp('#005099')).toBe('#ffffff');
+    expect(geldigeKleur('#00807f')).toBe(true);
+    expect(geldigeKleur('red')).toBe(false);
+    expect(geldigeKleur('#fff')).toBe(false);
+  });
+
+  it('rendert een zwaar rapport (veel lange punten) zonder fout, met meerdere pagina\'s, een gemeentekleur en een onleesbaar logo', async () => {
+    const lang = 'Een erg lange omschrijving zonder einde. '.repeat(120);
+    const punten = Array.from({ length: 40 }, (_, i) => ({ id: 'p' + i, soort: ['doel', 'actie', 'onbekend'][i % 3], omschrijving: i % 4 ? 'Lang' + 'woord'.repeat(40) : lang, eigenaar: 'Irma', deadline: '2026-11-01', teLaat: i % 2 === 0, onderwerp: null, datum: '2026-11-05', bron: 'dagboek' }));
+    const pdf = await maakKlantRapport({
+      klant: { id: 'k', naam: 'Gemeente Dijk en Waard', status: 'klant', samenwerkingsverband: null, inwoners: null, contractEinde: null, accountmanagerNaam: null, omschrijving: null },
+      contacten: [], onderwerpen: [], samenverder: [], implementaties: [], gesprekken: [], openPunten: punten, nietBevestigd: [],
+    } as never, { gemaaktOp: new Date('2026-11-05T10:00:00Z'), huisstijl: { kleur: '#a5d80e', logo: Buffer.from('geen plaatje') } });
+    expect(pdf.subarray(0, 5).toString('latin1')).toBe('%PDF-');
+    const paginas = (pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length;
+    expect(paginas).toBeGreaterThan(3);
   });
 });
