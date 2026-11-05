@@ -7,6 +7,7 @@ import { and, asc, desc, eq, inArray, max, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
+import { maakKlantRapport, rapportBestandsnaam } from './klant-rapport.js';
 import { activiteiten, bezoeken, consultantDebriefContacten, consultantDebriefs, employees, implementaties, klantContacten, klanten, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, topics, updates } from './schema.js';
 import { berekenBudget, type Budget } from './samenverder-budget.js';
 import { vandaagNL } from './samenvatten.js';
@@ -120,6 +121,18 @@ export async function bouwVoorbereiding(db: Db, klantId: string): Promise<Voorbe
 }
 
 export function registreerVoorbereiding(app: FastifyInstance, db: Db) {
+  // Hetzelfde overzicht als PDF-rapport, om te bewaren of te delen. Zelfde rechten als de voorbereiding (zie rollen.ts).
+  app.get('/api/klanten/:id/rapport.pdf', async (req, reply) => {
+    const id = uuid.safeParse((req.params as { id: string }).id);
+    if (!id.success) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    const v = await bouwVoorbereiding(db, id.data);
+    if (!v) return reply.code(404).send({ fout: 'Klant niet gevonden' });
+    const nu = new Date();
+    const pdf = await maakKlantRapport(v, { gemaaktOp: nu });
+    return reply.header('content-type', 'application/pdf').header('content-disposition', `attachment; filename="${rapportBestandsnaam(v.klant.naam, nu)}"`)
+      .header('cache-control', 'no-store').send(pdf);
+  });
+
   app.get('/api/klanten/:id/voorbereiding', async (req, reply) => {
     const id = uuid.safeParse((req.params as { id: string }).id);
     if (!id.success) return reply.code(404).send({ fout: 'Klant niet gevonden' });

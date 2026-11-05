@@ -66,7 +66,7 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
 
   return (
     <div className="stapel">
-      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> {!administratie && <> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link> · <Link to={`/dagboek?klant=${k.id}`}>Dagboek</Link></>} · <Link to={`/kwaliteit?klant=${k.id}`}>Kwaliteit</Link></div>
+      <div><Link to="/klanten">← Klanten</Link><h1>{k.naam} <Badge soort={k.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[k.status]}</Badge></h1><Link to={`/klanten/${k.id}/voorbereiding`}>Bereid bezoek voor →</Link> · <a href={`/api/klanten/${k.id}/rapport.pdf`} download>Rapport (PDF)</a> {!administratie && <> · <Link to={`/samenverder?klant=${k.id}`}>SamenVerder</Link> · <Link to={`/dagboek?klant=${k.id}`}>Dagboek</Link></>} · <Link to={`/kwaliteit?klant=${k.id}`}>Kwaliteit</Link></div>
       {k.status === 'voorgesteld' && !consultant && (
         <section className="paneel stapel" aria-label="Klant bevestigen">
           <h2>Bevestig deze klant</h2>

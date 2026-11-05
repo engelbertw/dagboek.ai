@@ -29,7 +29,7 @@ export function VoorbereidingWeergave({ data }: { data: VoorbereidingData }) {
       <div>
         <Link to={`/klanten/${klant.id}`}>← {klant.naam}</Link>
         <h1>Voorbereiding: {klant.naam} <Badge soort={klant.status === 'voorgesteld' ? 'wacht' : ''}>{KLANT_STATUS_LABEL[klant.status as keyof typeof KLANT_STATUS_LABEL] ?? klant.status}</Badge></h1>
-        <p className="subtiel">Samengesteld uit wat er is vastgelegd; bij elk onderdeel staan datum en bron. <button type="button" className="knop-link" onClick={() => window.print()}>Afdrukken</button></p>
+        <p className="subtiel">Samengesteld uit wat er is vastgelegd; bij elk onderdeel staan datum en bron. <button type="button" className="knop-link" onClick={() => window.print()}>Afdrukken</button> · <a className="knop-link" href={`/api/klanten/${klant.id}/rapport.pdf`} download>Rapport (PDF)</a></p>
       </div>
 
       <section className="paneel stapel" aria-label="Kerngegevens">
