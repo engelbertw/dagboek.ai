@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Db } from './db.js';
 import { vandaagNL } from './samenvatten.js';
+import { telEvaluaties } from './evaluaties.js';
 import { bezoeken, employees } from './schema.js';
 
 /** Teller voor het dagboek: hoeveel klantbezoeken heeft het team gedaan in een periode. Een klantbezoek is een verwerkte verkoop-debrief (tabel `bezoeken`). */
@@ -24,6 +25,8 @@ export function periodeGrenzen(periode: Periode, vandaag: string): { van: string
 export interface BezoekTeller {
   periode: Periode; van: string; tot: string; bezoeken: number; klanten: number;
   perAccountmanager: { naam: string; aantal: number }[];
+  /** Evaluaties uit iThermometer in dezelfde periode; apart van de bezoeken. */
+  evaluaties: number;
 }
 
 export async function bezoekTeller(db: Db, periode: Periode, nu = new Date()): Promise<BezoekTeller> {
@@ -37,6 +40,7 @@ export async function bezoekTeller(db: Db, periode: Periode, nu = new Date()): P
   for (const r of rijen) per.set(r.naam ?? 'Onbekend', (per.get(r.naam ?? 'Onbekend') ?? 0) + 1);
   return {
     periode, van, tot, bezoeken: rijen.length, klanten: new Set(rijen.map((r) => r.klantId).filter(Boolean)).size,
+    evaluaties: await telEvaluaties(db, van, tot),
     perAccountmanager: [...per].map(([naam, aantal]) => ({ naam, aantal })).sort((a, b) => b.aantal - a.aantal || a.naam.localeCompare(b.naam, 'nl')),
   };
 }

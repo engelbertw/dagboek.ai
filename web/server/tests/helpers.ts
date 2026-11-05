@@ -28,5 +28,7 @@ export async function maakTestApp(voiceAntwoord: BelResultaat = { gebeld: true, 
   const sessie = String(login.cookies[0].value);
   const api = (method: string, url: string, payload?: unknown) =>
     app.inject({ method: method as any, url, payload: payload as any, cookies: { dagboek_sessie: sessie } });
-  return { app, api, opdrachten, db: handle.db, config, klaarMetAchtergrond, close: async () => { await app.close(); await handle.close(); } };
+  const apiRaw = (method: string, url: string, payload: Buffer | string, headers: Record<string, string>) =>
+    app.inject({ method: method as any, url, payload, headers, cookies: { dagboek_sessie: sessie } });
+  return { app, api, apiRaw, opdrachten, db: handle.db, config, klaarMetAchtergrond, close: async () => { await app.close(); await handle.close(); } };
 }

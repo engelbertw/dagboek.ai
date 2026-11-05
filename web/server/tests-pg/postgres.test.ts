@@ -1,12 +1,14 @@
 import { eq, sql } from 'drizzle-orm';
+import Fastify from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connectPostgres, migrate, migratieNamen, type DbHandle } from '../db.js';
+import { registreerEvaluaties } from '../evaluaties.js';
 import { herstelGesprekken } from '../gesprek-herstel.js';
 import { startGesprek } from '../gesprek-starten.js';
 import { zetStatus } from '../gesprek-status.js';
 import { leggToestemmingVast } from '../toestemming.js';
 import { tik } from '../scheduler.js';
-import { calls, employees, activiteiten, implementaties, klanten, opvolgingen, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
+import { calls, employees, activiteiten, implementaties, klantContacten, klantEvaluaties, klanten, opvolgingen, samenverderBudgetmutaties, samenverderProgrammas, samenverderSessies, scheduleEmployees, schedules, toestemmingen, topics } from '../schema.js';
 import { maakDatabase, maakHandles, migratieMap, migratiesTot, pool } from './helpers.js';
 
 const rijen = (r: unknown) => ((r as { rows?: any[] }).rows ?? (r as any[]));
@@ -308,5 +310,29 @@ describe('gelijktijdigheid', () => {
     expect(r[0].indexdef).toMatch(/UNIQUE/i);
     const t = rijen(await handles[0].db.execute(sql`select tgname from pg_trigger where tgname in ('calls_status_overgang', 'toestemmingen_geen_update')`)).map((x) => x.tgname).sort();
     expect(t).toEqual(['calls_status_overgang', 'toestemmingen_geen_update']);
+  });
+});
+
+
+describe('evaluaties uit iThermometer (migratie 036)', () => {
+  const opruimen: (() => Promise<void>)[] = [];
+  afterAll(async () => { for (const f of opruimen.reverse()) await f(); });
+
+  it('vier gelijktijdige imports van dezelfde evaluaties geven precies één evaluatie, één contactpersoon en één nieuwe gemeente', async () => {
+    const d = await maakDatabase(); opruimen.push(d.verwijder);
+    const handles = await maakHandles(d.url, 4); opruimen.push(async () => { await Promise.all(handles.map((h) => h.close())); });
+    await migrate(handles[0]);
+    const apps = await Promise.all(handles.map(async (h) => { const a = Fastify(); registreerEvaluaties(a, h.db, () => ({ email: 'beheer@test.nl' })); await a.ready(); return a; }));
+    opruimen.push(async () => { await Promise.all(apps.map((a) => a.close())); });
+    const evaluatie = {
+      gemeente: 'Nieuwstad', datum: '2026-11-03', aangemaakt: '2026-11-03', contact: { naam: 'Anna Voorbeeld', functie: 'Teamleider', email: 'a@test.example', telefoon: '' }, businessUnit: 'Publiekszaken',
+      scores: [{ label: 'Aanbevelen', waarde: 8 }], toelichting: [{ vraag: 'Reden voor score', antwoord: 'Goed.' }], themas: '', domeinfeedback: '',
+    };
+    const antwoorden = await Promise.all(apps.map((a) => a.inject({ method: 'POST', url: '/api/evaluaties/import/bevestig', payload: { evaluaties: [{ evaluatie, klant: 'nieuw' }] } })));
+    expect(antwoorden.map((r) => r.statusCode)).toEqual([200, 200, 200, 200]);
+    expect(await handles[0].db.select().from(klantEvaluaties)).toHaveLength(1);
+    expect(await handles[0].db.select().from(klantContacten)).toHaveLength(1);
+    expect((await handles[0].db.select().from(klanten)).filter((k) => k.naam === 'Nieuwstad')).toHaveLength(1);
+    expect(antwoorden.map((r) => r.json().aangemaakt).sort()).toEqual([0, 0, 0, 1]);
   });
 });

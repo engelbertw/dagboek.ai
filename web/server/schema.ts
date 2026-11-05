@@ -164,6 +164,31 @@ export const klantContacten = pgTable('klant_contacten', {
   createdAt: createdAt(),
 });
 
+/** Evaluaties uit iThermometer: handmatig geimporteerd, nooit dubbel (unieke `sleutel`). Alleen de uitgelezen velden worden bewaard, niet het PDF-bestand. */
+export const klantEvaluaties = pgTable('klant_evaluaties', {
+  id: id(),
+  klantId: uuid('klant_id').notNull().references(() => klanten.id, { onDelete: 'cascade' }),
+  contactId: uuid('contact_id').references(() => klantContacten.id, { onDelete: 'set null' }),
+  bron: text('bron').notNull().default('ithermometer'),
+  sleutel: text('sleutel').notNull().unique(),
+  inhoudHash: text('inhoud_hash').notNull(),
+  gemeenteNaam: text('gemeente_naam').notNull(),
+  datum: date('datum').notNull(),
+  aangemaaktInBron: date('aangemaakt_in_bron'),
+  contactNaam: text('contact_naam').notNull().default(''),
+  contactFunctie: text('contact_functie').notNull().default(''),
+  contactEmail: text('contact_email').notNull().default(''),
+  contactTelefoon: text('contact_telefoon').notNull().default(''),
+  businessUnit: text('business_unit').notNull().default(''),
+  scores: jsonb('scores').$type<{ label: string; waarde: number | null }[]>().notNull().default([]),
+  toelichting: jsonb('toelichting').$type<{ vraag: string; antwoord: string }[]>().notNull().default([]),
+  themas: text('themas').notNull().default(''),
+  domeinfeedback: text('domeinfeedback').notNull().default(''),
+  geimporteerdDoor: text('geimporteerd_door').notNull().default(''),
+  geimporteerdOp: timestamp('geimporteerd_op', { withTimezone: true }).notNull().defaultNow(),
+  bijgewerktOp: timestamp('bijgewerkt_op', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const bezoeken = pgTable('bezoeken', {
   id: id(),
   klantId: uuid('klant_id').references(() => klanten.id, { onDelete: 'set null' }),

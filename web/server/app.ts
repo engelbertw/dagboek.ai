@@ -45,6 +45,7 @@ import { registreerConsultantRoutes } from './consultant-routes.js';
 import { registreerVoorbereiding } from './voorbereiding.js';
 import { registreerHuisstijl } from './huisstijl.js';
 import { registreerBezoekteller } from './bezoekteller.js';
+import { registreerEvaluaties } from './evaluaties.js';
 import { registreerImplementaties } from './implementaties.js';
 import { registreerSamenverder } from './samenverder.js';
 import { registreerKwaliteit } from './datakwaliteit.js';
@@ -603,6 +604,7 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
   registreerVoorbereiding(app, db);
   registreerHuisstijl(app, db);
   registreerBezoekteller(app, db);
+  registreerEvaluaties(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret));
   registreerImplementaties(app, db);
   registreerKwaliteit(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);
   registreerSamenverder(app, db, (req: any) => leesSessie(req.cookies[COOKIE], config.sessionSecret)?.email.toLowerCase() ?? null);

@@ -23,6 +23,8 @@ const ACCOUNTMANAGER_MAG: { methode: string[]; pad: RegExp }[] = [
   { methode: ['GET', 'PATCH'], pad: new RegExp(`^/api/klanten/${ID}$`) },
   { methode: ['POST'], pad: new RegExp(`^/api/klanten/${ID}/contacten$`) },
   { methode: ['GET'], pad: new RegExp(`^/api/klanten/${ID}/(voorbereiding|rapport\\.pdf)$`) },
+  // Evaluaties uit iThermometer bevatten openhartige klantkritiek en namen van collega's: alleen beheerder en accountmanager lezen ze.
+  { methode: ['GET'], pad: new RegExp(`^/api/klanten/${ID}/evaluaties$`) },
   // Datakwaliteit: de accountmanager beoordeelt en verbetert contactpersonen en punten. Gemeenten samenvoegen blijft bij de beheerder (zie hierboven: geen /controle).
   { methode: ['GET'], pad: /^\/api\/kwaliteit$/ },
   { methode: ['POST'], pad: /^\/api\/kwaliteit\/besluiten(\/terugdraaien)?$/ },

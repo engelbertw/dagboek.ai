@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { KLANT_STATUS_LABEL, api, apiToevoegenZonderDubbel, datum, linkedInZoekUrl, type Activiteit, type TopicRegel, type KlantDetail, type KlantRegel, type KlantStatus, type GebruikersRol, type Medewerker } from '../api';
 import { Badge, Leeg, Melding, Veld, foutTekst, useLaden } from '../ui';
+import { EvaluatiesPaneel } from './EvaluatiesPaneel';
 import { HuisstijlPaneel } from './HuisstijlPaneel';
 import { ControleBanner, PuntToevoegen, Secties, useActies } from './ActiviteitenLijst';
 
@@ -126,6 +127,8 @@ export function Klant({ rol = 'beheerder' }: { rol?: GebruikersRol }) {
           </div>
         ))}
       </section>
+
+      {(rol === 'beheerder' || rol === 'accountmanager') && <EvaluatiesPaneel klantId={k.id} />}
 
       <section className="paneel stapel" aria-label="Contactpersonen">
         <h2>Contactpersonen</h2>
