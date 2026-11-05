@@ -84,6 +84,13 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
     setBezig(true);
     try { await api('POST', `/calls/${g.id}/route`, { route }); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
   }
+  // Een klantbezoek dat als dagboek is gevoerd kan alsnog als debrief worden verwerkt, zolang het dagboek er niets uit heeft weggeschreven (dat controleert de server).
+  const kanOmzetten = g.type === 'dagboek' && g.status === 'gesproken' && g.heeftTranscript && ['geen', 'mislukt', 'onduidelijk', 'geen_inhoud'].includes(g.samenvattingStatus);
+  async function zetOm(route: 'verkoop' | 'consultancy') {
+    if (!confirm(`Dit dagboekgesprek alsnog verwerken als ${route === 'verkoop' ? 'verkoop-debrief' : 'consultancy-debrief'}? Kijk eerst in het transcript. Daarna volgt het de debrief-verwerking en is het geen dagboekgesprek meer.`)) return;
+    setBezig(true);
+    try { await api('POST', `/calls/${g.id}/als-debrief`, { route }); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
+  }
   const s = SAMENVATTING[g.samenvattingStatus];
   const uitleg = debrief && g.samenvattingStatus === 'klaar' ? 'Het bezoek staat in het verkoopregister, bij de klant.'
     : consultant && g.samenvattingStatus === 'klaar' ? 'De punten staan in Werk, bij de gemeente.'
@@ -118,6 +125,13 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
         <div className="rij">
           <button type="button" onClick={() => void kiesRoute('verkoop')} disabled={bezig}>Verwerken als verkoop-debrief</button>
           <button type="button" onClick={() => void kiesRoute('consultancy')} disabled={bezig}>Verwerken als consultancy-debrief</button>
+        </div>
+      )}
+      {kanOmzetten && (
+        <div className="rij">
+          <span className="zacht klein">Ging dit over een klantbezoek?</span>
+          <button type="button" onClick={() => void zetOm('verkoop')} disabled={bezig}>Verwerken als verkoop-debrief</button>
+          <button type="button" onClick={() => void zetOm('consultancy')} disabled={bezig}>Verwerken als consultancy-debrief</button>
         </div>
       )}
       {g.status === 'gesproken' && <Beoordeling g={g} ververs={ververs} />}
