@@ -1,7 +1,7 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { Db } from './db.js';
 import { logGebeurtenis } from './call-log.js';
-import { leesHouding, type Motor } from './instellingen.js';
+import { begroetingVoor, leesHouding, type Motor } from './instellingen.js';
 import { beschikbareVarianten, gespreksOpzet, routeVoor, type Voorstel } from './gespreks-opzet.js';
 import { stelOnderwerpenSamen } from './gesprek-starten.js';
 import { log } from './log.js';
@@ -21,7 +21,7 @@ export function normaliseerNummer(ruw: string): string {
 export type { GesprekType };
 
 export type InkomendUitkomst =
-  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType; varianten: DebriefVariant[]; voorstel: Voorstel | null }
+  | { ok: true; callId: string; medewerker: string; onderwerpen: Onderwerp[]; toestemmingNodig: boolean; houding: string; instructie: string; type: GesprekType; varianten: DebriefVariant[]; voorstel: Voorstel | null; begroeting: Partial<Record<string, string>> }
   | { ok: false; reden: 'onbekend_nummer' | 'te_vaak' };
 
 export type { Voorstel };
@@ -49,5 +49,5 @@ export async function startInkomendGesprek(db: Db, beller: string, motor: Motor)
   }).returning();
   await logGebeurtenis(db, call.id, 'voice', 'claim:inkomend');
   log('info', 'gesprek.inkomend', { correlatieId: call.id, type });
-  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig, houding: (await leesHouding(db)).waarde, instructie, type, varianten: varianten.map((v) => v.id), voorstel };
+  return { ok: true, callId: call.id, medewerker: m.naam, onderwerpen, toestemmingNodig, houding: (await leesHouding(db)).waarde, instructie, type, varianten: varianten.map((v) => v.id), voorstel, begroeting: await begroetingVoor(db, type) };
 }

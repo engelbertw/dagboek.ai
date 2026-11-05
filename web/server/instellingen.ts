@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { z } from 'zod';
 import type { Db } from './db.js';
 import { geldigProject, geldigTeamId, schoneSite, type JiraInstellingen } from './jira.js';
 import { instellingen } from './schema.js';
@@ -41,22 +42,17 @@ export const bewaarInstructie = (db: Db, waarde: string) => bewaar(db, 'gespreks
  * gespreksinhoud als gegeven) en de samenvatting met bevestiging aan het eind staan vast in de voice-service (voice/prompts.py).
  */
 export const STANDAARD_DEBRIEF_VRAGEN = [
-  'Dit is een lijst om na te lopen wat er nog ontbreekt, geen volgorde. De accountmanager vertelt eerst vrij; vraag daarna alleen naar wat nog niet is genoemd. Stel altijd één korte vraag tegelijk en wacht op het antwoord, nooit twee in één zin. Vraag alleen door als een antwoord vaag is, en dan ook met één concrete vraag. Elke regel hieronder is één aparte vraag; sla een vraag over als het antwoord al is gegeven of als er niets over te melden is. Houd het gesprek kort: ongeveer acht tot tien minuten.',
-  '1. Bezoek: Bij welke klant was je?',
-  '1. Bezoek: Met wie heb je gesproken, en wat is diens functie?',
-  '1. Bezoek: Was het een evaluatie, een kennismaking of een vervolgafspraak?',
-  '2. Doelen: Wat wil de klant het komende jaar bereiken?',
-  '2. Doelen: Is er iets veranderd sinds het vorige gesprek?',
-  '3. Resultaten: Wat ging er goed sinds de vorige keer, en wat niet?',
-  '3. Resultaten: Hoe tevreden is de klant, met een cijfer van 1 tot 10?',
-  '4. Dienstverlening: Noemde de klant problemen of trage reactietijden? Alleen doorvragen naar de SLA als de klant dat zelf noemt.',
-  '5. Afspraken: Wat heb je de klant toegezegd, en voor wanneer?',
-  '5. Afspraken: Heeft de klant zelf iets toegezegd?',
-  '6. Kansen: Zag je een kans of een nieuwe behoefte bij de klant? Zo ja: vraag daarna los van elkaar wat de klant wil, ongeveer hoe groot dat is, hoe ver het is (een signaal, een gesprek, een offerte of onderhandeling) en wanneer een besluit wordt verwacht. Vraag naar beslisser, concurrent, budget en contractdatum alleen als het gesprek daar vanzelf naartoe gaat. Raad niets: wat de accountmanager niet weet, blijft leeg.',
-  '7. Risico: Is er een risico dat de klant ontevreden wordt of opzegt?',
-  '8. Vervolg: Wat moet er nog gebeuren, wie doet het, en voor wanneer? Eén actie per keer; vraag daarna of er nog een is.',
-  '8. Eerdere acties: Zijn er afspraken of acties van eerder die inmiddels klaar zijn of anders lopen? Laat de accountmanager ze in eigen woorden noemen; lees niets voor.',
-  '9. Contactpersonen: Zijn er nieuwe contactpersonen of beslissers? Vraag alleen naam, functie en rol.',
+  'Dit is een lijst om na te lopen wat er nog ontbreekt, geen volgorde en geen vragenlijst die je afwerkt. De accountmanager vertelt eerst vrij; streep daarna af wat al is gezegd, ook als het in andere woorden of tussendoor is gezegd, en vraag alleen naar wat echt ontbreekt. Stel altijd één korte vraag tegelijk en wacht op het antwoord, nooit twee in één zin. Vraag alleen door als een antwoord vaag is, en dan ook met één concrete vraag. Sla een onderdeel over als het antwoord al is gegeven of als er niets over te melden is. Houd het kort: ongeveer vijf tot acht minuten, en stop met aanvullen zodra de kern er is (klant, afspraken, acties, kans of risico).',
+  'KERN (altijd aanwezig in het verslag):',
+  '1. Bezoek: bij welke klant, met wie (naam en functie), en wat voor gesprek het was (evaluatie, kennismaking of vervolg).',
+  '2. Afspraken: wat jij de klant hebt toegezegd en voor wanneer, en wat de klant zelf heeft toegezegd.',
+  '3. Vervolg: wat er nog moet gebeuren, wie het doet en voor wanneer. Eén actie per keer; vraag daarna of er nog een is.',
+  '4. Kans of risico: zag je een kans of nieuwe behoefte, of is er een risico dat de klant ontevreden wordt of opzegt? Bij een kans: vraag daarna los van elkaar wat de klant wil, ongeveer hoe groot dat is, hoe ver het is (een signaal, een gesprek, een offerte of onderhandeling) en wanneer een besluit wordt verwacht. Vraag naar beslisser, concurrent, budget en contractdatum alleen als het gesprek daar vanzelf naartoe gaat. Raad niets: wat de accountmanager niet weet, blijft leeg.',
+  'AANVULLEND (alleen als het gesprek daar aanleiding toe geeft of het verhaal er al deels over ging):',
+  '5. Doelen en resultaten: wat de klant het komende jaar wil bereiken, wat er goed of slecht ging sinds de vorige keer, en een tevredenheidscijfer van 1 tot 10 als dat nog niet is genoemd.',
+  '6. Dienstverlening: alleen als de klant problemen of trage reactietijden noemde; vraag alleen naar de SLA als de klant daar zelf over begint.',
+  '7. Eerdere acties: zijn afspraken of acties van eerder klaar of anders gaan lopen? Laat de accountmanager ze in eigen woorden noemen; lees niets voor.',
+  '8. Contactpersonen: alleen vragen naar nieuwe contactpersonen of beslissers als er een genoemd is zonder functie of rol. Vraag alleen naam, functie en rol.',
 ].join('\n');
 
 export const leesDebriefVragen = (db: Db) => lees(db, 'debrief_vragen', STANDAARD_DEBRIEF_VRAGEN);
@@ -142,4 +138,48 @@ export async function bewaarConsultantVragen(db: Db, sleutel: string, waarde: st
 }
 export async function leesVorigeConsultantVragen(db: Db, sleutel: string): Promise<string> {
   return (await lees(db, `${consultantSleutel(sleutel)}_vorige`, '')).waarde;
+}
+
+/**
+ * De aanpasbare delen van de begroeting per gesprekstype: een aanloopzin (inkomend en uitgaand) en de openingsvraag.
+ * De AI-melding en de toestemmingsvraag staan vast in de voice-service (verplicht, en gekoppeld aan de toestemmingsversie).
+ * Deze standaardteksten zijn gelijk aan BEGROETING_STANDAARD in voice/prompts.py; een lege tekst betekent de standaard.
+ */
+export const BEGROETING_VELDEN = ['aanloopInkomend', 'aanloopUitgaand', 'opening', 'openingUitgaand'] as const;
+export type BegroetingVeld = (typeof BEGROETING_VELDEN)[number];
+export const BEGROETING_TYPES = ['dagboek', 'verkoop_debrief', 'consultant_debrief', 'debrief_keuze'] as const;
+export type BegroetingType = (typeof BEGROETING_TYPES)[number];
+export type Begroeting = Partial<Record<BegroetingType, Partial<Record<BegroetingVeld, string>>>>;
+export const BEGROETING_MAX = 200;
+export const STANDAARD_BEGROETING: Record<BegroetingType, Partial<Record<BegroetingVeld, string>>> = {
+  dagboek: { aanloopInkomend: 'Fijn dat je belt voor je update.', aanloopUitgaand: '', opening: 'Waar wil je mee beginnen?', openingUitgaand: 'Heb je nu even tijd voor een korte update?' },
+  verkoop_debrief: { aanloopInkomend: 'Fijn dat je belt over je klant.', aanloopUitgaand: 'Ik bel voor de debrief van je klantbezoek.', opening: 'Vertel maar, wat wil je kwijt?' },
+  consultant_debrief: { aanloopInkomend: 'Fijn dat je belt over je werk bij de klant.', aanloopUitgaand: 'Ik bel voor de debrief van je werk bij de klant.' },
+  debrief_keuze: { aanloopInkomend: 'Fijn dat je belt over je klant of je werk.', aanloopUitgaand: 'Ik bel voor een debrief van je klant of je werk.' },
+};
+
+const eenRegel = (s: string) => s.split(/\s+/).filter(Boolean).join(' ');
+const veldSchema = z.string().max(2000).transform(eenRegel).refine((t) => t.length <= BEGROETING_MAX, `Maximaal ${BEGROETING_MAX} tekens per tekst`);
+const begroetingSchema = z.object(Object.fromEntries(BEGROETING_TYPES.map((t) => [t, z.object(Object.fromEntries(BEGROETING_VELDEN.map((v) => [v, veldSchema.optional()]))).strict().optional()]))).strict();
+
+/** Alleen wat afwijkt van de standaard staat in de instelling; ongeldige of onbekende velden worden genegeerd. */
+export async function leesBegroeting(db: Db): Promise<Begroeting> {
+  try {
+    const r = begroetingSchema.safeParse(JSON.parse((await lees(db, 'begroeting', '{}')).waarde));
+    return r.success ? (r.data as Begroeting) : {};
+  } catch { return {}; }
+}
+/** Ongeldige invoer gooit een ZodError (HTTP 400). Lege teksten, en teksten gelijk aan de standaard, worden niet bewaard. */
+export async function bewaarBegroeting(db: Db, ruw: unknown): Promise<void> {
+  const b = begroetingSchema.parse(ruw);
+  const schoon: Begroeting = {};
+  for (const t of BEGROETING_TYPES) for (const v of BEGROETING_VELDEN) {
+    const tekst = b[t]?.[v];
+    if (tekst && tekst !== STANDAARD_BEGROETING[t][v]) (schoon[t] ??= {})[v] = tekst;
+  }
+  await bewaar(db, 'begroeting', Object.keys(schoon).length ? JSON.stringify(schoon) : '');
+}
+/** Wat voice voor dit gesprekstype meekrijgt: alleen de eigen teksten (voice valt zelf terug op de standaard). */
+export async function begroetingVoor(db: Db, type: string): Promise<Partial<Record<BegroetingVeld, string>>> {
+  return (BEGROETING_TYPES as readonly string[]).includes(type) ? (await leesBegroeting(db))[type as BegroetingType] ?? {} : {};
 }

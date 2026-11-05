@@ -155,6 +155,57 @@ function Jira() {
 }
 
 
+type BegroetingVeld = 'aanloopInkomend' | 'aanloopUitgaand' | 'opening' | 'openingUitgaand';
+type BegroetingTekst = Partial<Record<BegroetingVeld, string>>;
+interface BegroetingData { waarde: Record<string, BegroetingTekst>; standaard: Record<string, BegroetingTekst> }
+const BEGROETING_TYPES: { id: string; naam: string; velden: { veld: BegroetingVeld; label: string }[] }[] = [
+  { id: 'dagboek', naam: 'Dagboek', velden: [
+    { veld: 'aanloopInkomend', label: 'Aanloopzin als de medewerker belt' }, { veld: 'aanloopUitgaand', label: 'Aanloopzin als de assistent belt' },
+    { veld: 'opening', label: 'Openingsvraag als de medewerker belt' }, { veld: 'openingUitgaand', label: 'Openingsvraag als de assistent belt' }] },
+  { id: 'verkoop_debrief', naam: 'Verkoop-debrief', velden: [
+    { veld: 'aanloopInkomend', label: 'Aanloopzin als de medewerker belt' }, { veld: 'aanloopUitgaand', label: 'Aanloopzin als de assistent belt' }, { veld: 'opening', label: 'Openingsvraag' }] },
+  { id: 'consultant_debrief', naam: 'Consultantdebrief', velden: [{ veld: 'aanloopInkomend', label: 'Aanloopzin als de medewerker belt' }, { veld: 'aanloopUitgaand', label: 'Aanloopzin als de assistent belt' }] },
+  { id: 'debrief_keuze', naam: 'Debrief met keuze (accountmanager en consultant)', velden: [{ veld: 'aanloopInkomend', label: 'Aanloopzin als de medewerker belt' }, { veld: 'aanloopUitgaand', label: 'Aanloopzin als de assistent belt' }] },
+];
+
+function Begroeting() {
+  const huidig = useLaden(() => api<BegroetingData>('GET', '/instellingen/begroeting'));
+  const [tekst, setTekst] = useState<Record<string, BegroetingTekst>>({});
+  const [melding, setMelding] = useState<{ tekst: string; soort: 'fout' | 'ok' } | null>(null);
+  useEffect(() => { if (huidig.data) setTekst(huidig.data.waarde); }, [huidig.data]);
+  const standaard = huidig.data?.standaard ?? {};
+  const wijzig = (type: string, veld: BegroetingVeld, waarde: string) => setTekst((t) => ({ ...t, [type]: { ...t[type], [veld]: waarde } }));
+
+  async function bewaar(waarde: Record<string, BegroetingTekst>) {
+    try {
+      const r = await api<BegroetingData>('PUT', '/instellingen/begroeting', { waarde });
+      setTekst(r.waarde); setMelding({ tekst: 'Opgeslagen. Dit geldt vanaf het volgende gesprek.', soort: 'ok' }); huidig.ververs();
+    } catch (e) { setMelding({ tekst: foutTekst(e), soort: 'fout' }); }
+  }
+  return (
+    <form className="paneel stapel" onSubmit={(e: FormEvent) => { e.preventDefault(); void bewaar(tekst); }}>
+      <h2>Begroeting</h2>
+      <p className="zacht klein">Zo begint de assistent het gesprek: groet, AI-melding, aanloopzin, eventueel de toestemmingsvraag en dan de openingsvraag. Je past hier de aanloopzin en de openingsvraag aan. De groet, de AI-melding en de toestemmingsvraag staan vast, want die zijn verplicht. De openingsvraag wordt pas gesteld nadat de medewerker toestemming heeft gegeven (of die al eerder gaf). Laat je een veld leeg, dan geldt de standaardtekst die erin staat als voorbeeld. Houd het kort: maximaal 200 tekens per tekst, één regel.</p>
+      {BEGROETING_TYPES.map((t) => (
+        <fieldset key={t.id} className="stapel">
+          <legend><strong>{t.naam}</strong></legend>
+          {t.velden.map(({ veld, label }) => (
+            <Veld key={veld} label={label}>
+              <input value={tekst[t.id]?.[veld] ?? ''} maxLength={200} placeholder={standaard[t.id]?.[veld] || '(standaard: geen aanloopzin)'} onChange={(e) => wijzig(t.id, veld, e.target.value)} />
+            </Veld>
+          ))}
+          {(t.id === 'consultant_debrief' || t.id === 'debrief_keuze') && <p className="zacht klein">De openingsvraag hangt hier af van de gekozen variant of het planningsvoorstel en is daarom niet aanpasbaar.</p>}
+        </fieldset>
+      ))}
+      <Melding tekst={melding?.tekst ?? huidig.fout} soort={melding?.soort} />
+      <div className="rij">
+        <button className="primair" type="submit">Opslaan</button>
+        <button type="button" disabled={!Object.keys(huidig.data?.waarde ?? {}).length} onClick={() => { if (confirm('Alle begroetingen terugzetten naar de standaard?')) void bewaar({}); }}>Standaard terugzetten</button>
+      </div>
+    </form>
+  );
+}
+
 export function Instellingen() {
   return (
     <div className="stapel">
@@ -163,6 +214,7 @@ export function Instellingen() {
       <Gespreksmotor />
       <Inkomend />
       <Jira />
+      <Begroeting />
       <Debrief />
       <Consultant />
       <Instelling titel="Houding van de assistent" label="Houding" pad="/instellingen/houding" rijen={6}

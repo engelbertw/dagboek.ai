@@ -13,6 +13,8 @@ export interface BelOpdracht {
   soort?: 'dagboek' | 'verkoop_debrief' | 'consultant_debrief' | 'debrief_keuze';
   varianten?: string[];
   voorstel?: { variant: 'samenverder'; klant: string } | null;
+  /** Aanpasbare delen van de begroeting uit de instellingen; de AI-melding en toestemmingsvraag staan vast in voice. */
+  begroeting?: Partial<Record<'aanloopInkomend' | 'aanloopUitgaand' | 'opening' | 'openingUitgaand', string>>;
 }
 
 export interface Onderwerp {

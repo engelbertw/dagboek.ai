@@ -1,6 +1,6 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import type { Db } from './db.js';
-import { leesGespreksmotor, leesHouding, leesInstructie, type Motor } from './instellingen.js';
+import { begroetingVoor, leesGespreksmotor, leesHouding, leesInstructie, type Motor } from './instellingen.js';
 import { activiteiten, calls, employees, projects, schedules, topics, updates, type GespreksOnderwerp } from './schema.js';
 import { vandaagNL } from './samenvatten.js';
 import { puntenVoorGesprek } from './voor-gesprek.js';
@@ -74,7 +74,7 @@ export async function startGesprek({ db, voice }: { db: Db; voice: VoiceClient }
   // Vlak vóór de aanroep naar 'verzenden': vanaf hier is niet meer zeker of er gebeld is, ook als het antwoord uitblijft.
   if (!(await zetStatus(db, call.id, 'verzenden', {}, bron))) return { ok: false, status: 409, fout: 'Dit gesprek is al gestart', callId: call.id };
   const resultaat = await voice({
-    telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: opzet ? opzet.toestemmingNodig : !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde, instructie, engine: motor,
+    telefoonnummer: m.telefoon, medewerker: m.naam, onderwerpen, toestemming_nodig: opzet ? opzet.toestemmingNodig : !m.toestemmingOp, web_call_id: call.id, houding: (await leesHouding(db)).waarde, instructie, engine: motor, begroeting: await begroetingVoor(db, type),
     ...(debrief ? { soort: type, varianten: varianten.map((v) => v.id), voorstel: opzet?.voorstel ?? null } : {}),
   });
   if (!resultaat.gebeld) {

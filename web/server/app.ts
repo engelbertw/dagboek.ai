@@ -26,7 +26,7 @@ import { corrigeerTranscript, woordenlijstSchema } from './woordenlijst.js';
 import { verzamelVoorstellen } from './woordvoorstellen.js';
 import { pasWoordenlijstToeOpBestaand } from './woordenlijst-toepassen.js';
 import { normaliseer, type Beurt } from './vertrouwen.js';
-import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie, bewaarWoordenlijst, leesWoordenlijst, leesVorigeWoordenlijst } from './instellingen.js';
+import { MOTOREN, bewaarGespreksmotor, bewaarInkomend, leesInkomend, bewaarJira, leesJira, bewaarHouding, bewaarInstructie, leesGespreksmotor, leesHouding, leesInstructie, bewaarWoordenlijst, leesWoordenlijst, leesVorigeWoordenlijst, bewaarBegroeting, leesBegroeting, STANDAARD_BEGROETING } from './instellingen.js';
 import { stelInstructieVoor, type OnderwerpVoorSuggestie } from './suggestie.js';
 import { automatischBellenAan, zetAutomatischBellen } from './scheduler.js';
 import { berekenDashboard } from './dashboard.js';
@@ -410,6 +410,11 @@ export function buildApp({ db, config, voice, llm, clientDir, jira, herstel, oid
     const { waarde } = z.object({ waarde: z.string().max(4000) }).parse(req.body);
     await bewaarHouding(db, waarde);
     return leesHouding(db);
+  });
+  app.get('/api/instellingen/begroeting', async () => ({ waarde: await leesBegroeting(db), standaard: STANDAARD_BEGROETING }));
+  app.put('/api/instellingen/begroeting', async (req) => {
+    await bewaarBegroeting(db, z.object({ waarde: z.unknown() }).parse(req.body).waarde);
+    return { waarde: await leesBegroeting(db), standaard: STANDAARD_BEGROETING };
   });
   app.get('/api/instellingen/woordenlijst', async () => ({ items: await leesWoordenlijst(db), vorige: await leesVorigeWoordenlijst(db) }));
   app.put('/api/instellingen/woordenlijst', async (req) => {
