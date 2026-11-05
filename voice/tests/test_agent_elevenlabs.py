@@ -374,3 +374,29 @@ def test_herstel_gesprek_onderscheidt_de_reden_dat_ophalen_mislukt(monkeypatch, 
     monkeypatch.setattr(agent.httpx, "get", lambda *a, **k: type("R", (), {"status_code": status, "json": lambda self: {}})())
     assert agent.herstel_gesprek(cid) == uitkomst
     assert gemeld == []
+
+
+def test_belverzoek_voor_een_debrief_gebruikt_de_debrief_prompt_en_begroeting():
+    cid = calls.maak_opdracht("+31612345678", "Irma", [], True, "w" * 8, engine="elevenlabs_agent", soort="verkoop_debrief", instructie="1. Bezoek: Bij welke klant was je?")
+    body = agent.bouw_belverzoek(calls.lees_opdracht(cid), "agent_1", "phnum_1")
+    ov = body["conversation_initiation_client_data"]["conversation_config_override"]["agent"]
+    assert "klantbezoek" in ov["prompt"]["prompt"] and "Bij welke klant was je?" in ov["prompt"]["prompt"]
+    assert "Onderwerpen om na te lopen" in ov["prompt"]["prompt"]
+    # Uitgaand: de assistent belt zelf, dus geen "fijn dat je belt".
+    assert "Ik bel voor de debrief van je klantbezoek" in ov["first_message"] and "Fijn dat je belt" not in ov["first_message"]
+    assert "verkoopregister" in ov["first_message"]
+    assert body["conversation_initiation_client_data"]["dynamic_variables"]["prompt_version"] == "debrief-v1"
+
+
+@pytest.mark.parametrize("soort,zin", [("consultant_debrief", "Ik bel voor de debrief van je werk bij de klant"), ("debrief_keuze", "Ik bel voor een debrief van je klant of je werk")])
+def test_uitgaande_consultantbegroeting_zegt_niet_dat_de_medewerker_belt(soort, zin):
+    cid = calls.maak_opdracht("+31612345678", "Irma", [], False, "w" * 8, engine="elevenlabs_agent", soort=soort, varianten=["project"])
+    ov = agent.bouw_belverzoek(calls.lees_opdracht(cid), "agent_1", "phnum_1")["conversation_initiation_client_data"]["conversation_config_override"]["agent"]
+    assert zin in ov["first_message"] and "Fijn dat je belt" not in ov["first_message"]
+
+
+def test_belverzoek_met_onbekende_soort_valt_terug_op_het_dagboek():
+    cid = calls.maak_opdracht("+31612345678", "Irma", [{"titel": "X"}], True, "w" * 8, engine="elevenlabs_agent", soort="iets_anders")
+    body = agent.bouw_belverzoek(calls.lees_opdracht(cid), "agent_1", "phnum_1")
+    assert "voor het dagboek" in body["conversation_initiation_client_data"]["conversation_config_override"]["agent"]["first_message"]
+    assert body["conversation_initiation_client_data"]["dynamic_variables"]["prompt_version"] == "dagboek-v4"

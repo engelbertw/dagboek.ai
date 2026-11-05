@@ -31,11 +31,14 @@ def bouw_belverzoek(spec: dict, agent_id: str, nummer_id: str) -> dict:
     """De body voor de outbound-call van ElevenLabs. Prompt en begroeting komen uit dezelfde bron als bij Pipecat, zodat beide motoren
     dezelfde AI-melding en toestemmingsvraag uitspreken."""
     cfg = config.get_config()
+    # Een debrief schrijft alleen weg (geen dagboekonderwerpen); een onbekende soort valt terug op het dagboek.
+    soort = kies_soort(spec.get("soort"))
     prompt = build_system_prompt(
         cfg["opdrachtgever"], spec["medewerker"], spec["onderwerpen"],
         houding=spec.get("houding", ""), instructie=spec.get("instructie", ""), einde_tool="end_call",
+        soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"),
     )
-    groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")))
+    groet = greeting_text(cfg["opdrachtgever"], spec["medewerker"], bool(spec.get("toestemming_nodig")), soort=soort, varianten=spec.get("varianten"), voorstel=spec.get("voorstel"))
     return {
         "agent_id": agent_id,
         "agent_phone_number_id": nummer_id,
@@ -44,7 +47,7 @@ def bouw_belverzoek(spec: dict, agent_id: str, nummer_id: str) -> dict:
             "conversation_config_override": {
                 "agent": {"prompt": {"prompt": prompt}, "first_message": groet, "language": "nl"},
             },
-            "dynamic_variables": {"call_id": spec["call_id"], "prompt_version": PROMPT_VERSION},
+            "dynamic_variables": {"call_id": spec["call_id"], "prompt_version": prompt_versie(soort)},
         },
     }
 

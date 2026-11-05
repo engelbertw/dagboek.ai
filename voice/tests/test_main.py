@@ -229,3 +229,26 @@ def test_elevenlabs_init_vereist_het_geheim(client, monkeypatch):
     assert r.status_code == 200 and r.json()["dynamic_variables"]["call_id"] == ""
     monkeypatch.delenv("ELEVENLABS_INIT_SECRET")
     assert client.post("/elevenlabs/init", json={}, headers={"x-init-secret": ""}).status_code == 401
+
+
+def test_bel_met_debrief_en_pipecat_weigert_in_plaats_van_een_dagboekgesprek_te_starten(client, monkeypatch):
+    gebeld = _bel_opzet(monkeypatch)
+    r = client.post("/bel", json={**BODY, "soort": "verkoop_debrief", "engine": "pipecat"}, headers=KOP).json()
+    assert r["gebeld"] is False and "ElevenLabs-agent" in r["reden"]
+    assert gebeld == []
+
+
+def test_bel_met_debrief_en_agent_bewaart_soort_en_instructie_bij_de_opdracht(client, monkeypatch):
+    gebeld = _bel_opzet(monkeypatch)
+    lang = "Vraag. " * 1500  # ruim boven de oude grens van 4000 tekens
+    r = client.post("/bel", json={**BODY, "soort": "debrief_keuze", "engine": "elevenlabs_agent", "instructie": lang, "varianten": ["project"], "voorstel": {"variant": "samenverder", "klant": "Venlo"}}, headers=KOP).json()
+    assert r["gebeld"] is True
+    spec = calls.lees_opdracht(gebeld[0])
+    assert spec["soort"] == "debrief_keuze" and spec["engine"] == "elevenlabs_agent" and spec["varianten"] == ["project"]
+    assert spec["voorstel"] == {"variant": "samenverder", "klant": "Venlo"} and len(spec["instructie"]) == len(lang)
+
+
+def test_bel_zonder_soort_blijft_een_dagboekgesprek(client, monkeypatch):
+    gebeld = _bel_opzet(monkeypatch)
+    assert client.post("/bel", json={**BODY, "engine": "pipecat"}, headers=KOP).json()["gebeld"] is True
+    assert calls.lees_opdracht(gebeld[0])["soort"] == "dagboek"

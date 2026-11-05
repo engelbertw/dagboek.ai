@@ -20,6 +20,7 @@ load_dotenv()
 import calls
 import logconfig
 import opschoning
+from prompts import SOORT_DAGBOEK, kies_soort
 
 logconfig.instellen()
 
@@ -202,8 +203,13 @@ class BelVerzoek(BaseModel):
     toestemming_nodig: bool = True
     web_call_id: str = Field(default="", max_length=64)
     houding: str = Field(default="", max_length=4000)
-    instructie: str = Field(default="", max_length=4000)
+    # Een debrief krijgt de vragenlijst(en) van de beheerder mee; bij een dubbele rol zijn dat er twee, dus ruimer dan de dagboekinstructie.
+    instructie: str = Field(default="", max_length=24000)
     engine: Literal["pipecat", "elevenlabs_agent"] | None = None
+    # Wat voor gesprek het is: dagboek (standaard), verkoop_debrief, consultant_debrief of debrief_keuze. Alleen de ElevenLabs-agent voert een debrief.
+    soort: str = Field(default="dagboek", max_length=30)
+    varianten: list[str] = Field(default_factory=list, max_length=10)
+    voorstel: dict | None = None
 
 
 @app.post("/bel")
@@ -226,13 +232,22 @@ async def bel(verzoek: BelVerzoek, authorization: str = Header(default="")):
         if not nieuw:
             logger.info(f"Herhaald verzoek (web_call_id {verzoek.web_call_id}), niet opnieuw gebeld")
             return calls.uitkomst_van(call_id)
+    engine = verzoek.engine or os.getenv("VOICE_ENGINE", "pipecat")
+    soort = kies_soort(verzoek.soort)
+    if soort != SOORT_DAGBOEK and engine != "elevenlabs_agent":
+        # Geen stille terugval op een dagboekgesprek: de beller zou iets anders te horen krijgen dan waar het gesprek voor is bedoeld.
+        if call_id:
+            calls.maak_opdracht(nummer, verzoek.medewerker, [], verzoek.toestemming_nodig, verzoek.web_call_id, call_id=call_id)
+            calls.update_opdracht(call_id, status="mislukt", fout="debrief_alleen_agent", geweigerd=True, onderwerpen=[])
+        return {"gebeld": False, "reden": "een debrief kan alleen met de ElevenLabs-agent als gespreksmotor"}
     mag, reden = calls.mag_bellen(nummer)
     if not mag:
         if call_id:
             calls.maak_opdracht(nummer, verzoek.medewerker, [], verzoek.toestemming_nodig, verzoek.web_call_id, call_id=call_id)
             calls.update_opdracht(call_id, status="mislukt", fout=reden, geweigerd=True, onderwerpen=[])
         return {"gebeld": False, "reden": reden}
-    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie, call_id=call_id, engine=verzoek.engine or os.getenv("VOICE_ENGINE", "pipecat"))
+    call_id = calls.maak_opdracht(nummer, verzoek.medewerker, verzoek.onderwerpen, verzoek.toestemming_nodig, verzoek.web_call_id, verzoek.houding, verzoek.instructie, call_id=call_id, engine=engine,
+                               soort=soort, varianten=verzoek.varianten, voorstel=verzoek.voorstel)
     resultaat = calls.start_gesprek(call_id)
     if not resultaat.get("gebeld") and not resultaat.get("onzeker"):
         calls.rapporteer(call_id, "mislukt", fout=resultaat.get("reden"))

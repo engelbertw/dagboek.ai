@@ -279,12 +279,12 @@ def greeting_text(opdrachtgever: str, medewerker: str, toestemming_nodig: bool, 
         tekst += "Fijn dat je belt over je klant. " if inkomend else "Ik bel voor de debrief van je klantbezoek. "
         return tekst + ("Ik maak een verslag van ons gesprek voor het verkoopregister. Vind je dat goed?" if toestemming_nodig else "Vertel maar, wat wil je kwijt?")
     if soort == SOORT_CONSULTANT:
-        tekst += "Fijn dat je belt over je werk bij de klant. "
+        tekst += "Fijn dat je belt over je werk bij de klant. " if inkomend else "Ik bel voor de debrief van je werk bij de klant. "
         klant = voorstel_klant(voorstel)
         return tekst + ("Ik maak een verslag van ons gesprek voor het werkregister. Vind je dat goed?" if toestemming_nodig else voorstel_vraag(klant, soort) if klant else variant_vraag(varianten))
     if soort == SOORT_KEUZE:
         # De toestemmingsvraag is neutraal: pas na de keuze is bekend voor welk register het verslag wordt gemaakt.
-        tekst += "Fijn dat je belt over je klant of je werk. "
+        tekst += "Fijn dat je belt over je klant of je werk. " if inkomend else "Ik bel voor een debrief van je klant of je werk. "
         klant = voorstel_klant(voorstel)
         return tekst + ("Ik maak een verslag van ons gesprek. Vind je dat goed?" if toestemming_nodig else voorstel_vraag(klant, soort) if klant else "Wil je een verkoop- of consultancy-debrief doen?")
     if inkomend:
