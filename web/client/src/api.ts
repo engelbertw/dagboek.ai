@@ -42,7 +42,7 @@ export interface GesprekRegel { type?: GesprekType; routeBron?: string | null; v
 export interface Gesprek extends GesprekRegel { transcript: { role: string; content: string }[] | null }
 
 export class ApiFout extends Error {
-  constructor(public status: number, message: string, public details: string[] = []) { super(message); }
+  constructor(public status: number, message: string, public details: string[] = [], public data: Record<string, unknown> = {}) { super(message); }
 }
 
 export async function api<T>(method: string, pad: string, body?: unknown): Promise<T> {
@@ -52,7 +52,7 @@ export async function api<T>(method: string, pad: string, body?: unknown): Promi
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new ApiFout(r.status, data.fout ?? `Fout ${r.status}`, data.details ?? []);
+  if (!r.ok) throw new ApiFout(r.status, data.fout ?? `Fout ${r.status}`, data.details ?? [], data);
   return data as T;
 }
 

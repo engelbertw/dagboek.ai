@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, describe, expect, it } from 'vitest';
-import { activiteiten, bezoeken, calls, klanten } from '../schema.js';
+import { activiteiten, bezoeken, calls, klanten, suggesties, topics, updates } from '../schema.js';
 import { magDoen } from '../rollen.js';
 import { maakTestApp } from './helpers.js';
 
@@ -43,23 +43,55 @@ describe('dagboekgesprek omzetten naar een debrief', () => {
     expect((await s.t.api('POST', `/api/calls/${s.callId}/als-debrief`, { route: 'verkoop' })).json()).toMatchObject({ reden: 'geen_dagboek' });
   });
 
-  it('weigert een gesprek dat het dagboek al heeft verwerkt, zonder iets te wijzigen', async () => {
-    const s = await scenario({ samenvattingStatus: 'klaar' });
+  async function metDagboekuitvoer() {
+    const s = await scenario({ samenvattingStatus: 'klaar', samenvattingRuw: { onderwerpen: [{ nr: 1, afgeronde_open_punten: [{ nr: 1 }] }] } });
+    const [topic] = await s.t.db.insert(topics).values({ titel: 'Eigen project', eigenaarId: s.m.id }).returning();
+    const [ander] = await s.t.db.insert(calls).values({ employeeId: s.m.id, status: 'gesproken', bron: 'schema', type: 'dagboek', samenvattingStatus: 'klaar' }).returning();
+    await s.t.db.insert(updates).values([{ topicId: topic.id, callId: s.callId, bron: 'voice', samenvatting: 'Uit dit gesprek' }, { topicId: topic.id, callId: ander.id, bron: 'voice', samenvatting: 'Uit een ander gesprek' }]);
+    await s.t.db.insert(activiteiten).values([{ soort: 'intern', omschrijving: 'Dit gesprek', callId: s.callId }, { soort: 'intern', omschrijving: 'Ander gesprek', callId: ander.id }]);
+    await s.t.db.insert(suggesties).values([{ soort: 'verbetering', tekst: 'Dit gesprek', callId: s.callId }, { soort: 'verbetering', tekst: 'Ander gesprek', callId: ander.id }]);
+    return { ...s, ander: ander.id };
+  }
+
+  it('toont eerst wat er verwijderd zou worden en wijzigt niets zonder bevestiging', async () => {
+    const s = await metDagboekuitvoer();
     const r = await s.t.api('POST', `/api/calls/${s.callId}/als-debrief`, { route: 'verkoop' });
     expect(r.statusCode).toBe(409);
-    expect(r.json()).toMatchObject({ reden: 'al_verwerkt' });
-    const [c] = await s.t.db.select().from(calls).where(eq(calls.id, s.callId));
-    expect(c.type).toBe('dagboek');
+    expect(r.json()).toMatchObject({ reden: 'al_verwerkt', uitvoer: { updates: 1, punten: 1, suggesties: 1 }, gevolgen: { puntenAfgerondOfGemarkeerd: 1 } });
+    expect((await s.t.db.select().from(calls).where(eq(calls.id, s.callId)))[0]).toMatchObject({ type: 'dagboek', samenvattingStatus: 'klaar' });
+    expect(await s.t.db.select().from(updates)).toHaveLength(2);
     expect(await s.t.db.select().from(bezoeken)).toHaveLength(0);
   });
 
-  it('weigert ook als er al een punt aan dit gesprek hangt, bij een nog niet afgeronde samenvatting', async () => {
-    const s = await scenario();
-    await s.t.db.insert(activiteiten).values({ soort: 'actie', omschrijving: 'Iets uit het dagboek', callId: s.callId });
+  it('ruimt met bevestiging alleen de uitvoer van dit gesprek op en verwerkt het dan als debrief', async () => {
+    const s = await metDagboekuitvoer();
+    const r = await s.t.api('POST', `/api/calls/${s.callId}/als-debrief`, { route: 'verkoop', opruimen: true });
+    expect(r.statusCode).toBe(202);
+    expect((await s.t.db.select().from(calls).where(eq(calls.id, s.callId)))[0]).toMatchObject({ type: 'verkoop_debrief', routeBron: 'beheerder', samenvattingStatus: 'klaar' });
+    // Wat bij een ander gesprek hoort blijft staan.
+    expect((await s.t.db.select().from(updates)).map((u) => u.samenvatting)).toEqual(['Uit een ander gesprek']);
+    expect((await s.t.db.select().from(activiteiten)).filter((a) => a.soort === 'intern').map((a) => a.omschrijving)).toEqual(['Ander gesprek']);
+    expect((await s.t.db.select().from(suggesties)).map((x) => x.tekst)).toEqual(['Ander gesprek']);
+    expect(await s.t.db.select().from(bezoeken)).toHaveLength(1);
+    const log = (await s.t.api('GET', `/api/calls/${s.callId}/verloop`)).json().map((l: { gebeurtenis: string }) => l.gebeurtenis);
+    expect(log).toContain('omgezet_van:dagboek:verwijderd_updates=1_punten=1_suggesties=1');
+  });
+
+  it('zet een als dagboek samengevat gesprek zonder uitvoer direct om', async () => {
+    const s = await scenario({ samenvattingStatus: 'klaar' });
     const r = await s.t.api('POST', `/api/calls/${s.callId}/als-debrief`, { route: 'verkoop' });
-    expect(r.statusCode).toBe(409);
-    expect(r.json()).toMatchObject({ reden: 'al_verwerkt' });
-    expect((await s.t.db.select().from(calls).where(eq(calls.id, s.callId)))[0].type).toBe('dagboek');
+    expect(r.statusCode).toBe(202);
+    expect((await s.t.db.select().from(calls).where(eq(calls.id, s.callId)))[0]).toMatchObject({ type: 'verkoop_debrief', samenvattingStatus: 'klaar' });
+  });
+
+  it('weigert opruimen als een punt al naar Jira is gezet, of als het gesprek nu wordt samengevat', async () => {
+    const s = await metDagboekuitvoer();
+    await s.t.db.update(activiteiten).set({ jiraSleutel: 'DAG-1' }).where(eq(activiteiten.callId, s.callId));
+    const r = await s.t.api('POST', `/api/calls/${s.callId}/als-debrief`, { route: 'verkoop', opruimen: true });
+    expect(r.json()).toMatchObject({ reden: 'punt_in_jira' });
+    expect((await s.t.db.select().from(updates)).length).toBe(2);
+    await s.t.db.update(calls).set({ samenvattingStatus: 'bezig' }).where(eq(calls.id, s.callId));
+    expect((await s.t.api('POST', `/api/calls/${s.callId}/als-debrief`, { route: 'verkoop', opruimen: true })).json()).toMatchObject({ reden: 'bezig' });
   });
 
   it('weigert een gesprek dat nog niet is afgerond, geen dagboekgesprek is of niet bestaat', async () => {

@@ -54,29 +54,54 @@ export function registreerConsultantRoutes(app: FastifyInstance, db: Db, llm: Ll
   });
 
   // Een dagboekgesprek dat eigenlijk een debrief was (bijvoorbeeld een klantbezoek dat via 'Bel nu' als dagboek is gevoerd): een beheerder zet het om, waarna het
-  // alsnog als debrief wordt verwerkt. Alleen zolang het dagboek er niets uit heeft weggeschreven; dagboekuitvoer wordt hier nooit verwijderd.
+  // alsnog als debrief wordt verwerkt. Heeft het dagboek er al iets uit weggeschreven, dan weigert dit eerst met een overzicht (409); met `opruimen: true` worden
+  // precies de rijen van dít gesprek verwijderd (updates, punten, suggesties) en volgt de debrief. Wat het dagboek daarnaast bij andere punten deed (een punt als afgerond
+  // of te controleren markeren) wordt niet teruggedraaid; dat staat in het overzicht.
   app.post('/api/calls/:id/als-debrief', async (req, reply) => {
     const id = uuid.parse((req.params as { id: string }).id);
-    const { route } = z.object({ route: z.enum(['verkoop', 'consultancy']) }).parse(req.body);
+    const { route, opruimen } = z.object({ route: z.enum(['verkoop', 'consultancy']), opruimen: z.boolean().optional() }).parse(req.body);
     const [call] = await db.select({
-      type: calls.type, status: calls.status, heeftTranscript: sql<boolean>`${calls.transcript} is not null`, samenvattingStatus: calls.samenvattingStatus,
+      type: calls.type, status: calls.status, heeftTranscript: sql<boolean>`${calls.transcript} is not null`, samenvattingStatus: calls.samenvattingStatus, ruw: calls.samenvattingRuw,
     }).from(calls).where(eq(calls.id, id));
     if (!call) return reply.code(404).send({ fout: 'Gesprek niet gevonden' });
     if (call.type !== 'dagboek') return reply.code(409).send({ fout: 'Alleen een dagboekgesprek kan worden omgezet', reden: 'geen_dagboek' });
     if (call.status !== 'gesproken' || !call.heeftTranscript) return reply.code(409).send({ fout: 'Alleen een afgerond gesprek met transcript kan worden omgezet', reden: 'geen_transcript' });
-    const zonderUitvoer = and(
-      inArray(calls.samenvattingStatus, ['geen', 'mislukt', 'onduidelijk', 'geen_inhoud']),
-      sql`not exists (select 1 from ${updates} where ${updates.callId} = ${calls.id})`,
-      sql`not exists (select 1 from ${activiteiten} where ${activiteiten.callId} = ${calls.id})`,
-      sql`not exists (select 1 from ${suggesties} where ${suggesties.callId} = ${calls.id})`,
-    );
-    const gezet = await db.update(calls).set({ type: routeNaarType(route), routeBron: 'beheerder', routeCitaat: null })
-      .where(and(eq(calls.id, id), eq(calls.type, 'dagboek'), eq(calls.status, 'gesproken'), sql`${calls.transcript} is not null`, zonderUitvoer)).returning({ id: calls.id });
-    if (!gezet.length) {
-      return reply.code(409).send({ fout: 'Dit gesprek is al als dagboek verwerkt: er staat uitvoer bij onderwerpen. Omzetten zou dubbele of strijdige gegevens geven en verwijderen kan hier niet.', reden: 'al_verwerkt' });
+    if (call.samenvattingStatus === 'bezig') return reply.code(409).send({ fout: 'Dit gesprek wordt nu samengevat. Probeer het over een minuut opnieuw.', reden: 'bezig' });
+
+    const aantal = async (tabel: typeof updates | typeof activiteiten | typeof suggesties) => {
+      const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(tabel).where(eq(tabel.callId, id));
+      return r.n;
+    };
+    const uitvoer = { updates: await aantal(updates), punten: await aantal(activiteiten), suggesties: await aantal(suggesties) };
+    const [{ n: bewerkt }] = await db.select({ n: sql<number>`count(*)::int` }).from(updates).where(and(eq(updates.callId, id), sql`${updates.bewerktOp} is not null`));
+    const [{ n: metJira }] = await db.select({ n: sql<number>`count(*)::int` }).from(activiteiten).where(and(eq(activiteiten.callId, id), sql`${activiteiten.jiraSleutel} is not null`));
+    // Het dagboek kan bij andere punten iets hebben gedaan (afgerond of voor controle gemarkeerd); dat is niet terug te draaien en wordt hier alleen gemeld.
+    const onderwerpenRuw = (call.ruw as { onderwerpen?: { afgeronde_open_punten?: unknown[] }[] } | null)?.onderwerpen ?? [];
+    const gevolgen = { puntenAfgerondOfGemarkeerd: onderwerpenRuw.reduce((som, o) => som + (Array.isArray(o.afgeronde_open_punten) ? o.afgeronde_open_punten.length : 0), 0), bewerkteUpdates: bewerkt };
+    const heeftUitvoer = uitvoer.updates + uitvoer.punten + uitvoer.suggesties > 0 || gevolgen.puntenAfgerondOfGemarkeerd > 0;
+    if (heeftUitvoer && !opruimen) {
+      return reply.code(409).send({
+        fout: 'Dit gesprek is al als dagboek verwerkt. Omzetten verwijdert eerst wat het dagboek eruit heeft opgeslagen.', reden: 'al_verwerkt', uitvoer, gevolgen,
+      });
     }
+    if (metJira > 0) {
+      return reply.code(409).send({ fout: 'Een punt uit dit dagboekgesprek is al naar Jira gezet en kan niet worden opgeruimd.', reden: 'punt_in_jira', uitvoer, gevolgen });
+    }
+
+    const resultaat = await db.transaction(async (tx) => {
+      const gezet = await tx.update(calls).set({
+        type: routeNaarType(route), routeBron: 'beheerder', routeCitaat: null, samenvattingStatus: 'geen', samenvattingRuw: null, samenvattingFout: null,
+      }).where(and(eq(calls.id, id), eq(calls.type, 'dagboek'), eq(calls.status, 'gesproken'), sql`${calls.transcript} is not null`,
+        inArray(calls.samenvattingStatus, ['geen', 'mislukt', 'onduidelijk', 'geen_inhoud', 'klaar']))).returning({ id: calls.id });
+      if (!gezet.length) return null;
+      const u = await tx.delete(updates).where(eq(updates.callId, id)).returning({ id: updates.id });
+      const p = await tx.delete(activiteiten).where(eq(activiteiten.callId, id)).returning({ id: activiteiten.id });
+      const sg = await tx.delete(suggesties).where(eq(suggesties.callId, id)).returning({ id: suggesties.id });
+      return { updates: u.length, punten: p.length, suggesties: sg.length };
+    });
+    if (!resultaat) return reply.code(409).send({ fout: 'Dit gesprek is intussen gewijzigd; vernieuw het scherm en probeer het opnieuw.', reden: 'gewijzigd' });
     await logGebeurtenis(db, id, 'web', `route:beheerder:${route}`);
-    await logGebeurtenis(db, id, 'web', 'omgezet_van:dagboek');
+    await logGebeurtenis(db, id, 'web', `omgezet_van:dagboek:verwijderd_updates=${resultaat.updates}_punten=${resultaat.punten}_suggesties=${resultaat.suggesties}`);
     return reply.code(202).send(await samenvattenGesprek({ db, llm }, id));
   });
 }

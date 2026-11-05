@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { api, datumTijd, MOTOR_LABEL, type Gesprek, type GesprekRegel, type GesprekType, type SamenvattingStatus } from '../api';
+import { api, ApiFout, datumTijd, MOTOR_LABEL, type Gesprek, type GesprekRegel, type GesprekType, type SamenvattingStatus } from '../api';
 import { Badge, Leeg, Melding, foutTekst, useLaden } from '../ui';
 
 const LABEL: Record<string, string> = {
@@ -84,12 +84,26 @@ function Regel({ g, ververs }: { g: GesprekRegel; ververs: () => void }) {
     setBezig(true);
     try { await api('POST', `/calls/${g.id}/route`, { route }); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
   }
-  // Een klantbezoek dat als dagboek is gevoerd kan alsnog als debrief worden verwerkt, zolang het dagboek er niets uit heeft weggeschreven (dat controleert de server).
-  const kanOmzetten = g.type === 'dagboek' && g.status === 'gesproken' && g.heeftTranscript && ['geen', 'mislukt', 'onduidelijk', 'geen_inhoud'].includes(g.samenvattingStatus);
+  // Een klantbezoek dat als dagboek is gevoerd kan alsnog als debrief worden verwerkt. Heeft het dagboek er al iets uit opgeslagen, dan toont de server eerst wat er zou
+  // worden verwijderd; pas na bevestiging wordt dat opgeruimd (alleen de uitvoer van dit gesprek, niet terug te draaien).
+  const kanOmzetten = g.type === 'dagboek' && g.status === 'gesproken' && g.heeftTranscript && ['geen', 'mislukt', 'onduidelijk', 'geen_inhoud', 'klaar'].includes(g.samenvattingStatus);
   async function zetOm(route: 'verkoop' | 'consultancy') {
-    if (!confirm(`Dit dagboekgesprek alsnog verwerken als ${route === 'verkoop' ? 'verkoop-debrief' : 'consultancy-debrief'}? Kijk eerst in het transcript. Daarna volgt het de debrief-verwerking en is het geen dagboekgesprek meer.`)) return;
+    const naam = route === 'verkoop' ? 'verkoop-debrief' : 'consultancy-debrief';
+    if (!confirm(`Dit dagboekgesprek alsnog verwerken als ${naam}? Kijk eerst in het transcript. Daarna volgt het de debrief-verwerking en is het geen dagboekgesprek meer.`)) return;
     setBezig(true);
-    try { await api('POST', `/calls/${g.id}/als-debrief`, { route }); setFout(null); ververs(); } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
+    try {
+      try { await api('POST', `/calls/${g.id}/als-debrief`, { route }); } catch (e) {
+        if (!(e instanceof ApiFout) || e.data.reden !== 'al_verwerkt') throw e;
+        const u = e.data.uitvoer as { updates: number; punten: number; suggesties: number };
+        const gevolg = (e.data.gevolgen as { puntenAfgerondOfGemarkeerd: number }).puntenAfgerondOfGemarkeerd;
+        const tekst = `Het dagboek heeft uit dit gesprek al ${u.updates} ${u.updates === 1 ? 'update' : 'updates'}, ${u.punten} ${u.punten === 1 ? 'punt' : 'punten'} en ${u.suggesties} ${u.suggesties === 1 ? 'suggestie' : 'suggesties'} opgeslagen. `
+          + 'Als je doorgaat worden die verwijderd en wordt het gesprek als ' + naam + ' verwerkt. Dit kan niet ongedaan worden gemaakt.'
+          + (gevolg > 0 ? ` Let op: het dagboek heeft ook ${gevolg} ${gevolg === 1 ? 'open punt' : 'open punten'} bij andere onderwerpen als afgerond of te controleren gemarkeerd; dat wordt niet teruggedraaid, controleer die zelf.` : '');
+        if (!confirm(tekst)) { setBezig(false); return; }
+        await api('POST', `/calls/${g.id}/als-debrief`, { route, opruimen: true });
+      }
+      setFout(null); ververs();
+    } catch (e) { setFout(foutTekst(e)); } finally { setBezig(false); }
   }
   const s = SAMENVATTING[g.samenvattingStatus];
   const uitleg = debrief && g.samenvattingStatus === 'klaar' ? 'Het bezoek staat in het verkoopregister, bij de klant.'
